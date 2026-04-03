@@ -1,0 +1,566 @@
+// Cash-in-Transit & Mission Management
+// Default dev: SQLite (DATABASE_URL=file:./dev.db) — npx prisma db push
+// Production: set provider to postgresql + DATABASE_URL and run migrate
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+// --- Personnel & masters ---
+
+model PersonnelCategory {
+  id        String   @id @default(uuid())
+  name      String   @unique
+  sortOrder Int      @default(0)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  personnel Personnel[]
+}
+
+model OrganizationUnitType {
+  id        String   @id @default(uuid())
+  name      String   @unique
+  sortOrder Int      @default(0)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  personnel Personnel[]
+}
+
+model Personnel {
+  id        String  @id @default(uuid())
+  photoUrl  String?
+  fullName  String
+  idNumber  String  @unique
+  rank      String?
+  position  String?
+  phone     String?
+
+  personnelCategoryId String?
+  personnelCategory   PersonnelCategory? @relation(fields: [personnelCategoryId], references: [id], onDelete: SetNull)
+
+  organizationUnitTypeId String?
+  organizationUnitType   OrganizationUnitType? @relation(fields: [organizationUnitTypeId], references: [id], onDelete: SetNull)
+
+  insuranceCompany      String?
+  insurancePolicyNumber String?
+  insuranceExpiry       DateTime?
+  insuranceNotes        String?
+
+  remarks   String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  beneficiaries         PersonnelBeneficiary[]
+  missionAssignments    MissionPersonnel[]
+  assetsAudited         Asset[]                @relation("AssetAuditor")
+  inspections           AssetInspection[]
+  trainingEnrollments   TrainingEnrollment[]
+}
+
+// --- ทะเบียนการอบรม ---
+
+enum TrainingResultStatus {
+  PASSED
+  FAILED
+}
+
+model TrainingCourse {
+  id        String   @id @default(uuid())
+  name      String   @unique
+  sortOrder Int      @default(0)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  enrollments TrainingEnrollment[]
+}
+
+model TrainingEnrollment {
+  id                 String               @id @default(uuid())
+  personnelId        String
+  personnel          Personnel            @relation(fields: [personnelId], references: [id], onDelete: Cascade)
+  trainingCourseId   String
+  trainingCourse     TrainingCourse       @relation(fields: [trainingCourseId], references: [id], onDelete: Restrict)
+  trainingStartDate  DateTime
+  trainingEndDate    DateTime
+  status             TrainingResultStatus @default(PASSED)
+  createdAt          DateTime             @default(now())
+  updatedAt          DateTime             @updatedAt
+}
+
+model PersonnelBeneficiary {
+  id           String    @id @default(uuid())
+  personnelId  String
+  personnel    Personnel @relation(fields: [personnelId], references: [id], onDelete: Cascade)
+  fullName     String
+  relationship String?
+  phone        String?
+  idNumber     String?
+  sortOrder    Int       @default(0)
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+}
+
+// --- Vehicles ---
+
+enum VehicleAttachmentKind {
+  PHOTO
+  DOCUMENT
+}
+
+model VehicleType {
+  id        String   @id @default(uuid())
+  name      String   @unique
+  sortOrder Int      @default(0)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  vehicles Vehicle[]
+}
+
+model WorkCategoryGroup {
+  id        String   @id @default(uuid())
+  name      String   @unique
+  sortOrder Int      @default(0)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  vehicles Vehicle[]
+}
+
+model VehicleStatus {
+  id        String   @id @default(uuid())
+  name      String   @unique
+  sortOrder Int      @default(0)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  vehicles Vehicle[]
+}
+
+model Vehicle {
+  id             String  @id @default(uuid())
+  /// สตริงแสดงผลรวม (ยี่ห้อ + รุ่น) — sync จาก API
+  brandModel     String
+  licensePlate   String  @unique
+  /// เลขรหัสครุภัณฑ์ (ไม่ซ้ำถ้ากรอก)
+  assetCode      String? @unique
+  chassisNumber  String?
+  engineNumber   String?
+  color          String?
+  brand          String  @default("")
+  model          String  @default("")
+  currentMileage Decimal @default(0)
+
+  vehicleTypeId String?
+  vehicleType   VehicleType? @relation(fields: [vehicleTypeId], references: [id], onDelete: SetNull)
+
+  workCategoryGroupId String?
+  workCategoryGroup   WorkCategoryGroup? @relation(fields: [workCategoryGroupId], references: [id], onDelete: SetNull)
+
+  vehicleStatusId String?
+  vehicleStatus   VehicleStatus? @relation(fields: [vehicleStatusId], references: [id], onDelete: SetNull)
+
+  /// หมายเหตุ / ข้อมูลเสริมจากทะเบียน (เช่น ศูนย์ต้นทุน ประเภทน้ำมัน วันสำรวจ)
+  notes String?
+
+  /// วันจัดซื้อ (ใช้คำนวณอายุรถในหน้าเว็บ)
+  purchasedAt DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  documents       VehicleDocument[]
+  maintenanceLogs MaintenanceLog[]
+  fuelLogs        FuelConsumptionLog[]
+  missionVehicles MissionVehicle[]
+}
+
+model VehicleDocument {
+  id           String                @id @default(uuid())
+  vehicleId    String
+  vehicle      Vehicle               @relation(fields: [vehicleId], references: [id], onDelete: Cascade)
+  fileUrl      String
+  mimeType     String?
+  originalName String?
+  kind         VehicleAttachmentKind @default(DOCUMENT)
+  sortOrder    Int                   @default(0)
+  createdAt    DateTime              @default(now())
+}
+
+model MaintenanceLog {
+  id        String   @id @default(uuid())
+  vehicleId String
+  vehicle   Vehicle  @relation(fields: [vehicleId], references: [id], onDelete: Cascade)
+  date      DateTime
+  detail    String
+  cost      Decimal
+  createdAt DateTime @default(now())
+}
+
+model FuelConsumptionLog {
+  id        String   @id @default(uuid())
+  vehicleId String
+  vehicle   Vehicle  @relation(fields: [vehicleId], references: [id], onDelete: Cascade)
+  date      DateTime
+  liters    Decimal?
+  cost      Decimal?
+  odometer  Decimal?
+  notes     String?
+  createdAt DateTime @default(now())
+}
+
+// --- คลังเอกสาร ---
+
+model DocumentType {
+  id        String   @id @default(uuid())
+  name      String   @unique
+  sortOrder Int      @default(0)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  documents LibraryDocument[]
+}
+
+model LibraryDocument {
+  id             String        @id @default(uuid())
+  title          String
+  details        String
+  documentTypeId String?
+  documentType   DocumentType? @relation(fields: [documentTypeId], references: [id], onDelete: Restrict)
+  fileUrl        String?
+  mimeType       String?
+  originalName   String?
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+}
+
+// --- Assets (ครุภัณฑ์) & inspections ---
+
+enum AssetAttachmentKind {
+  PHOTO
+  PERMIT
+}
+
+model AssetCategory {
+  id        String   @id @default(uuid())
+  name      String   @unique
+  sortOrder Int      @default(0)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  assets Asset[]
+}
+
+/// ประจำ (เดิม: รอบตรวจ)
+model AssetRoutine {
+  id        String   @id @default(uuid())
+  name      String   @unique
+  sortOrder Int      @default(0)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  assets Asset[]
+}
+
+/// สังกัด
+model AssetAffiliation {
+  id        String   @id @default(uuid())
+  name      String   @unique
+  sortOrder Int      @default(0)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  assets Asset[]
+}
+
+/// สถานะครุภัณฑ์
+model AssetItemStatus {
+  id        String   @id @default(uuid())
+  name      String   @unique
+  sortOrder Int      @default(0)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  assets Asset[]
+}
+
+model Asset {
+  id                  String  @id @default(uuid())
+  /// เลขครุภัณฑ์
+  serialNumber        String  @unique
+  itemName            String
+  location            String
+  /// เลขประจำตัวเครื่อง
+  machineSerialNumber String?
+  notes               String?
+
+  /// ศูนย์ต้นทุน (Cost center)
+  costCenter  String?
+  /// ยี่ห้ออุปกรณ์ (เช่น วิทยุสื่อสาร)
+  deviceBrand String?
+  /// รุ่นอุปกรณ์
+  deviceModel String?
+
+  /// ลำดับในทะเบียน (เช่น ทะเบียนควบคุมยุทธภัณฑ์)
+  registryLineNo Int?
+  /// ระดับการป้องกัน (เช่น 2)
+  armorLevel          String?
+  /// แบบ (เช่น สวมทับใน)
+  armorWearStyle      String?
+  /// รุ่น (เช่น CONCEAL)
+  armorModel          String?
+  /// หมายเลขชิ้น (เช่น 001)
+  armorUnitNumber     String?
+  /// เลขที่หนังสืออนุญาต
+  permitDocumentNo    String?
+  /// วันหมดอายุใบอนุญาต (แยกจากวันหมดอายุตามทะเบียนครุภัณฑ์)
+  permitExpiresAt     DateTime?
+  /// วันจัดซื้อ
+  purchasedAt         DateTime?
+  /// วันหมดอายุ (ตามทะเบียน)
+  armorExpiresAt      DateTime?
+
+  assetCategoryId String?
+  assetCategory   AssetCategory? @relation(fields: [assetCategoryId], references: [id], onDelete: SetNull)
+
+  assetRoutineId String?
+  assetRoutine   AssetRoutine? @relation(fields: [assetRoutineId], references: [id], onDelete: SetNull)
+
+  assetAffiliationId String?
+  assetAffiliation   AssetAffiliation? @relation(fields: [assetAffiliationId], references: [id], onDelete: SetNull)
+
+  assetItemStatusId String?
+  assetItemStatus   AssetItemStatus? @relation(fields: [assetItemStatusId], references: [id], onDelete: SetNull)
+
+  auditorId String?
+  auditor   Personnel? @relation("AssetAuditor", fields: [auditorId], references: [id], onDelete: SetNull)
+
+  /// Stable token encoded in QR (URL-safe lookup)
+  qrToken   String   @unique @default(uuid())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  documents   AssetDocument[]
+  inspections AssetInspection[]
+}
+
+model AssetDocument {
+  id           String              @id @default(uuid())
+  assetId      String
+  asset        Asset               @relation(fields: [assetId], references: [id], onDelete: Cascade)
+  fileUrl      String
+  mimeType     String?
+  originalName String?
+  kind         AssetAttachmentKind @default(PHOTO)
+  sortOrder    Int                 @default(0)
+  createdAt    DateTime            @default(now())
+}
+
+model AssetInspection {
+  id            String    @id @default(uuid())
+  assetId       String
+  asset         Asset     @relation(fields: [assetId], references: [id], onDelete: Cascade)
+  personnelId   String?
+  personnel     Personnel? @relation(fields: [personnelId], references: [id], onDelete: SetNull)
+  status        String    @default("OK")
+  notes         String?
+  inspectedAt   DateTime  @default(now())
+}
+
+// --- Route master data ---
+
+model RouteMaster {
+  id            String   @id @default(uuid())
+  name          String?
+  startLocation String
+  endLocation   String
+  distanceKm    Decimal
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  missions Mission[]
+}
+
+// --- Missions ---
+
+enum MissionStatus {
+  DRAFT
+  PLANNED
+  IN_PROGRESS
+  COMPLETED
+  CANCELLED
+}
+
+enum MissionVehicleFuelType {
+  GASOLINE
+  DIESEL
+}
+
+model MissionPersonnelRoleMaster {
+  id        String   @id @default(uuid())
+  name      String   @unique
+  sortOrder Int      @default(0)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  assignments MissionPersonnel[]
+}
+
+model MissionVehicleRoleMaster {
+  id        String   @id @default(uuid())
+  name      String   @unique
+  sortOrder Int      @default(0)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  assignments MissionVehicle[]
+}
+
+model MissionExpenseTypeMaster {
+  id        String   @id @default(uuid())
+  name      String   @unique
+  sortOrder Int      @default(0)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  expenses MissionExpense[]
+}
+
+model Mission {
+  id           String        @id @default(uuid())
+  code         String?       @unique
+  title        String?
+  status       MissionStatus @default(DRAFT)
+  routeId      String?
+  route        RouteMaster?  @relation(fields: [routeId], references: [id], onDelete: SetNull)
+  budgetAmount Decimal?
+
+  plannedStart DateTime?
+  plannedEnd   DateTime?
+  actualStart  DateTime?
+  actualEnd    DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  personnel    MissionPersonnel[]
+  vehicles     MissionVehicle[]
+  destinations MissionDestination[]
+  expenses     MissionExpense[]
+}
+
+model MissionPersonnel {
+  id          String   @id @default(uuid())
+  missionId   String
+  mission     Mission  @relation(fields: [missionId], references: [id], onDelete: Cascade)
+  personnelId String
+  personnel   Personnel @relation(fields: [personnelId], references: [id], onDelete: Cascade)
+
+  personnelRoleId String
+  personnelRole   MissionPersonnelRoleMaster @relation(fields: [personnelRoleId], references: [id], onDelete: Restrict)
+
+  /// อัตราค่าตอบแทน (บาท) ต่อคนในภารกิจนี้ — ใช้รวมเข้าหมวดค่าตอบแทนในค่าใช้จ่าย
+  compensationRate Decimal @default(0)
+
+  @@unique([missionId, personnelId])
+}
+
+model MissionVehicle {
+  id        String   @id @default(uuid())
+  missionId String
+  mission   Mission  @relation(fields: [missionId], references: [id], onDelete: Cascade)
+  vehicleId String
+  vehicle   Vehicle  @relation(fields: [vehicleId], references: [id], onDelete: Cascade)
+
+  vehicleRoleId String
+  vehicleRole   MissionVehicleRoleMaster @relation(fields: [vehicleRoleId], references: [id], onDelete: Restrict)
+
+  /// การใช้น้ำมัน (ลิตร)
+  fuelLiters Decimal?
+  fuelType   MissionVehicleFuelType?
+
+  @@unique([missionId, vehicleId])
+}
+
+model MissionDestination {
+  id             String   @id @default(uuid())
+  missionId      String
+  mission        Mission  @relation(fields: [missionId], references: [id], onDelete: Cascade)
+  sortOrder      Int      @default(0)
+  address        String
+  cargoValue     Decimal  @default(0)
+  containerCount Int      @default(0)
+}
+
+model MissionExpense {
+  id          String   @id @default(uuid())
+  missionId   String
+  mission     Mission  @relation(fields: [missionId], references: [id], onDelete: Cascade)
+
+  expenseTypeId String
+  expenseType   MissionExpenseTypeMaster @relation(fields: [expenseTypeId], references: [id], onDelete: Restrict)
+
+  amount      Decimal
+  description String?
+  incurredAt  DateTime @default(now())
+}
+
+// --- Auth & admin ---
+
+enum UserRole {
+  ADMIN
+  OPERATOR
+}
+
+model User {
+  id           String   @id @default(uuid())
+  username     String   @unique
+  passwordHash String
+  role         UserRole @default(OPERATOR)
+  fullName     String?
+  active       Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+}
+
+// --- กิจกรรม (เดิม WorkTask / Notion — notionUrl เก็บย้อนหลังได้) ---
+
+enum WorkTaskStatus {
+  TODO
+  IN_PROGRESS
+  DONE
+}
+
+model WorkTask {
+  id          String         @id @default(uuid())
+  title       String
+  notionUrl   String?
+  description String?
+  startsAt    DateTime?
+  endsAt      DateTime?
+  location    String?
+  recordedBy  String?
+  status      WorkTaskStatus @default(TODO)
+  sortOrder   Int            @default(0)
+  createdAt   DateTime       @default(now())
+  updatedAt   DateTime       @updatedAt
+  photos      WorkTaskPhoto[]
+}
+
+model WorkTaskPhoto {
+  id           String   @id @default(uuid())
+  workTaskId   String
+  workTask     WorkTask @relation(fields: [workTaskId], references: [id], onDelete: Cascade)
+  fileUrl      String
+  mimeType     String
+  originalName String?
+  sortOrder    Int      @default(0)
+  createdAt    DateTime @default(now())
+}

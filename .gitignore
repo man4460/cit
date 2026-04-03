@@ -1,0 +1,33 @@
+# Dependencies
+node_modules/
+
+# Build output
+backend/dist/
+frontend/dist/
+
+# Environment & secrets (ไม่ขึ้น Git)
+.env
+.env.local
+.env.*.local
+
+# SQLite (ข้อมูลเครื่อง dev)
+*.db
+*.db-journal
+
+# ไฟล์อัปโหลดจากผู้ใช้
+backend/uploads/
+
+# Logs & OS
+*.log
+.DS_Store
+Thumbs.db
+
+# IDE / เครื่องมือแก้โค้ด
+.idea/
+.vscode/
+.cursor/
+
+# TypeScript build info
+**/tsconfig.tsbuildinfo
+
+# Prisma (ถ้ามี client generate นอก node_modules — ปกติอยู่ใน node_modules แล้ว)

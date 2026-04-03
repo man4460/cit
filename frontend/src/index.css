@@ -1,0 +1,56 @@
+@import "tailwindcss";
+
+@theme {
+  --font-sans: "Noto Sans Thai", ui-sans-serif, system-ui, sans-serif;
+  --color-brand-950: #0c1222;
+  --color-brand-900: #111827;
+  --color-brand-800: #1e293b;
+  --color-brand-700: #334155;
+  --color-accent: #0d9488;
+  --color-accent-hover: #0f766e;
+}
+
+body {
+  font-family: var(--font-sans);
+  @apply bg-slate-950 text-slate-100 min-h-screen;
+  overflow-x: hidden;
+}
+
+@media print {
+  .no-print {
+    display: none !important;
+  }
+
+  body {
+    background: #fff !important;
+    color: #000 !important;
+  }
+
+  main button {
+    display: none !important;
+  }
+
+  main select {
+    appearance: none;
+    border: none !important;
+    background: transparent !important;
+    color: inherit !important;
+    padding: 0 !important;
+    font: inherit !important;
+  }
+
+  table {
+    border-collapse: collapse;
+  }
+
+  main th,
+  main td {
+    border: 1px solid #ccc !important;
+    color: #000 !important;
+  }
+
+  main .rounded-2xl,
+  main .rounded-xl {
+    border-color: #ccc !important;
+  }
+}

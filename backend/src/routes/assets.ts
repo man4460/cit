@@ -1,0 +1,324 @@
+import { Router } from "express";
+import { prisma } from "../lib/prisma.js";
+import { routeParam } from "../lib/routeParam.js";
+import { publicFileUrl, upload } from "../lib/upload.js";
+
+export const assetsRouter = Router();
+
+function parseOptionalDate(v: unknown): Date | null {
+  if (v == null || v === "") return null;
+  const s = String(v).trim();
+  if (!s) return null;
+  const d = new Date(s);
+  return Number.isNaN(d.getTime()) ? null : d;
+}
+
+function parseOptionalInt(v: unknown): number | null {
+  if (v == null || v === "") return null;
+  const n = parseInt(String(v).trim(), 10);
+  return Number.isFinite(n) ? n : null;
+}
+
+const assetListInclude = {
+  assetCategory: true,
+  assetRoutine: true,
+  assetAffiliation: true,
+  assetItemStatus: true,
+  auditor: { select: { id: true, fullName: true } },
+  documents: {
+    orderBy: [{ sortOrder: "asc" as const }, { createdAt: "asc" as const }],
+    take: 48,
+  },
+  _count: { select: { documents: true } },
+};
+
+assetsRouter.get("/", async (_req, res, next) => {
+  try {
+    const rows = await prisma.asset.findMany({
+      orderBy: { itemName: "asc" },
+      include: assetListInclude,
+    });
+    res.json(rows);
+  } catch (e) {
+    next(e);
+  }
+});
+
+assetsRouter.get("/by-token/:token", async (req, res, next) => {
+  try {
+    const asset = await prisma.asset.findUnique({
+      where: { qrToken: req.params.token },
+      include: {
+        assetCategory: true,
+        assetRoutine: true,
+        assetAffiliation: true,
+        assetItemStatus: true,
+        auditor: true,
+        documents: { orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }] },
+        inspections: { orderBy: { inspectedAt: "desc" }, take: 10 },
+      },
+    });
+    if (!asset) return res.status(404).json({ error: "Unknown QR token" });
+    res.json(asset);
+  } catch (e) {
+    next(e);
+  }
+});
+
+assetsRouter.post("/:id/photos", upload.array("photos", 24), async (req, res, next) => {
+  try {
+    const files = req.files as Express.Multer.File[] | undefined;
+    if (!files?.length) return res.status(400).json({ error: "เลือกรูปอย่างน้อย 1 ไฟล์" });
+    const assetId = routeParam(req.params.id);
+    const exists = await prisma.asset.findUnique({ where: { id: assetId }, select: { id: true } });
+    if (!exists) return res.status(404).json({ error: "ไม่พบครุภัณฑ์" });
+
+    const maxSort = await prisma.assetDocument.aggregate({
+      where: { assetId, kind: "PHOTO" },
+      _max: { sortOrder: true },
+    });
+    let order = (maxSort._max.sortOrder ?? -1) + 1;
+    const created: Awaited<ReturnType<typeof prisma.assetDocument.create>>[] = [];
+    for (const f of files) {
+      const mime = f.mimetype ?? "";
+      if (!mime.startsWith("image/")) continue;
+      const row = await prisma.assetDocument.create({
+        data: {
+          assetId,
+          fileUrl: publicFileUrl(f.filename),
+          mimeType: mime,
+          originalName: f.originalname,
+          kind: "PHOTO",
+          sortOrder: order++,
+        },
+      });
+      created.push(row);
+    }
+    if (!created.length) return res.status(400).json({ error: "อัปโหลดเฉพาะไฟล์รูปภาพ (image/*)" });
+    res.status(201).json(created);
+  } catch (e) {
+    next(e);
+  }
+});
+
+/** แทนที่ใบอนุญาต (ไฟล์เดียว — ลบ PERMIT เดิมทั้งหมด) */
+assetsRouter.post("/:id/permit", upload.single("file"), async (req, res, next) => {
+  try {
+    if (!req.file) return res.status(400).json({ error: "เลือกไฟล์" });
+    const assetId = routeParam(req.params.id);
+    const exists = await prisma.asset.findUnique({ where: { id: assetId }, select: { id: true } });
+    if (!exists) return res.status(404).json({ error: "ไม่พบครุภัณฑ์" });
+
+    await prisma.assetDocument.deleteMany({ where: { assetId, kind: "PERMIT" } });
+    const row = await prisma.assetDocument.create({
+      data: {
+        assetId,
+        fileUrl: publicFileUrl(req.file.filename),
+        mimeType: req.file.mimetype,
+        originalName: req.file.originalname,
+        kind: "PERMIT",
+        sortOrder: 0,
+      },
+    });
+    res.status(201).json(row);
+  } catch (e) {
+    next(e);
+  }
+});
+
+assetsRouter.delete("/:assetId/documents/:docId", async (req, res, next) => {
+  try {
+    const existing = await prisma.assetDocument.findFirst({
+      where: { id: routeParam(req.params.docId), assetId: routeParam(req.params.assetId) },
+    });
+    if (!existing) return res.status(404).json({ error: "Not found" });
+    await prisma.assetDocument.delete({ where: { id: existing.id } });
+    res.status(204).send();
+  } catch (e) {
+    next(e);
+  }
+});
+
+assetsRouter.get("/:id", async (req, res, next) => {
+  try {
+    const row = await prisma.asset.findUnique({
+      where: { id: routeParam(req.params.id) },
+      include: {
+        assetCategory: true,
+        assetRoutine: true,
+        assetAffiliation: true,
+        assetItemStatus: true,
+        auditor: true,
+        documents: { orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }] },
+        inspections: { orderBy: { inspectedAt: "desc" }, take: 20 },
+      },
+    });
+    if (!row) return res.status(404).json({ error: "Not found" });
+    res.json(row);
+  } catch (e) {
+    next(e);
+  }
+});
+
+assetsRouter.post("/", async (req, res, next) => {
+  try {
+    const {
+      serialNumber,
+      itemName,
+      location,
+      machineSerialNumber,
+      notes,
+      costCenter,
+      deviceBrand,
+      deviceModel,
+      assetCategoryId,
+      assetRoutineId,
+      assetAffiliationId,
+      assetItemStatusId,
+      auditorId,
+      registryLineNo,
+      armorLevel,
+      armorWearStyle,
+      armorModel,
+      armorUnitNumber,
+      permitDocumentNo,
+      permitExpiresAt,
+      purchasedAt,
+      armorExpiresAt,
+    } = req.body ?? {};
+    if (!serialNumber || !itemName || !location)
+      return res.status(400).json({ error: "serialNumber, itemName, location required" });
+
+    const row = await prisma.asset.create({
+      data: {
+        serialNumber: String(serialNumber).trim(),
+        itemName: String(itemName).trim(),
+        location: String(location).trim(),
+        machineSerialNumber: machineSerialNumber?.trim() ? String(machineSerialNumber).trim() : null,
+        notes: notes?.trim() ? String(notes).trim() : null,
+        costCenter: costCenter?.trim() ? String(costCenter).trim() : null,
+        deviceBrand: deviceBrand?.trim() ? String(deviceBrand).trim() : null,
+        deviceModel: deviceModel?.trim() ? String(deviceModel).trim() : null,
+        assetCategoryId: assetCategoryId?.trim() || null,
+        assetRoutineId: assetRoutineId?.trim() || null,
+        assetAffiliationId: assetAffiliationId?.trim() || null,
+        assetItemStatusId: assetItemStatusId?.trim() || null,
+        auditorId: auditorId?.trim() || null,
+        registryLineNo: parseOptionalInt(registryLineNo),
+        armorLevel: armorLevel?.trim() ? String(armorLevel).trim() : null,
+        armorWearStyle: armorWearStyle?.trim() ? String(armorWearStyle).trim() : null,
+        armorModel: armorModel?.trim() ? String(armorModel).trim() : null,
+        armorUnitNumber: armorUnitNumber?.trim() ? String(armorUnitNumber).trim() : null,
+        permitDocumentNo: permitDocumentNo?.trim() ? String(permitDocumentNo).trim() : null,
+        permitExpiresAt: parseOptionalDate(permitExpiresAt),
+        purchasedAt: parseOptionalDate(purchasedAt),
+        armorExpiresAt: parseOptionalDate(armorExpiresAt),
+      },
+      include: assetListInclude,
+    });
+    res.status(201).json(row);
+  } catch (e: unknown) {
+    if (e && typeof e === "object" && "code" in e && (e as { code: string }).code === "P2002")
+      return res.status(409).json({ error: "เลขครุภัณฑ์ซ้ำ" });
+    next(e);
+  }
+});
+
+assetsRouter.put("/:id", async (req, res, next) => {
+  try {
+    const {
+      serialNumber,
+      itemName,
+      location,
+      machineSerialNumber,
+      notes,
+      costCenter,
+      deviceBrand,
+      deviceModel,
+      assetCategoryId,
+      assetRoutineId,
+      assetAffiliationId,
+      assetItemStatusId,
+      auditorId,
+      registryLineNo,
+      armorLevel,
+      armorWearStyle,
+      armorModel,
+      armorUnitNumber,
+      permitDocumentNo,
+      permitExpiresAt,
+      purchasedAt,
+      armorExpiresAt,
+    } = req.body ?? {};
+    const data: Record<string, unknown> = {};
+    if (serialNumber !== undefined) data.serialNumber = String(serialNumber).trim();
+    if (itemName !== undefined) data.itemName = String(itemName).trim();
+    if (location !== undefined) data.location = String(location).trim();
+    if (machineSerialNumber !== undefined)
+      data.machineSerialNumber = machineSerialNumber?.trim() ? String(machineSerialNumber).trim() : null;
+    if (notes !== undefined) data.notes = notes?.trim() ? String(notes).trim() : null;
+    if (costCenter !== undefined) data.costCenter = costCenter?.trim() ? String(costCenter).trim() : null;
+    if (deviceBrand !== undefined) data.deviceBrand = deviceBrand?.trim() ? String(deviceBrand).trim() : null;
+    if (deviceModel !== undefined) data.deviceModel = deviceModel?.trim() ? String(deviceModel).trim() : null;
+    if (assetCategoryId !== undefined) data.assetCategoryId = assetCategoryId?.trim() || null;
+    if (assetRoutineId !== undefined) data.assetRoutineId = assetRoutineId?.trim() || null;
+    if (assetAffiliationId !== undefined) data.assetAffiliationId = assetAffiliationId?.trim() || null;
+    if (assetItemStatusId !== undefined) data.assetItemStatusId = assetItemStatusId?.trim() || null;
+    if (auditorId !== undefined) data.auditorId = auditorId?.trim() || null;
+    if (registryLineNo !== undefined) data.registryLineNo = parseOptionalInt(registryLineNo);
+    if (armorLevel !== undefined) data.armorLevel = armorLevel?.trim() ? String(armorLevel).trim() : null;
+    if (armorWearStyle !== undefined)
+      data.armorWearStyle = armorWearStyle?.trim() ? String(armorWearStyle).trim() : null;
+    if (armorModel !== undefined) data.armorModel = armorModel?.trim() ? String(armorModel).trim() : null;
+    if (armorUnitNumber !== undefined)
+      data.armorUnitNumber = armorUnitNumber?.trim() ? String(armorUnitNumber).trim() : null;
+    if (permitDocumentNo !== undefined)
+      data.permitDocumentNo = permitDocumentNo?.trim() ? String(permitDocumentNo).trim() : null;
+    if (permitExpiresAt !== undefined) data.permitExpiresAt = parseOptionalDate(permitExpiresAt);
+    if (purchasedAt !== undefined) data.purchasedAt = parseOptionalDate(purchasedAt);
+    if (armorExpiresAt !== undefined) data.armorExpiresAt = parseOptionalDate(armorExpiresAt);
+
+    const row = await prisma.asset.update({
+      where: { id: routeParam(req.params.id) },
+      data,
+      include: assetListInclude,
+    });
+    res.json(row);
+  } catch (e: unknown) {
+    if (e && typeof e === "object" && "code" in e && (e as { code: string }).code === "P2002")
+      return res.status(409).json({ error: "เลขครุภัณฑ์ซ้ำ" });
+    if (e && typeof e === "object" && "code" in e && (e as { code: string }).code === "P2025")
+      return res.status(404).json({ error: "Not found" });
+    next(e);
+  }
+});
+
+assetsRouter.delete("/:id", async (req, res, next) => {
+  try {
+    await prisma.asset.delete({ where: { id: routeParam(req.params.id) } });
+    res.status(204).send();
+  } catch (e: unknown) {
+    if (e && typeof e === "object" && "code" in e && (e as { code: string }).code === "P2025")
+      return res.status(404).json({ error: "Not found" });
+    next(e);
+  }
+});
+
+assetsRouter.post("/:id/inspections", async (req, res, next) => {
+  try {
+    const { personnelId, status, notes } = req.body;
+    const row = await prisma.assetInspection.create({
+      data: {
+        assetId: routeParam(req.params.id),
+        personnelId: personnelId || null,
+        status: status || "OK",
+        notes: notes || null,
+      },
+    });
+    res.status(201).json(row);
+  } catch (e: unknown) {
+    if (e && typeof e === "object" && "code" in e && (e as { code: string }).code === "P2003")
+      return res.status(404).json({ error: "Asset or personnel not found" });
+    next(e);
+  }
+});
