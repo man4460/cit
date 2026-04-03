@@ -16,6 +16,7 @@ const mainNav = [
   { to: "/personnel", label: "บุคลากร" },
   { to: "/training", label: "ทะเบียนการอบรม" },
   { to: "/vehicles", label: "ยานพาหนะ" },
+  { to: "/disposition-registry", label: "ทะเบียนจำหน่าย/ส่งคืน" },
   { to: "/documents", label: "คลังเอกสาร" },
   { to: "/assets", label: "ครุภัณฑ์ & QR" },
   { to: "/activities", label: "กิจกรรม" },

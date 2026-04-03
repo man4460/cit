@@ -31,7 +31,8 @@
     "seed:vehicle2730-maint": "tsx scripts/seed-vehicle-2730-maintenance.ts",
     "seed:vehicle2711-maint": "tsx scripts/seed-vehicle-2711-maintenance.ts",
     "migrate:permit-expiry": "tsx scripts/migrate-permit-expiry-from-notes.ts",
-    "bootstrap:sync-username": "tsx scripts/sync-admin-username.ts"
+    "bootstrap:sync-username": "tsx scripts/sync-admin-username.ts",
+    "seed:library-scom-route": "tsx scripts/seed-library-scom-route.ts"
   },
   "dependencies": {
     "@prisma/client": "^6.5.0",
@@ -41,6 +42,8 @@
     "express": "^4.21.2",
     "jsonwebtoken": "^9.0.2",
     "multer": "^1.4.5-lts.2",
+    "pdf-parse": "^2.4.5",
+    "tesseract.js": "^7.0.0",
     "uuid": "^11.1.0"
   },
   "devDependencies": {

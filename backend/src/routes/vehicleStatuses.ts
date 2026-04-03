@@ -15,10 +15,14 @@ vehicleStatusesRouter.get("/", async (_req, res, next) => {
 
 vehicleStatusesRouter.post("/", async (req, res, next) => {
   try {
-    const { name, sortOrder } = req.body ?? {};
+    const { name, sortOrder, excludesFromFleetCare } = req.body ?? {};
     if (!name || !String(name).trim()) return res.status(400).json({ error: "กรอกชื่อสถานะ" });
     const row = await prisma.vehicleStatus.create({
-      data: { name: String(name).trim(), sortOrder: sortOrder !== undefined ? Number(sortOrder) : 0 },
+      data: {
+        name: String(name).trim(),
+        sortOrder: sortOrder !== undefined ? Number(sortOrder) : 0,
+        excludesFromFleetCare: Boolean(excludesFromFleetCare),
+      },
     });
     res.status(201).json(row);
   } catch (e: unknown) {
@@ -31,7 +35,7 @@ vehicleStatusesRouter.post("/", async (req, res, next) => {
 vehicleStatusesRouter.patch("/:id", async (req, res, next) => {
   try {
     const id = routeParam(req.params.id);
-    const { name, sortOrder } = req.body ?? {};
+    const { name, sortOrder, excludesFromFleetCare } = req.body ?? {};
     const data: Record<string, unknown> = {};
     if (name !== undefined) {
       const n = String(name).trim();
@@ -39,6 +43,7 @@ vehicleStatusesRouter.patch("/:id", async (req, res, next) => {
       data.name = n;
     }
     if (sortOrder !== undefined) data.sortOrder = Number(sortOrder);
+    if (excludesFromFleetCare !== undefined) data.excludesFromFleetCare = Boolean(excludesFromFleetCare);
     const row = await prisma.vehicleStatus.update({ where: { id }, data });
     res.json(row);
   } catch (e: unknown) {

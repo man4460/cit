@@ -31,3 +31,6 @@ Thumbs.db
 **/tsconfig.tsbuildinfo
 
 # Prisma (ถ้ามี client generate นอก node_modules — ปกติอยู่ใน node_modules แล้ว)
+
+# Tesseract trained data (ดาวน์โหลดแยกหรือคัดลอกจากเครื่องติดตั้ง Tesseract)
+*.traineddata

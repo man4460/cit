@@ -7,8 +7,10 @@ import { Dashboard } from "./pages/Dashboard";
 import { LoginPage } from "./pages/LoginPage";
 import { PersonnelPage } from "./pages/PersonnelPage";
 import { TrainingRegistryPage } from "./pages/TrainingRegistryPage";
+import { DispositionRegistryPage } from "./pages/DispositionRegistryPage";
 import { VehiclesPage } from "./pages/VehiclesPage";
 import { VehicleMaintenancePage } from "./pages/VehicleMaintenancePage";
+import { VehicleWeeklyInspectionPage } from "./pages/VehicleWeeklyInspectionPage";
 import { AssetsPage } from "./pages/AssetsPage";
 import { MissionsPage } from "./pages/MissionsPage";
 import { RouteMasterPage } from "./pages/RouteMasterPage";
@@ -31,6 +33,8 @@ export default function App() {
               <Route path="personnel" element={<PersonnelPage />} />
               <Route path="training" element={<TrainingRegistryPage />} />
               <Route path="vehicles" element={<VehiclesPage />} />
+              <Route path="disposition-registry" element={<DispositionRegistryPage />} />
+              <Route path="vehicles/weekly-inspection" element={<VehicleWeeklyInspectionPage />} />
               <Route path="vehicles/:vehicleId/maintenance" element={<VehicleMaintenancePage />} />
               <Route path="documents" element={<DocumentsPage />} />
               <Route path="assets" element={<AssetsPage />} />

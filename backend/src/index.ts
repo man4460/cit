@@ -1,6 +1,7 @@
 import "dotenv/config";
 import path from "path";
 import { Prisma } from "@prisma/client";
+import { PrismaClientInitializationError } from "@prisma/client/runtime/library";
 import express from "express";
 import cors from "cors";
 import { ensureUploadDir } from "./lib/upload.js";
@@ -85,14 +86,26 @@ secured.use("/admin/users", adminUsersRouter);
 
 app.use("/api", secured);
 
+const DB_SCHEMA_HINT =
+  "ฐานข้อมูลยังไม่อัปเดตให้ตรงโค้ด — เปิดเทอร์มินัลที่โฟลเดอร์ backend แล้วรัน npx prisma db push แล้วรีสตาร์ท API (ถ้าใช้ PostgreSQL ใช้ migrate deploy ตาม workflow ของคุณ)";
+
 function apiErrorBody(err: unknown): { status: number; body: { error: string; details?: string } } {
+  if (err instanceof PrismaClientInitializationError) {
+    return {
+      status: 500,
+      body: {
+        error:
+          "เชื่อมต่อฐานข้อมูลไม่ได้ — ตรวจสอบ DATABASE_URL ใน backend/.env (SQLite: file ต้องอยู่ใต้โฟลเดอร์ที่รัน API) แล้วรัน npx prisma db push",
+        details: err.message,
+      },
+    };
+  }
   if (err instanceof Prisma.PrismaClientKnownRequestError) {
-    if (err.code === "P2021" || err.code === "P2022") {
+    if (err.code === "P2021" || err.code === "P2022" || err.code === "P1014") {
       return {
         status: 500,
         body: {
-          error:
-            "ฐานข้อมูลไม่ตรงกับโค้ดปัจจุบัน — ที่โฟลเดอร์ backend รัน npx prisma db push (หรือ migrate) แล้วรีสตาร์ท API",
+          error: DB_SCHEMA_HINT,
           details: err.message,
         },
       };

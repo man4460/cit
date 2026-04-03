@@ -1,10 +1,26 @@
 import { Router } from "express";
-import { Prisma } from "@prisma/client";
+import { Prisma, VehicleWeeklyCheckResult } from "@prisma/client";
+import { logVehicleDispositionIfNeeded } from "../lib/dispositionLog.js";
+import { vehicleFleetCareActiveWhere, vehicleRetiredFromFleetCareWhere } from "../lib/fleetCareWhere.js";
 import { prisma } from "../lib/prisma.js";
 import { routeParam } from "../lib/routeParam.js";
+import { requireAdmin } from "../middleware/auth.js";
 import { publicFileUrl, upload } from "../lib/upload.js";
 
 export const vehiclesRouter = Router();
+
+function yyyyMmDdUtcNoon(s: string): Date | null {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(s)) return null;
+  const d = new Date(`${s}T12:00:00.000Z`);
+  return Number.isNaN(d.getTime()) ? null : d;
+}
+
+function parseCheckResult(v: unknown): VehicleWeeklyCheckResult | null | undefined {
+  if (v === undefined) return undefined;
+  if (v === null || v === "") return null;
+  if (v === "NORMAL" || v === "ABNORMAL") return v;
+  return undefined;
+}
 
 /** ตัวเลขทศนิยม — ตัดจุลภาค/ช่องว่าง (เลขไมล์จากสเปรดชีต) ค่าไม่ถูกต้องคืน undefined */
 function dec(v: string | number | undefined | null): Prisma.Decimal | undefined {
@@ -52,13 +68,233 @@ const vehicleListInclude = {
   _count: { select: { documents: true, maintenanceLogs: true, fuelLogs: true } },
 };
 
-vehiclesRouter.get("/", async (_req, res, next) => {
+vehiclesRouter.get("/", async (req, res, next) => {
   try {
+    const all = String(req.query.all ?? "") === "1";
     const rows = await prisma.vehicle.findMany({
+      where: all ? undefined : vehicleFleetCareActiveWhere,
       orderBy: { licensePlate: "asc" },
       include: vehicleListInclude,
     });
     res.json(rows);
+  } catch (e) {
+    next(e);
+  }
+});
+
+/** รายการรถที่ออกจากยอดตรวจ/ดูแล (สถานะจำหน่าย ส่งคืน ฯลฯ) */
+vehiclesRouter.get("/registry/retired", async (_req, res, next) => {
+  try {
+    const rows = await prisma.vehicle.findMany({
+      where: vehicleRetiredFromFleetCareWhere,
+      orderBy: { licensePlate: "asc" },
+      include: vehicleListInclude,
+    });
+    res.json(rows);
+  } catch (e) {
+    next(e);
+  }
+});
+
+/** ประวัติการเข้าสู่สถานะจำหน่าย/ส่งคืน */
+vehiclesRouter.get("/registry/disposition-log", async (_req, res, next) => {
+  try {
+    const rows = await prisma.vehicleDispositionLog.findMany({
+      orderBy: { recordedAt: "desc" },
+      include: {
+        vehicle: {
+          select: { id: true, licensePlate: true, brandModel: true, vehicleStatusId: true },
+        },
+      },
+    });
+    res.json(rows);
+  } catch (e) {
+    next(e);
+  }
+});
+
+vehiclesRouter.delete("/registry/disposition-log/:logId", requireAdmin, async (req, res, next) => {
+  try {
+    await prisma.vehicleDispositionLog.delete({
+      where: { id: routeParam(req.params.logId) },
+    });
+    res.status(204).send();
+  } catch (e: unknown) {
+    if (e && typeof e === "object" && "code" in e && (e as { code: string }).code === "P2025")
+      return res.status(404).json({ error: "Not found" });
+    next(e);
+  }
+});
+
+/** ตารางตรวจประจำสัปดาห์ — ทุกคัน + บันทึกของสัปดาห์ที่เลือก (weekStart=YYYY-MM-DD) */
+vehiclesRouter.get("/weekly-inspection-matrix", async (req, res, next) => {
+  try {
+    const weekStart = String(req.query.weekStart ?? "").trim();
+    const norm = yyyyMmDdUtcNoon(weekStart);
+    if (!norm) return res.status(400).json({ error: "ระบุ weekStart=YYYY-MM-DD" });
+
+    const [vehicles, inspections] = await Promise.all([
+      prisma.vehicle.findMany({
+        where: vehicleFleetCareActiveWhere,
+        orderBy: { licensePlate: "asc" },
+        select: {
+          id: true,
+          licensePlate: true,
+          brandModel: true,
+          brand: true,
+          model: true,
+        },
+      }),
+      prisma.vehicleWeeklyInspection.findMany({
+        where: {
+          inspectionDate: norm,
+          vehicle: vehicleFleetCareActiveWhere,
+        },
+      }),
+    ]);
+
+    const byVehicle = new Map(inspections.map((i) => [i.vehicleId, i]));
+    res.json({
+      weekStart,
+      inspectionDate: norm.toISOString(),
+      rows: vehicles.map((v) => ({
+        vehicle: v,
+        inspection: byVehicle.get(v.id) ?? null,
+      })),
+    });
+  } catch (e) {
+    next(e);
+  }
+});
+
+/** รายงานรถที่มีบันทึกตรวจประจำสัปดาห์แล้ว (weekStart=YYYY-MM-DD) */
+vehiclesRouter.get("/weekly-inspection-report", async (req, res, next) => {
+  try {
+    const weekStart = String(req.query.weekStart ?? "").trim();
+    const norm = yyyyMmDdUtcNoon(weekStart);
+    if (!norm) return res.status(400).json({ error: "ระบุ weekStart=YYYY-MM-DD" });
+
+    const [totalVehicles, inspections] = await Promise.all([
+      prisma.vehicle.count({ where: vehicleFleetCareActiveWhere }),
+      prisma.vehicleWeeklyInspection.findMany({
+        where: {
+          inspectionDate: norm,
+          vehicle: vehicleFleetCareActiveWhere,
+        },
+        include: {
+          vehicle: {
+            select: {
+              id: true,
+              licensePlate: true,
+              brandModel: true,
+              brand: true,
+              model: true,
+            },
+          },
+        },
+      }),
+    ]);
+
+    inspections.sort((a, b) =>
+      a.vehicle.licensePlate.localeCompare(b.vehicle.licensePlate, "th", { numeric: true }),
+    );
+
+    res.json({
+      weekStart,
+      inspectionDate: norm.toISOString(),
+      totalVehicles,
+      inspectedCount: inspections.length,
+      rows: inspections,
+    });
+  } catch (e) {
+    next(e);
+  }
+});
+
+vehiclesRouter.put("/:vehicleId/weekly-inspection", async (req, res, next) => {
+  try {
+    const vehicleId = routeParam(req.params.vehicleId);
+    const vehicle = await prisma.vehicle.findUnique({ where: { id: vehicleId }, select: { id: true } });
+    if (!vehicle) return res.status(404).json({ error: "ไม่พบยานพาหนะ" });
+
+    const weekStart = String(req.body?.weekStart ?? "").trim();
+    const norm = yyyyMmDdUtcNoon(weekStart);
+    if (!norm) return res.status(400).json({ error: "weekStart ต้องเป็น YYYY-MM-DD" });
+
+    const keys = [
+      "airConditioning",
+      "engineOperation",
+      "tireCondition",
+      "cctvAnalog",
+      "cctvThinkware",
+      "engineStart5Min",
+    ] as const;
+    const parsed: Record<string, VehicleWeeklyCheckResult | null | undefined> = {};
+    for (const k of keys) {
+      const p = parseCheckResult(req.body?.[k]);
+      if (p === undefined && req.body?.[k] !== undefined) {
+        return res.status(400).json({ error: `ค่า ${k} ไม่ถูกต้อง` });
+      }
+      parsed[k] = p;
+    }
+
+    const remarks =
+      req.body?.remarks !== undefined ? (req.body.remarks == null ? null : String(req.body.remarks)) : undefined;
+
+    const inspectorName =
+      req.body?.inspectorName !== undefined
+        ? req.body.inspectorName == null || String(req.body.inspectorName).trim() === ""
+          ? null
+          : String(req.body.inspectorName).trim()
+        : undefined;
+
+    const data = {
+      vehicleId,
+      inspectionDate: norm,
+      airConditioning: parsed.airConditioning ?? null,
+      engineOperation: parsed.engineOperation ?? null,
+      tireCondition: parsed.tireCondition ?? null,
+      cctvAnalog: parsed.cctvAnalog ?? null,
+      cctvThinkware: parsed.cctvThinkware ?? null,
+      engineStart5Min: parsed.engineStart5Min ?? null,
+      remarks: remarks !== undefined ? remarks : null,
+      inspectorName: inspectorName !== undefined ? inspectorName : null,
+    } as Prisma.VehicleWeeklyInspectionUncheckedCreateInput;
+
+    const row = await prisma.vehicleWeeklyInspection.upsert({
+      where: {
+        vehicleId_inspectionDate: { vehicleId, inspectionDate: norm },
+      },
+      create: data,
+      update: {
+        airConditioning: data.airConditioning,
+        engineOperation: data.engineOperation,
+        tireCondition: data.tireCondition,
+        cctvAnalog: data.cctvAnalog,
+        cctvThinkware: data.cctvThinkware,
+        engineStart5Min: data.engineStart5Min,
+        remarks: data.remarks,
+        inspectorName: data.inspectorName,
+      } as Prisma.VehicleWeeklyInspectionUncheckedUpdateInput,
+    });
+    res.json(row);
+  } catch (e) {
+    next(e);
+  }
+});
+
+vehiclesRouter.delete("/:vehicleId/weekly-inspection", async (req, res, next) => {
+  try {
+    const vehicleId = routeParam(req.params.vehicleId);
+    const weekStart = String(req.query.weekStart ?? "").trim();
+    const norm = yyyyMmDdUtcNoon(weekStart);
+    if (!norm) return res.status(400).json({ error: "ระบุ weekStart=YYYY-MM-DD" });
+    const existing = await prisma.vehicleWeeklyInspection.findUnique({
+      where: { vehicleId_inspectionDate: { vehicleId, inspectionDate: norm } },
+    });
+    if (!existing) return res.status(404).json({ error: "ไม่พบบันทึก" });
+    await prisma.vehicleWeeklyInspection.delete({ where: { id: existing.id } });
+    res.status(204).send();
   } catch (e) {
     next(e);
   }
@@ -131,6 +367,17 @@ vehiclesRouter.post("/", async (req, res, next) => {
       },
       include: vehicleListInclude,
     });
+
+    const dn = (req.body as { dispositionNote?: unknown })?.dispositionNote;
+    await logVehicleDispositionIfNeeded(prisma, {
+      wasExcluded: false,
+      vehicleId: row.id,
+      licensePlate: row.licensePlate,
+      brandModel: row.brandModel,
+      nextStatus: row.vehicleStatus,
+      note: dn != null ? String(dn) : undefined,
+    });
+
     res.status(201).json(row);
   } catch (e: unknown) {
     if (e && typeof e === "object" && "code" in e && (e as { code: string }).code === "P2002")
@@ -157,8 +404,13 @@ vehiclesRouter.put("/:id", async (req, res, next) => {
       notes,
       purchasedAt,
     } = req.body ?? {};
-    const existing = await prisma.vehicle.findUnique({ where: { id: routeParam(req.params.id) } });
+    const existing = await prisma.vehicle.findUnique({
+      where: { id: routeParam(req.params.id) },
+      include: { vehicleStatus: true },
+    });
     if (!existing) return res.status(404).json({ error: "Not found" });
+
+    const dispositionNote = (req.body as { dispositionNote?: unknown })?.dispositionNote;
 
     const data: Prisma.VehicleUpdateInput = {};
     if (licensePlate !== undefined) {
@@ -210,6 +462,17 @@ vehiclesRouter.put("/:id", async (req, res, next) => {
       data,
       include: vehicleListInclude,
     });
+
+    const wasExcluded = existing.vehicleStatus?.excludesFromFleetCare === true;
+    await logVehicleDispositionIfNeeded(prisma, {
+      wasExcluded,
+      vehicleId: row.id,
+      licensePlate: row.licensePlate,
+      brandModel: row.brandModel,
+      nextStatus: row.vehicleStatus,
+      note: dispositionNote != null ? String(dispositionNote) : undefined,
+    });
+
     res.json(row);
   } catch (e: unknown) {
     if (e && typeof e === "object" && "code" in e && (e as { code: string }).code === "P2002")
@@ -220,7 +483,7 @@ vehiclesRouter.put("/:id", async (req, res, next) => {
   }
 });
 
-vehiclesRouter.delete("/:id", async (req, res, next) => {
+vehiclesRouter.delete("/:id", requireAdmin, async (req, res, next) => {
   try {
     await prisma.vehicle.delete({ where: { id: routeParam(req.params.id) } });
     res.status(204).send();

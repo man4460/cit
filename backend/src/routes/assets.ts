@@ -1,6 +1,9 @@
 import { Router } from "express";
+import { logAssetDispositionIfNeeded } from "../lib/dispositionLog.js";
+import { assetFleetCareActiveWhere, assetRetiredFromFleetCareWhere } from "../lib/fleetCareWhere.js";
 import { prisma } from "../lib/prisma.js";
 import { routeParam } from "../lib/routeParam.js";
+import { requireAdmin } from "../middleware/auth.js";
 import { publicFileUrl, upload } from "../lib/upload.js";
 
 export const assetsRouter = Router();
@@ -32,11 +35,40 @@ const assetListInclude = {
   _count: { select: { documents: true } },
 };
 
-assetsRouter.get("/", async (_req, res, next) => {
+assetsRouter.get("/", async (req, res, next) => {
   try {
+    const all = String(req.query.all ?? "") === "1";
     const rows = await prisma.asset.findMany({
+      where: all ? undefined : assetFleetCareActiveWhere,
       orderBy: { itemName: "asc" },
       include: assetListInclude,
+    });
+    res.json(rows);
+  } catch (e) {
+    next(e);
+  }
+});
+
+assetsRouter.get("/registry/retired", async (_req, res, next) => {
+  try {
+    const rows = await prisma.asset.findMany({
+      where: assetRetiredFromFleetCareWhere,
+      orderBy: { serialNumber: "asc" },
+      include: assetListInclude,
+    });
+    res.json(rows);
+  } catch (e) {
+    next(e);
+  }
+});
+
+assetsRouter.get("/registry/disposition-log", async (_req, res, next) => {
+  try {
+    const rows = await prisma.assetDispositionLog.findMany({
+      orderBy: { recordedAt: "desc" },
+      include: {
+        asset: { select: { id: true, serialNumber: true, itemName: true, assetItemStatusId: true } },
+      },
     });
     res.json(rows);
   } catch (e) {
@@ -216,6 +248,17 @@ assetsRouter.post("/", async (req, res, next) => {
       },
       include: assetListInclude,
     });
+
+    const dn = (req.body as { dispositionNote?: unknown })?.dispositionNote;
+    await logAssetDispositionIfNeeded(prisma, {
+      wasExcluded: false,
+      assetId: row.id,
+      serialNumber: row.serialNumber,
+      itemName: row.itemName,
+      nextStatus: row.assetItemStatus,
+      note: dn != null ? String(dn) : undefined,
+    });
+
     res.status(201).json(row);
   } catch (e: unknown) {
     if (e && typeof e === "object" && "code" in e && (e as { code: string }).code === "P2002")
@@ -250,6 +293,15 @@ assetsRouter.put("/:id", async (req, res, next) => {
       purchasedAt,
       armorExpiresAt,
     } = req.body ?? {};
+
+    const existing = await prisma.asset.findUnique({
+      where: { id: routeParam(req.params.id) },
+      include: { assetItemStatus: true },
+    });
+    if (!existing) return res.status(404).json({ error: "Not found" });
+
+    const dispositionNote = (req.body as { dispositionNote?: unknown })?.dispositionNote;
+
     const data: Record<string, unknown> = {};
     if (serialNumber !== undefined) data.serialNumber = String(serialNumber).trim();
     if (itemName !== undefined) data.itemName = String(itemName).trim();
@@ -283,6 +335,17 @@ assetsRouter.put("/:id", async (req, res, next) => {
       data,
       include: assetListInclude,
     });
+
+    const wasExcluded = existing.assetItemStatus?.excludesFromFleetCare === true;
+    await logAssetDispositionIfNeeded(prisma, {
+      wasExcluded,
+      assetId: row.id,
+      serialNumber: row.serialNumber,
+      itemName: row.itemName,
+      nextStatus: row.assetItemStatus,
+      note: dispositionNote != null ? String(dispositionNote) : undefined,
+    });
+
     res.json(row);
   } catch (e: unknown) {
     if (e && typeof e === "object" && "code" in e && (e as { code: string }).code === "P2002")
@@ -293,7 +356,7 @@ assetsRouter.put("/:id", async (req, res, next) => {
   }
 });
 
-assetsRouter.delete("/:id", async (req, res, next) => {
+assetsRouter.delete("/:id", requireAdmin, async (req, res, next) => {
   try {
     await prisma.asset.delete({ where: { id: routeParam(req.params.id) } });
     res.status(204).send();

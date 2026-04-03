@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Link, useSearchParams } from "react-router-dom";
 import { apiJson } from "../api/client";
 import { AssetPermitModal } from "../components/AssetPermitModal";
 import { AssetQrModal } from "../components/AssetQrModal";
@@ -7,11 +8,12 @@ import { AssetPhotosModal } from "../components/AssetPhotosModal";
 import { CrudNameMasterModal } from "../components/CrudNameMasterModal";
 import { Modal, ModalFormActions, ModalFormBody, ModalFormSection } from "../components/Modal";
 import { SearchableSelect, personnelSelectLabel } from "../components/SearchableSelect";
-import type { Asset, NameMasterRow, Personnel } from "../types";
+import type { Asset, AssetDetail, NameMasterRow, Personnel } from "../types";
 import { getScanUrlForToken } from "../lib/scanUrl";
 import { PageFilterPrintBar } from "../components/PageFilterPrintBar";
 import { parsePermitExpiryIsoFromNotes, stripPermitExpiryPhraseFromNotes } from "../lib/parsePermitNote";
 import { rowMatchesFilter } from "../lib/searchNormalize";
+import { useAuth } from "../context/AuthContext";
 
 function isoToDateInput(iso: string | null | undefined): string {
   if (!iso) return "";
@@ -78,10 +80,13 @@ function emptyForm() {
     permitExpiresAt: "",
     purchasedAt: "",
     armorExpiresAt: "",
+    dispositionNote: "",
   };
 }
 
 export function AssetsPage() {
+  const { user } = useAuth();
+  const [searchParams, setSearchParams] = useSearchParams();
   const [rows, setRows] = useState<Asset[]>([]);
   const [categories, setCategories] = useState<NameMasterRow[]>([]);
   const [routines, setRoutines] = useState<NameMasterRow[]>([]);
@@ -116,6 +121,11 @@ export function AssetsPage() {
   const [listFilter, setListFilter] = useState("");
   const [detailAssetId, setDetailAssetId] = useState<string | null>(null);
   const permitSyncAttempted = useRef(new Set<string>());
+
+  const selectedAssetItemStatus = useMemo(
+    () => statuses.find((s) => s.id === form.assetItemStatusId),
+    [statuses, form.assetItemStatusId],
+  );
 
   const filteredRows = useMemo(
     () =>
@@ -227,7 +237,7 @@ export function AssetsPage() {
     setModalOpen(true);
   }
 
-  function openEdit(a: Asset) {
+  const openEdit = useCallback((a: Asset) => {
     setEditingId(a.id);
     let notes = a.notes ?? "";
     let permitExpiresAt = isoToDateInput(a.permitExpiresAt);
@@ -259,9 +269,53 @@ export function AssetsPage() {
       permitExpiresAt,
       purchasedAt: isoToDateInput(a.purchasedAt),
       armorExpiresAt: isoToDateInput(a.armorExpiresAt),
+      dispositionNote: "",
     });
     setModalOpen(true);
-  }
+  }, []);
+
+  const editAssetId = searchParams.get("editAsset");
+  useEffect(() => {
+    if (!editAssetId || loading) return;
+    const clearParam = () => {
+      setSearchParams(
+        (prev) => {
+          const next = new URLSearchParams(prev);
+          next.delete("editAsset");
+          return next;
+        },
+        { replace: true },
+      );
+    };
+    const fromList = rows.find((r) => r.id === editAssetId);
+    if (fromList) {
+      openEdit(fromList);
+      clearParam();
+      return;
+    }
+    let cancelled = false;
+    void apiJson<AssetDetail>(`/api/assets/${editAssetId}`)
+      .then((a) => {
+        if (cancelled) return;
+        openEdit(a);
+        clearParam();
+      })
+      .catch(() => {
+        if (cancelled) return;
+        alert("ไม่พบครุภัณฑ์หรือโหลดไม่สำเร็จ");
+        setSearchParams(
+          (prev) => {
+            const next = new URLSearchParams(prev);
+            next.delete("editAsset");
+            return next;
+          },
+          { replace: true },
+        );
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [editAssetId, loading, rows, openEdit, setSearchParams]);
 
   function closeModal() {
     setModalOpen(false);
@@ -293,6 +347,7 @@ export function AssetsPage() {
       permitExpiresAt: form.permitExpiresAt.trim() || null,
       purchasedAt: form.purchasedAt.trim() || null,
       armorExpiresAt: form.armorExpiresAt.trim() || null,
+      dispositionNote: form.dispositionNote.trim() || null,
     };
     try {
       if (editingId) {
@@ -300,7 +355,10 @@ export function AssetsPage() {
         closeModal();
         await load();
       } else {
-        const created = await apiJson<Asset>("/api/assets", { method: "POST", body: JSON.stringify(body) });
+        const created = await apiJson<Asset>("/api/assets", {
+          method: "POST",
+          body: JSON.stringify(body),
+        });
         closeModal();
         await load();
         setPhotoAssetId(created.id);
@@ -339,6 +397,7 @@ export function AssetsPage() {
           <h1 className="text-2xl font-bold text-white">ครุภัณฑ์ &amp; QR</h1>
           <p className="mt-1 text-slate-400">
             เลขครุภัณฑ์ รูปถ่าย ประเภท ประจำ สังกัด สถานะ ใบอนุญาต — กดปุ่ม QR ในตารางเพื่อดาวน์โหลด/พิมพ์สติกเกอร์ สแกนที่หน้า &quot;สแกน QR&quot;
+            รายการนี้ไม่รวมครุภัณฑ์ที่สถานะจำหน่าย/ส่งคืน/เลิกใช้ (นับเฉพาะที่ต้องตรวจและดูแล)
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
@@ -370,6 +429,12 @@ export function AssetsPage() {
           >
             สถานะ
           </button>
+          <Link
+            to="/disposition-registry"
+            className="inline-flex shrink-0 items-center rounded-lg border border-amber-900/50 px-3 py-2.5 text-sm font-medium text-amber-200/90 hover:bg-slate-800"
+          >
+            ทะเบียนจำหน่าย/ส่งคืน
+          </Link>
           <button
             type="button"
             onClick={openAdd}
@@ -414,6 +479,7 @@ export function AssetsPage() {
         open={statusModal}
         onClose={() => setStatusModal(false)}
         onChanged={load}
+        fleetCareExcludeField
       />
 
       <AssetPhotosModal
@@ -479,17 +545,19 @@ export function AssetsPage() {
                 >
                   แก้ไข
                 </button>
-                <button
-                  type="button"
-                  className="rounded-lg border border-slate-600 px-3 py-1.5 text-xs font-medium text-rose-400 hover:bg-slate-800"
-                  onClick={() =>
-                    void deleteAsset(detailAsset).then((ok) => {
-                      if (ok) setDetailAssetId(null);
-                    })
-                  }
-                >
-                  ลบ
-                </button>
+                {user?.role === "ADMIN" ? (
+                  <button
+                    type="button"
+                    className="rounded-lg border border-slate-600 px-3 py-1.5 text-xs font-medium text-rose-400 hover:bg-slate-800"
+                    onClick={() =>
+                      void deleteAsset(detailAsset).then((ok) => {
+                        if (ok) setDetailAssetId(null);
+                      })
+                    }
+                  >
+                    ลบ
+                  </button>
+                ) : null}
                 <button
                   type="button"
                   className="rounded-lg border border-slate-600 px-3 py-1.5 text-xs font-medium text-violet-400 hover:bg-slate-800"
@@ -811,10 +879,25 @@ export function AssetsPage() {
                     {statuses.map((c) => (
                       <option key={c.id} value={c.id}>
                         {c.name}
+                        {c.excludesFromFleetCare ? " (นอกยอดตรวจ)" : ""}
                       </option>
                     ))}
                   </select>
                 </label>
+                {selectedAssetItemStatus?.excludesFromFleetCare ? (
+                  <label className="sm:col-span-2">
+                    <span className="text-xs font-medium text-slate-400">
+                      หมายเหตุการจำหน่าย/ส่งคืน (บันทึกในประวัติทะเบียน)
+                    </span>
+                    <textarea
+                      rows={2}
+                      className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-white"
+                      placeholder="ไม่บังคับ"
+                      value={form.dispositionNote}
+                      onChange={(e) => setForm((f) => ({ ...f, dispositionNote: e.target.value }))}
+                    />
+                  </label>
+                ) : null}
                 <label className="sm:col-span-2">
                   <span className="text-xs font-medium text-slate-400">ผู้ตรวจสอบ</span>
                   <SearchableSelect

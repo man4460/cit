@@ -114,6 +114,12 @@ enum VehicleAttachmentKind {
   DOCUMENT
 }
 
+/// ผลตรวจรายข้อ — ปกติ / ผิดปกติ (หรือไม่ปกติ ใช้ค่าเดียวกัน)
+enum VehicleWeeklyCheckResult {
+  NORMAL
+  ABNORMAL
+}
+
 model VehicleType {
   id        String   @id @default(uuid())
   name      String   @unique
@@ -138,6 +144,8 @@ model VehicleStatus {
   id        String   @id @default(uuid())
   name      String   @unique
   sortOrder Int      @default(0)
+  /// true = ไม่นับในยอดตรวจ/ดูแล (จำหน่าย ส่งคืน ฯลฯ)
+  excludesFromFleetCare Boolean @default(false)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -180,6 +188,51 @@ model Vehicle {
   maintenanceLogs MaintenanceLog[]
   fuelLogs        FuelConsumptionLog[]
   missionVehicles MissionVehicle[]
+  weeklyInspections VehicleWeeklyInspection[]
+  dispositionLogs   VehicleDispositionLog[]
+}
+
+/// จำหน่าย / ส่งคืนครุภัณฑ์ (บันทึกเมื่อเข้าสถานะที่ excludesFromFleetCare)
+enum DispositionKind {
+  DISPOSED
+  RETURNED
+}
+
+model VehicleDispositionLog {
+  id             String          @id @default(uuid())
+  vehicleId      String
+  vehicle        Vehicle         @relation(fields: [vehicleId], references: [id], onDelete: Cascade)
+  kind           DispositionKind
+  statusName     String
+  licensePlate   String
+  brandModel     String
+  note           String?
+  recordedAt     DateTime        @default(now())
+}
+
+/// บันทึกตรวจยานพาหนะประจำสัปดาห์ (หนึ่งแถวต่อคัน ต่อวันอ้างอิงสัปดาห์)
+model VehicleWeeklyInspection {
+  id        String   @id @default(uuid())
+  vehicleId String
+  vehicle   Vehicle  @relation(fields: [vehicleId], references: [id], onDelete: Cascade)
+  /// วันอ้างอิงสัปดาห์ (เก็บเป็น UTC เที่ยงของวันที่เลือก ให้ unique ต่อคัน)
+  inspectionDate DateTime
+
+  airConditioning VehicleWeeklyCheckResult?
+  engineOperation VehicleWeeklyCheckResult?
+  tireCondition   VehicleWeeklyCheckResult?
+  cctvAnalog      VehicleWeeklyCheckResult?
+  cctvThinkware   VehicleWeeklyCheckResult?
+  engineStart5Min VehicleWeeklyCheckResult?
+
+  remarks       String?
+  /// ชื่อผู้ตรวจ (ข้อความ)
+  inspectorName String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([vehicleId, inspectionDate])
 }
 
 model VehicleDocument {
@@ -232,6 +285,8 @@ model LibraryDocument {
   id             String        @id @default(uuid())
   title          String
   details        String
+  /** ข้อความถอดจากไฟล์ (PDF / รูป OCR / ข้อความล้วน) */
+  extractedText  String?
   documentTypeId String?
   documentType   DocumentType? @relation(fields: [documentTypeId], references: [id], onDelete: Restrict)
   fileUrl        String?
@@ -285,6 +340,8 @@ model AssetItemStatus {
   id        String   @id @default(uuid())
   name      String   @unique
   sortOrder Int      @default(0)
+  /// true = ไม่นับในยอดตรวจ/ดูแล (จำหน่าย ส่งคืน ฯลฯ)
+  excludesFromFleetCare Boolean @default(false)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -347,8 +404,21 @@ model Asset {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  documents   AssetDocument[]
-  inspections AssetInspection[]
+  documents        AssetDocument[]
+  inspections      AssetInspection[]
+  dispositionLogs  AssetDispositionLog[]
+}
+
+model AssetDispositionLog {
+  id           String          @id @default(uuid())
+  assetId      String
+  asset        Asset           @relation(fields: [assetId], references: [id], onDelete: Cascade)
+  kind         DispositionKind
+  statusName   String
+  serialNumber String
+  itemName     String
+  note         String?
+  recordedAt   DateTime        @default(now())
 }
 
 model AssetDocument {

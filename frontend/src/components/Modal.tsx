@@ -1,6 +1,6 @@
 import { useEffect } from "react";
 
-export type ModalFrameSize = "sm" | "form" | "wide";
+export type ModalFrameSize = "sm" | "form" | "wide" | "viewer";
 
 type ModalProps = {
   open: boolean;
@@ -11,6 +11,7 @@ type ModalProps = {
    * sm — แคบ (ยืนยันสั้นๆ)
    * form — ฟอร์มเพิ่มข้อมูลมาตรฐาน (ความกว้างเดียวกันทุกหน้า)
    * wide — ฟอร์มยาว (บุคลากร / ภารกิจ)
+   * viewer — ดูเอกสาร (PDF/รูป ใน popup)
    */
   size?: ModalFrameSize;
   /** z-index ชั้น overlay (ค่าเริ่มต้น z-[60]) — ใช้ z-[100] เมื่อต้องทับ modal อื่น */
@@ -22,12 +23,14 @@ const FRAME: Record<ModalFrameSize, string> = {
   sm: "w-full max-w-md",
   form: "w-full max-w-2xl",
   wide: "w-full max-w-5xl",
+  viewer: "w-full max-w-[min(96vw,80rem)]",
 };
 
 const PANEL_MAX_H: Record<ModalFrameSize, string> = {
   sm: "max-h-[min(90dvh,40rem)]",
   form: "max-h-[min(90dvh,52rem)]",
   wide: "max-h-[min(94dvh,60rem)]",
+  viewer: "max-h-[min(96dvh,100dvh)]",
 };
 
 export function Modal({ open, onClose, title, children, size = "form", overlayZClass = "z-[60]" }: ModalProps) {

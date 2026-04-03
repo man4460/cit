@@ -1,6 +1,6 @@
 /** ประเภทรายงาน — ใช้ทั้งหน้ารวมและหน้ารายละเอียด */
 export const REPORT_TYPES = [
-  { slug: "weekly", label: "รายงานประจำสัปดาห์" },
+  { slug: "weekly", label: "รายงานตรวจยานพาหนะประจำสัปดาห์" },
   { slug: "monthly", label: "รายงานประจำเดือน" },
   { slug: "quarterly", label: "รายงานประจำไตรมาส" },
   { slug: "half-year", label: "รายงานประจำครึ่งปี" },

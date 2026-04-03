@@ -1,4 +1,5 @@
 import { Router } from "express";
+import { runLibraryDocumentExtract } from "../lib/libraryDocumentExtract.js";
 import { prisma } from "../lib/prisma.js";
 import { routeParam } from "../lib/routeParam.js";
 import { publicFileUrl, upload } from "../lib/upload.js";
@@ -57,9 +58,16 @@ libraryDocumentsRouter.post("/", upload.single("file"), async (req, res, next) =
         fileUrl: file ? publicFileUrl(file.filename) : null,
         mimeType: file?.mimetype ?? null,
         originalName: file?.originalname ?? null,
+        extractedText: file ? null : undefined,
       },
       include: includeType,
     });
+    if (file) {
+      const id = row.id;
+      setImmediate(() => {
+        void runLibraryDocumentExtract(id);
+      });
+    }
     res.status(201).json(row);
   } catch (e) {
     next(e);
@@ -90,11 +98,34 @@ libraryDocumentsRouter.put("/:id", upload.single("file"), async (req, res, next)
       data.fileUrl = publicFileUrl(req.file.filename);
       data.mimeType = req.file.mimetype;
       data.originalName = req.file.originalname;
+      data.extractedText = null;
     }
 
     const row = await prisma.libraryDocument.update({
       where: { id },
       data,
+      include: includeType,
+    });
+    if (req.file) {
+      const id = row.id;
+      setImmediate(() => {
+        void runLibraryDocumentExtract(id);
+      });
+    }
+    res.json(row);
+  } catch (e) {
+    next(e);
+  }
+});
+
+libraryDocumentsRouter.post("/:id/extract-text", async (req, res, next) => {
+  try {
+    const id = routeParam(req.params.id);
+    const existing = await prisma.libraryDocument.findUnique({ where: { id } });
+    if (!existing) return res.status(404).json({ error: "ไม่พบ" });
+    await runLibraryDocumentExtract(id);
+    const row = await prisma.libraryDocument.findUnique({
+      where: { id },
       include: includeType,
     });
     res.json(row);

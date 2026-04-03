@@ -6,6 +6,20 @@ const DEFAULT_WORK_GROUPS = ["ขนส่งเงินสด", "ประจ�
 
 const DEFAULT_STATUSES = ["ใช้งานปกติ", "ซ่อมบำรุง", "พักใช้ชั่วคราว", "จำหน่าย / คัดจำหน่าย", "อื่นๆ"];
 
+function vehicleStatusExcludesFromFleetCare(name: string): boolean {
+  return /จำหน่าย|ส่งคืน/.test(name);
+}
+
+async function syncVehicleStatusExcludesFlags(): Promise<void> {
+  const rows = await prisma.vehicleStatus.findMany({ select: { id: true, name: true, excludesFromFleetCare: true } });
+  for (const r of rows) {
+    const want = vehicleStatusExcludesFromFleetCare(r.name);
+    if (want && !r.excludesFromFleetCare) {
+      await prisma.vehicleStatus.update({ where: { id: r.id }, data: { excludesFromFleetCare: true } });
+    }
+  }
+}
+
 /** ประเภทรถ + กลุ่มประเภทการทำงานเริ่มต้น + ย้าย brandModel เดิมไปยัง brand ถ้ายังว่าง */
 export async function seedVehicleMasterData(): Promise<void> {
   const count = await prisma.vehicleType.count();
@@ -30,10 +44,14 @@ export async function seedVehicleMasterData(): Promise<void> {
   if (stCount === 0) {
     let s = 0;
     for (const name of DEFAULT_STATUSES) {
-      await prisma.vehicleStatus.create({ data: { name, sortOrder: s++ } });
+      await prisma.vehicleStatus.create({
+        data: { name, sortOrder: s++, excludesFromFleetCare: vehicleStatusExcludesFromFleetCare(name) },
+      });
     }
     console.log("[seed] vehicle statuses created");
   }
+
+  await syncVehicleStatusExcludesFlags();
 
   const legacy = await prisma.vehicle.findMany({ where: { brand: "" } });
   for (const v of legacy) {

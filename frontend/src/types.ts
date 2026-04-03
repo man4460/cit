@@ -44,6 +44,7 @@ export interface LibraryDocument {
   fileUrl: string | null;
   mimeType: string | null;
   originalName: string | null;
+  extractedText?: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -97,6 +98,8 @@ export interface VehicleStatus {
   id: string;
   name: string;
   sortOrder: number;
+  /** true = ไม่นับในยอดตรวจ/ดูแล (จำหน่าย ส่งคืน ฯลฯ) */
+  excludesFromFleetCare?: boolean;
 }
 
 export type VehicleAttachmentKind = "PHOTO" | "DOCUMENT";
@@ -110,6 +113,54 @@ export interface VehicleDocument {
   kind: VehicleAttachmentKind;
   sortOrder: number;
   createdAt: string;
+}
+
+/** ผลตรวจแต่ละหัวข้อ — ปกติ / ผิดปกติ */
+export type VehicleWeeklyCheckResult = "NORMAL" | "ABNORMAL";
+
+export interface VehicleWeeklyInspection {
+  id: string;
+  vehicleId: string;
+  inspectionDate: string;
+  airConditioning: VehicleWeeklyCheckResult | null;
+  engineOperation: VehicleWeeklyCheckResult | null;
+  tireCondition: VehicleWeeklyCheckResult | null;
+  cctvAnalog: VehicleWeeklyCheckResult | null;
+  cctvThinkware: VehicleWeeklyCheckResult | null;
+  engineStart5Min: VehicleWeeklyCheckResult | null;
+  remarks: string | null;
+  /** ชื่อผู้ตรวจ (อาจว่าง) */
+  inspectorName?: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface VehicleWeeklyInspectionMatrixVehicle {
+  id: string;
+  licensePlate: string;
+  brandModel: string;
+  brand: string;
+  model: string;
+}
+
+export interface VehicleWeeklyInspectionMatrixRow {
+  vehicle: VehicleWeeklyInspectionMatrixVehicle;
+  inspection: VehicleWeeklyInspection | null;
+}
+
+export interface VehicleWeeklyInspectionMatrixResponse {
+  weekStart: string;
+  inspectionDate: string;
+  rows: VehicleWeeklyInspectionMatrixRow[];
+}
+
+/** รายงานรถที่บันทึกการตรวจแล้วในสัปดาห์อ้างอิง */
+export interface VehicleWeeklyInspectionReportResponse {
+  weekStart: string;
+  inspectionDate: string;
+  totalVehicles: number;
+  inspectedCount: number;
+  rows: Array<VehicleWeeklyInspection & { vehicle: VehicleWeeklyInspectionMatrixVehicle }>;
 }
 
 export interface Vehicle {
@@ -167,6 +218,33 @@ export interface NameMasterRow {
   id: string;
   name: string;
   sortOrder: number;
+  excludesFromFleetCare?: boolean;
+}
+
+export type DispositionKind = "DISPOSED" | "RETURNED";
+
+export interface VehicleDispositionLogEntry {
+  id: string;
+  vehicleId: string;
+  kind: DispositionKind;
+  statusName: string;
+  licensePlate: string;
+  brandModel: string;
+  note: string | null;
+  recordedAt: string;
+  vehicle?: { id: string; licensePlate: string; brandModel: string; vehicleStatusId: string | null };
+}
+
+export interface AssetDispositionLogEntry {
+  id: string;
+  assetId: string;
+  kind: DispositionKind;
+  statusName: string;
+  serialNumber: string;
+  itemName: string;
+  note: string | null;
+  recordedAt: string;
+  asset?: { id: string; serialNumber: string; itemName: string; assetItemStatusId: string | null };
 }
 
 export type AssetAttachmentKind = "PHOTO" | "PERMIT";

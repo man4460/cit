@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 import { apiJson } from "../api/client";
 import { Modal, ModalFormActions, ModalFormBody, ModalFormSection } from "../components/Modal";
 import { VehiclePhotoGalleryModal } from "../components/VehiclePhotoGalleryModal";
@@ -9,10 +9,11 @@ import { VehicleTypeMasterModal } from "../components/VehicleTypeMasterModal";
 import { WorkCategoryGroupMasterModal } from "../components/WorkCategoryGroupMasterModal";
 import { PageFilterPrintBar } from "../components/PageFilterPrintBar";
 import { rowMatchesFilter } from "../lib/searchNormalize";
-import type { Vehicle, VehicleStatus, VehicleType, WorkCategoryGroup } from "../types";
+import type { Vehicle, VehicleDetail, VehicleStatus, VehicleType, WorkCategoryGroup } from "../types";
 import { vehicleDisplayLabel } from "../types";
 import { formatVehiclePurchaseDateTh, vehicleAgeCompletedYears } from "../lib/vehicleAge";
 import { parsePurchaseDdMmYyyyFromNotes, stripPurchaseLineFromNotes } from "../lib/parseVehiclePurchaseFromNotes";
+import { useAuth } from "../context/AuthContext";
 
 function vehiclePhotos(v: Vehicle) {
   return (v.documents ?? []).filter((d) => d.kind === "PHOTO");
@@ -59,10 +60,13 @@ function emptyForm() {
     assetCode: "",
     notes: "",
     purchasedAt: "",
+    dispositionNote: "",
   };
 }
 
 export function VehiclesPage() {
+  const { user } = useAuth();
+  const [searchParams, setSearchParams] = useSearchParams();
   const [rows, setRows] = useState<Vehicle[]>([]);
   const [types, setTypes] = useState<VehicleType[]>([]);
   const [workGroups, setWorkGroups] = useState<WorkCategoryGroup[]>([]);
@@ -87,6 +91,11 @@ export function VehiclesPage() {
   const detailVehicle = useMemo(
     () => (detailVehicleId ? (rows.find((r) => r.id === detailVehicleId) ?? null) : null),
     [rows, detailVehicleId],
+  );
+
+  const selectedVehicleStatus = useMemo(
+    () => statuses.find((s) => s.id === form.vehicleStatusId),
+    [statuses, form.vehicleStatusId],
   );
 
   const filteredRows = useMemo(
@@ -177,7 +186,7 @@ export function VehiclesPage() {
     setModalOpen(true);
   }
 
-  function openEdit(v: Vehicle) {
+  const openEdit = useCallback((v: Vehicle) => {
     setEditingId(v.id);
     const parsedIso = !v.purchasedAt?.trim() ? parsePurchaseDdMmYyyyFromNotes(v.notes) : null;
     setForm({
@@ -194,9 +203,53 @@ export function VehiclesPage() {
       assetCode: v.assetCode ?? "",
       notes: parsedIso ? (stripPurchaseLineFromNotes(v.notes) ?? "") : (v.notes ?? ""),
       purchasedAt: v.purchasedAt?.trim() ? v.purchasedAt.slice(0, 10) : parsedIso ?? "",
+      dispositionNote: "",
     });
     setModalOpen(true);
-  }
+  }, []);
+
+  const editVehicleId = searchParams.get("editVehicle");
+  useEffect(() => {
+    if (!editVehicleId || loading) return;
+    const clearParam = () => {
+      setSearchParams(
+        (prev) => {
+          const next = new URLSearchParams(prev);
+          next.delete("editVehicle");
+          return next;
+        },
+        { replace: true },
+      );
+    };
+    const fromList = rows.find((r) => r.id === editVehicleId);
+    if (fromList) {
+      openEdit(fromList);
+      clearParam();
+      return;
+    }
+    let cancelled = false;
+    void apiJson<VehicleDetail>(`/api/vehicles/${editVehicleId}`)
+      .then((v) => {
+        if (cancelled) return;
+        openEdit(v);
+        clearParam();
+      })
+      .catch(() => {
+        if (cancelled) return;
+        alert("ไม่พบรถหรือโหลดไม่สำเร็จ");
+        setSearchParams(
+          (prev) => {
+            const next = new URLSearchParams(prev);
+            next.delete("editVehicle");
+            return next;
+          },
+          { replace: true },
+        );
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [editVehicleId, loading, rows, openEdit, setSearchParams]);
 
   function openPhotoGallery(v: Vehicle) {
     setGalleryVehicleId(v.id);
@@ -220,6 +273,7 @@ export function VehiclesPage() {
       currentMileage: mileageForApi(form.mileage),
       notes: form.notes.trim() || null,
       purchasedAt: form.purchasedAt.trim() || null,
+      dispositionNote: form.dispositionNote.trim() || null,
     });
     try {
       if (editingId) {
@@ -260,7 +314,9 @@ export function VehiclesPage() {
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold text-white">ยานพาหนะ</h1>
-          <p className="mt-1 text-slate-400">ทะเบียน ครุภัณฑ์ สถานะ ประเภทรถ กลุ่มงาน รูป และประวัติบำรุงรักษา</p>
+          <p className="mt-1 text-slate-400">
+            ทะเบียน ครุภัณฑ์ สถานะ ประเภทรถ กลุ่มงาน รูป และประวัติบำรุงรักษา — รายการนี้ไม่รวมรถที่สถานะจำหน่าย/ส่งคืน (นับเฉพาะที่ต้องตรวจและดูแล)
+          </p>
         </div>
         <div className="flex flex-wrap gap-2">
           <button
@@ -284,6 +340,18 @@ export function VehiclesPage() {
           >
             จัดการประเภทรถ
           </button>
+          <Link
+            to="/disposition-registry"
+            className="inline-flex shrink-0 items-center rounded-lg border border-amber-900/50 px-4 py-2.5 text-sm font-medium text-amber-200/90 hover:bg-slate-800"
+          >
+            ทะเบียนจำหน่าย/ส่งคืน
+          </Link>
+          <Link
+            to="/vehicles/weekly-inspection"
+            className="inline-flex shrink-0 items-center rounded-lg border border-emerald-800/60 px-4 py-2.5 text-sm font-medium text-emerald-300 hover:bg-slate-800"
+          >
+            ตรวจประจำสัปดาห์
+          </Link>
           <button
             type="button"
             onClick={openAdd}
@@ -346,17 +414,19 @@ export function VehiclesPage() {
                 >
                   แก้ไข
                 </button>
-                <button
-                  type="button"
-                  className="rounded-lg border border-slate-600 px-3 py-1.5 text-xs font-medium text-rose-400 hover:bg-slate-800"
-                  onClick={() =>
-                    void deleteVehicle(detailVehicle).then((ok) => {
-                      if (ok) setDetailVehicleId(null);
-                    })
-                  }
-                >
-                  ลบ
-                </button>
+                {user?.role === "ADMIN" ? (
+                  <button
+                    type="button"
+                    className="rounded-lg border border-slate-600 px-3 py-1.5 text-xs font-medium text-rose-400 hover:bg-slate-800"
+                    onClick={() =>
+                      void deleteVehicle(detailVehicle).then((ok) => {
+                        if (ok) setDetailVehicleId(null);
+                      })
+                    }
+                  >
+                    ลบ
+                  </button>
+                ) : null}
                 <button
                   type="button"
                   className="rounded-lg border border-slate-600 px-3 py-1.5 text-xs text-slate-300 hover:bg-slate-800"
@@ -381,6 +451,13 @@ export function VehiclesPage() {
                   onClick={() => setDetailVehicleId(null)}
                 >
                   ประวัติบำรุงรักษา
+                </Link>
+                <Link
+                  to="/vehicles/weekly-inspection"
+                  className="relative z-10 inline-flex items-center rounded-lg border border-emerald-800/50 px-3 py-1.5 text-xs font-medium text-emerald-400 hover:bg-slate-800"
+                  onClick={() => setDetailVehicleId(null)}
+                >
+                  ตารางตรวจรายสัปดาห์
                 </Link>
               </div>
               {(() => {
@@ -546,10 +623,25 @@ export function VehiclesPage() {
                     {statuses.map((s) => (
                       <option key={s.id} value={s.id}>
                         {s.name}
+                        {s.excludesFromFleetCare ? " (นอกยอดตรวจ)" : ""}
                       </option>
                     ))}
                   </select>
                 </label>
+                {selectedVehicleStatus?.excludesFromFleetCare ? (
+                  <label className="block sm:col-span-2">
+                    <span className="text-xs font-medium text-slate-400">
+                      หมายเหตุการจำหน่าย/ส่งคืน (บันทึกในประวัติทะเบียน)
+                    </span>
+                    <textarea
+                      rows={2}
+                      className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-white"
+                      placeholder="ไม่บังคับ"
+                      value={form.dispositionNote}
+                      onChange={(e) => setForm((f) => ({ ...f, dispositionNote: e.target.value }))}
+                    />
+                  </label>
+                ) : null}
                 <label className="block sm:col-span-2">
                   <span className="text-xs font-medium text-slate-400">ประเภทรถ</span>
                   <select

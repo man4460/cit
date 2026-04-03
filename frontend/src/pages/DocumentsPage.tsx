@@ -7,6 +7,31 @@ import type { DocumentType, LibraryDocument } from "../types";
 
 type MasterRow = { id: string; name: string; sortOrder: number };
 
+/** ใช้ path /uploads/… บน origin ปัจจุบัน เพื่อให้ Vite proxy ชี้ไป backend ตอน dev */
+function fileUrlForEmbed(fileUrl: string): string {
+  try {
+    const u = new URL(fileUrl);
+    if (u.pathname.startsWith("/uploads/")) return `${u.pathname}${u.search}${u.hash}`;
+    return fileUrl;
+  } catch {
+    return fileUrl;
+  }
+}
+
+type LibraryEmbedKind = "pdf" | "image" | "text" | "none";
+
+function libraryEmbedKind(doc: Pick<LibraryDocument, "mimeType" | "originalName" | "fileUrl">): LibraryEmbedKind {
+  if (!doc.fileUrl) return "none";
+  const mt = (doc.mimeType || "").toLowerCase();
+  const name = (doc.originalName || "").toLowerCase();
+  const pathOnly = fileUrlForEmbed(doc.fileUrl).split("?")[0].toLowerCase();
+  if (mt === "application/pdf" || name.endsWith(".pdf") || pathOnly.endsWith(".pdf")) return "pdf";
+  if (mt.startsWith("image/")) return "image";
+  if (mt === "image/svg+xml" || name.endsWith(".svg")) return "image";
+  if (mt === "text/plain" || name.endsWith(".txt") || name.endsWith(".csv")) return "text";
+  return "none";
+}
+
 function DocumentTypeMasterModal({
   open,
   onClose,
@@ -158,6 +183,14 @@ export function DocumentsPage() {
   const [editing, setEditing] = useState<LibraryDocument | null>(null);
   const [form, setForm] = useState(emptyDocForm);
   const [saving, setSaving] = useState(false);
+  const [viewing, setViewing] = useState<LibraryDocument | null>(null);
+  const [reextracting, setReextracting] = useState(false);
+
+  const viewFileSrc = useMemo(
+    () => (viewing?.fileUrl ? fileUrlForEmbed(viewing.fileUrl) : ""),
+    [viewing?.fileUrl],
+  );
+  const viewEmbedKind = useMemo(() => (viewing ? libraryEmbedKind(viewing) : "none"), [viewing]);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -177,6 +210,38 @@ export function DocumentsPage() {
     void load();
   }, [load]);
 
+  useEffect(() => {
+    if (!viewing) return;
+    const { id, fileUrl, extractedText } = viewing;
+    if (!fileUrl || (extractedText != null && extractedText.trim() !== "")) return;
+
+    let cancelled = false;
+    let attempts = 0;
+    const iv = setInterval(() => {
+      attempts += 1;
+      if (cancelled || attempts > 50) {
+        clearInterval(iv);
+        return;
+      }
+      void (async () => {
+        try {
+          const fresh = await apiJson<LibraryDocument>(`/api/library-documents/${id}`);
+          if (cancelled) return;
+          setViewing((v) => (v?.id === id ? fresh : v));
+          if (fresh.extractedText != null && fresh.extractedText.trim() !== "") {
+            clearInterval(iv);
+          }
+        } catch {
+          /* ignore */
+        }
+      })();
+    }, 3000);
+    return () => {
+      cancelled = true;
+      clearInterval(iv);
+    };
+  }, [viewing?.id, viewing?.fileUrl, viewing?.extractedText]);
+
   const filteredRows = useMemo(
     () =>
       rows.filter((d) =>
@@ -185,6 +250,7 @@ export function DocumentsPage() {
           d.details,
           d.documentType?.name,
           d.originalName,
+          d.extractedText,
         ]),
       ),
     [rows, listFilter],
@@ -251,6 +317,37 @@ export function DocumentsPage() {
     }
   }
 
+  function closeView() {
+    setViewing(null);
+    void load();
+  }
+
+  async function openView(d: LibraryDocument) {
+    setViewing(d);
+    try {
+      const fresh = await apiJson<LibraryDocument>(`/api/library-documents/${d.id}`);
+      setViewing((v) => (v?.id === d.id ? fresh : v));
+    } catch {
+      /* ใช้ข้อมูลจากรายการถ้าโหลดรายละเอียดไม่ได้ */
+    }
+  }
+
+  async function reextractViewed() {
+    if (!viewing) return;
+    setReextracting(true);
+    try {
+      const fresh = await apiJson<LibraryDocument>(`/api/library-documents/${viewing.id}/extract-text`, {
+        method: "POST",
+      });
+      setViewing(fresh);
+      await load();
+    } catch (err) {
+      alert(err instanceof Error ? err.message : "ถอดข้อความไม่สำเร็จ");
+    } finally {
+      setReextracting(false);
+    }
+  }
+
   return (
     <div>
       <div className="flex flex-wrap items-start justify-between gap-4">
@@ -288,6 +385,117 @@ export function DocumentsPage() {
         onClose={() => setTypeModalOpen(false)}
         onChanged={() => void load()}
       />
+
+      <Modal open={!!viewing} onClose={closeView} title="ดูเอกสาร" size="viewer">
+        {viewing ? (
+          <ModalFormBody className="!space-y-4">
+            <div className="flex flex-wrap items-start justify-between gap-2">
+              <div className="min-w-0 flex-1">
+                <p className="text-sm font-semibold text-white">{viewing.title}</p>
+                <div className="mt-1 flex flex-wrap gap-1">
+                  {viewing.documentType?.name ? (
+                    <span className="rounded bg-violet-500/15 px-1.5 py-0.5 text-[10px] font-medium text-violet-300">
+                      {viewing.documentType.name}
+                    </span>
+                  ) : null}
+                </div>
+              </div>
+              {viewing.fileUrl ? (
+                <a
+                  href={viewFileSrc || viewing.fileUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="shrink-0 rounded-lg border border-slate-600 px-2.5 py-1.5 text-xs font-medium text-teal-400 hover:bg-slate-800"
+                >
+                  เปิดในแท็บใหม่
+                </a>
+              ) : null}
+            </div>
+
+            {viewing.fileUrl ? (
+              viewEmbedKind !== "none" ? (
+                <div className="overflow-hidden rounded-xl border border-slate-700 bg-slate-950 shadow-inner">
+                  {viewEmbedKind === "image" ? (
+                    <img
+                      src={viewFileSrc}
+                      alt={viewing.originalName || viewing.title}
+                      className="mx-auto max-h-[min(72vh,880px)] w-full object-contain"
+                    />
+                  ) : (
+                    <iframe
+                      title={viewing.title}
+                      src={viewFileSrc}
+                      className="h-[min(72vh,880px)] w-full border-0 bg-slate-900"
+                    />
+                  )}
+                </div>
+              ) : (
+                <p className="rounded-xl border border-amber-900/40 bg-amber-950/20 p-4 text-sm text-amber-200/90">
+                  รูปแบบไฟล์นี้ไม่สามารถแสดงในหน้าต่างนี้ได้ — กด «เปิดในแท็บใหม่» หรือลิงก์ด้านล่าง
+                </p>
+              )
+            ) : (
+              <p className="text-sm text-slate-500">ไม่มีไฟล์แนบ — ถอดข้อความจากไฟล์ไม่ได้</p>
+            )}
+
+            {viewing.fileUrl ? (
+              <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-slate-500">
+                <span>ไฟล์:</span>
+                <a
+                  href={viewFileSrc || viewing.fileUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-teal-400 underline-offset-2 hover:underline"
+                >
+                  {viewing.originalName || "ดาวน์โหลด / เปิดไฟล์"}
+                </a>
+              </div>
+            ) : null}
+
+            {viewing.details?.trim() ? (
+              <div>
+                <p className="text-xs font-medium text-slate-500">รายละเอียด</p>
+                <p className="mt-1 whitespace-pre-wrap text-sm text-slate-300">{viewing.details}</p>
+              </div>
+            ) : null}
+            <div>
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <p className="text-xs font-medium text-slate-500">ข้อความถอดจากเอกสาร</p>
+                {viewing.fileUrl ? (
+                  <button
+                    type="button"
+                    disabled={reextracting}
+                    className="rounded-lg border border-slate-600 px-2.5 py-1 text-xs text-slate-200 hover:bg-slate-800 disabled:opacity-50"
+                    onClick={() => void reextractViewed()}
+                  >
+                    {reextracting ? "กำลังถอด…" : "ถอดข้อความอีกครั้ง"}
+                  </button>
+                ) : null}
+              </div>
+              <div className="mt-2 max-h-[min(50vh,28rem)] overflow-y-auto rounded-lg border border-slate-800 bg-slate-950/80 p-3 text-sm text-slate-200">
+                {!viewing.fileUrl ? (
+                  <p className="text-slate-500">—</p>
+                ) : viewing.extractedText != null && viewing.extractedText.trim() !== "" ? (
+                  <pre className="whitespace-pre-wrap font-sans text-[13px] leading-relaxed">{viewing.extractedText}</pre>
+                ) : (
+                  <p className="text-slate-500">
+                    {reextracting ? "กำลังถอดข้อความ…" : "กำลังถอดข้อความอัตโนมัติหลังอัปโหลด หรือกด «ถอดข้อความอีกครั้ง» — รูป/PDF อาจใช้เวลาสักครู่"}
+                  </p>
+                )}
+              </div>
+            </div>
+            <div className="flex justify-end border-t border-slate-800 pt-3">
+              <button
+                type="button"
+                className="rounded-lg border border-slate-600 px-4 py-2 text-sm text-slate-300 hover:bg-slate-800"
+                onClick={closeView}
+              >
+                ปิด
+              </button>
+            </div>
+          </ModalFormBody>
+        ) : null}
+      </Modal>
 
       <Modal
         open={formOpen}
@@ -423,6 +631,13 @@ export function DocumentsPage() {
                         )}
                       </div>
                       <div className="mt-3 flex flex-wrap gap-2 border-t border-slate-800/80 pt-2">
+                        <button
+                          type="button"
+                          className="rounded-lg border border-slate-600 px-2.5 py-1 text-xs font-medium text-sky-400 hover:bg-slate-800"
+                          onClick={() => void openView(d)}
+                        >
+                          ดูเอกสาร
+                        </button>
                         <button
                           type="button"
                           className="rounded-lg border border-slate-600 px-2.5 py-1 text-xs font-medium text-teal-400 hover:bg-slate-800"
