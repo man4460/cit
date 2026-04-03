@@ -435,6 +435,12 @@ export function AssetsPage() {
           >
             ทะเบียนจำหน่าย/ส่งคืน
           </Link>
+          <Link
+            to="/assets/armor-monthly"
+            className="inline-flex shrink-0 items-center rounded-lg border border-violet-800/50 px-3 py-2.5 text-sm font-medium text-violet-200/90 hover:bg-slate-800"
+          >
+            ตรวจเสื้อเกราะรายเดือน
+          </Link>
           <button
             type="button"
             onClick={openAdd}

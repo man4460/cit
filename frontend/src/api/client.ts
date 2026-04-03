@@ -1,5 +1,12 @@
 const base = import.meta.env.VITE_API_URL ?? "";
 
+/** ประกอบ URL กับ VITE_API_URL (กันซ้ำ slash ท้าย base) — ถ้าไม่ตั้ง base ใช้ path สัมพันธ์ (proxy Vite) */
+function resolveFetchUrl(path: string): string {
+  const p = path.startsWith("/") ? path : `/${path}`;
+  const b = base.replace(/\/$/, "");
+  return b ? `${b}${p}` : p;
+}
+
 const TOKEN_KEY = "afo_token";
 
 export function getToken(): string | null {
@@ -23,7 +30,7 @@ function formatApiFailure(data: { error?: string; details?: string } | null, fal
 }
 
 export async function apiJson<T>(path: string, init?: RequestInit): Promise<T> {
-  const res = await fetch(`${base}${path}`, {
+  const res = await fetch(resolveFetchUrl(path), {
     ...init,
     headers: {
       Accept: "application/json",
@@ -51,12 +58,12 @@ export async function apiJson<T>(path: string, init?: RequestInit): Promise<T> {
 }
 
 export function apiUrl(path: string) {
-  return `${base}${path}`;
+  return resolveFetchUrl(path);
 }
 
 /** multipart ไม่ตั้ง Content-Type — ให้เบราว์เซอร์ใส่ boundary */
 export async function apiFormJson<T>(path: string, formData: FormData, method = "POST"): Promise<T> {
-  const res = await fetch(`${base}${path}`, {
+  const res = await fetch(resolveFetchUrl(path), {
     method,
     headers: { Accept: "application/json", ...authHeader() },
     body: formData,

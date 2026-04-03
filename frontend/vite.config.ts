@@ -9,16 +9,17 @@ export default defineConfig({
     /** เปิดจากมือถือใน Wi‑Fi เดียวกัน: http://<IP-PC>:5173 */
     host: true,
     proxy: {
-      "/api": { target: "http://localhost:4000", changeOrigin: true },
-      "/uploads": { target: "http://localhost:4000", changeOrigin: true },
+      /** 127.0.0.1 ลดปัญหา localhost→IPv6 (::1) บน Windows ที่ API ฟังแค่ IPv4 */
+      "/api": { target: "http://127.0.0.1:4000", changeOrigin: true },
+      "/uploads": { target: "http://127.0.0.1:4000", changeOrigin: true },
     },
   },
   preview: {
     port: 4173,
     host: true,
     proxy: {
-      "/api": { target: "http://localhost:4000", changeOrigin: true },
-      "/uploads": { target: "http://localhost:4000", changeOrigin: true },
+      "/api": { target: "http://127.0.0.1:4000", changeOrigin: true },
+      "/uploads": { target: "http://127.0.0.1:4000", changeOrigin: true },
     },
   },
 });

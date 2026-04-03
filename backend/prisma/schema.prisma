@@ -60,8 +60,9 @@ model Personnel {
   beneficiaries         PersonnelBeneficiary[]
   missionAssignments    MissionPersonnel[]
   assetsAudited         Asset[]                @relation("AssetAuditor")
-  inspections           AssetInspection[]
-  trainingEnrollments   TrainingEnrollment[]
+  inspections               AssetInspection[]
+  armorMonthlyInspections   ArmorMonthlyInspection[]
+  trainingEnrollments       TrainingEnrollment[]
 }
 
 // --- ทะเบียนการอบรม ---
@@ -404,9 +405,10 @@ model Asset {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  documents        AssetDocument[]
-  inspections      AssetInspection[]
-  dispositionLogs  AssetDispositionLog[]
+  documents                 AssetDocument[]
+  inspections               AssetInspection[]
+  dispositionLogs           AssetDispositionLog[]
+  armorMonthlyInspections   ArmorMonthlyInspection[]
 }
 
 model AssetDispositionLog {
@@ -442,6 +444,32 @@ model AssetInspection {
   status        String    @default("OK")
   notes         String?
   inspectedAt   DateTime  @default(now())
+}
+
+/// ตรวจสอบสภาพเสื้อเกราะ / ยุทธภัณฑ์ป้องกัน — บันทึกรายเดือน (เดือนละหนึ่งแถวต่อครุภัณฑ์)
+model ArmorMonthlyInspection {
+  id       String @id @default(uuid())
+  assetId  String
+  asset    Asset  @relation(fields: [assetId], references: [id], onDelete: Cascade)
+  /// ปี-เดือน เช่น 2026-04
+  monthYm  String
+
+  outerShell         VehicleWeeklyCheckResult?
+  strapsFasteners    VehicleWeeklyCheckResult?
+  ballisticLayer     VehicleWeeklyCheckResult?
+  cleanlinessStorage VehicleWeeklyCheckResult?
+  overallReadiness   VehicleWeeklyCheckResult?
+
+  remarks       String?
+  inspectorName String?
+  personnelId   String?
+  personnel     Personnel? @relation(fields: [personnelId], references: [id], onDelete: SetNull)
+
+  inspectedAt DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@unique([assetId, monthYm])
+  @@index([monthYm])
 }
 
 // --- Route master data ---
@@ -524,6 +552,20 @@ model Mission {
   vehicles     MissionVehicle[]
   destinations MissionDestination[]
   expenses     MissionExpense[]
+  attachments  MissionAttachment[]
+}
+
+/// ไฟล์แนบภารกิจ (อัปโหลดได้หลายไฟล์)
+model MissionAttachment {
+  id             String   @id @default(uuid())
+  missionId      String
+  mission        Mission  @relation(fields: [missionId], references: [id], onDelete: Cascade)
+  /// ชื่อไฟล์บนดิสก์ (uuid + นามสกุล) ในโฟลเดอร์อัปโหลด
+  storedFilename String
+  originalName   String?
+  mimeType       String?
+  sortOrder      Int      @default(0)
+  createdAt      DateTime @default(now())
 }
 
 model MissionPersonnel {

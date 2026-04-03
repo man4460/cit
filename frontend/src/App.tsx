@@ -11,6 +11,7 @@ import { DispositionRegistryPage } from "./pages/DispositionRegistryPage";
 import { VehiclesPage } from "./pages/VehiclesPage";
 import { VehicleMaintenancePage } from "./pages/VehicleMaintenancePage";
 import { VehicleWeeklyInspectionPage } from "./pages/VehicleWeeklyInspectionPage";
+import { ArmorMonthlyInspectionPage } from "./pages/ArmorMonthlyInspectionPage";
 import { AssetsPage } from "./pages/AssetsPage";
 import { MissionsPage } from "./pages/MissionsPage";
 import { RouteMasterPage } from "./pages/RouteMasterPage";
@@ -38,6 +39,7 @@ export default function App() {
               <Route path="vehicles/:vehicleId/maintenance" element={<VehicleMaintenancePage />} />
               <Route path="documents" element={<DocumentsPage />} />
               <Route path="assets" element={<AssetsPage />} />
+              <Route path="assets/armor-monthly" element={<ArmorMonthlyInspectionPage />} />
               <Route path="missions" element={<MissionsPage />} />
               <Route path="routes" element={<RouteMasterPage />} />
               <Route path="activities" element={<ActivitiesPage />} />

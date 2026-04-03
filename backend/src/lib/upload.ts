@@ -20,8 +20,25 @@ export function decodeMultipartFilename(name: string): string {
   }
 }
 
+export function getUploadDir() {
+  return uploadDir;
+}
+
 export function ensureUploadDir() {
   if (!fs.existsSync(uploadDir)) fs.mkdirSync(uploadDir, { recursive: true });
+}
+
+/** ลบไฟล์ในโฟลเดอร์อัปโหลด — รับเฉพาะชื่อไฟล์ล้วน (ไม่มี path) */
+export function unlinkUploadFile(storedFilename: string) {
+  if (!storedFilename || /[/\\]/.test(storedFilename) || storedFilename.includes("..")) return;
+  const full = path.join(uploadDir, storedFilename);
+  const resolvedDir = path.resolve(uploadDir);
+  if (!path.resolve(full).startsWith(resolvedDir)) return;
+  try {
+    if (fs.existsSync(full)) fs.unlinkSync(full);
+  } catch {
+    /* ignore */
+  }
 }
 
 export function publicFileUrl(filename: string) {

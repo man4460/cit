@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Bar,
   BarChart,
@@ -10,7 +10,7 @@ import {
   XAxis,
   YAxis,
 } from "recharts";
-import { apiJson } from "../api/client";
+import { apiFormJson, apiJson, apiUrl } from "../api/client";
 import { CrudNameMasterModal } from "../components/CrudNameMasterModal";
 import { DateTimeField } from "../components/DateTimeField";
 import { Modal, ModalFormActions, ModalFormBody } from "../components/Modal";
@@ -108,6 +108,14 @@ export function MissionsPage() {
   const [dRows, setDRows] = useState<DRow[]>([{ address: "", cargoValue: "0", containerCount: 1 }]);
   const [eRows, setERows] = useState<ERow[]>([{ expenseTypeId: "", amount: "0" }]);
   const [listFilter, setListFilter] = useState("");
+  const [summaryAttachUploading, setSummaryAttachUploading] = useState(false);
+  /** ใช้ ref กันช่วงที่ state summaryId ยังไม่ตรงกับโมดัล (อัปโหลดเงียบๆ ไม่ยิง API) */
+  const summaryMissionIdRef = useRef<string | null>(null);
+
+  function missionAttachmentHref(fileUrl: string) {
+    if (/^https?:\/\//i.test(fileUrl)) return fileUrl;
+    return apiUrl(fileUrl);
+  }
 
   const load = useCallback(async () => {
     const [m, p, v, r, pr, vr, et] = await Promise.all([
@@ -182,9 +190,55 @@ export function MissionsPage() {
   }, [createModalOpen, compensationExpenseTypeId, compensationSumFromPersonnel]);
 
   async function openSummary(id: string) {
+    summaryMissionIdRef.current = id;
     setSummaryId(id);
-    const s = await apiJson<MissionSummary>(`/api/missions/${id}/summary`);
+    try {
+      const s = await apiJson<MissionSummary>(`/api/missions/${id}/summary`);
+      setSummary(s);
+    } catch (e) {
+      summaryMissionIdRef.current = null;
+      setSummaryId(null);
+      setSummary(null);
+      alert(e instanceof Error ? e.message : "โหลดสรุปภารกิจไม่สำเร็จ");
+    }
+  }
+
+  async function reloadMissionSummary() {
+    const mid = summaryMissionIdRef.current;
+    if (!mid) return;
+    const s = await apiJson<MissionSummary>(`/api/missions/${mid}/summary`);
     setSummary(s);
+  }
+
+  async function uploadMissionSummaryFiles(files: File[]) {
+    const mid = summaryMissionIdRef.current;
+    if (!files.length) return;
+    if (!mid) {
+      alert("ไม่พบรหัสภารกิจ — ปิดหน้าต่างแล้วเปิด «สรุปภารกิจ» อีกครั้ง");
+      return;
+    }
+    setSummaryAttachUploading(true);
+    try {
+      const fd = new FormData();
+      for (const f of files) fd.append("files", f);
+      await apiFormJson(`/api/missions/${mid}/attachments`, fd);
+      await reloadMissionSummary();
+    } catch (e) {
+      alert(e instanceof Error ? e.message : "อัปโหลดไม่สำเร็จ");
+    } finally {
+      setSummaryAttachUploading(false);
+    }
+  }
+
+  async function deleteMissionSummaryAttachment(attachmentId: string) {
+    const mid = summaryMissionIdRef.current;
+    if (!mid || !confirm("ลบไฟล์นี้?")) return;
+    try {
+      await apiJson(`/api/missions/${mid}/attachments/${attachmentId}`, { method: "DELETE" });
+      await reloadMissionSummary();
+    } catch (e) {
+      alert(e instanceof Error ? e.message : "ลบไม่สำเร็จ");
+    }
   }
 
   const resetForm = useCallback(() => {
@@ -312,6 +366,7 @@ export function MissionsPage() {
     try {
       await apiJson(`/api/missions/${id}`, { method: "DELETE" });
       if (summaryId === id) {
+        summaryMissionIdRef.current = null;
         setSummaryId(null);
         setSummary(null);
       }
@@ -965,6 +1020,11 @@ export function MissionsPage() {
                       {m.route.startLocation} → {m.route.endLocation}
                     </p>
                   ) : null}
+                  {typeof m._count.attachments === "number" && m._count.attachments > 0 ? (
+                    <p className="mt-0.5 text-xs text-slate-500">
+                      แนบไฟล์ {m._count.attachments} รายการ
+                    </p>
+                  ) : null}
                 </div>
                 <div className="flex flex-wrap gap-1.5 sm:shrink-0 sm:justify-end">
                   <button
@@ -1008,6 +1068,7 @@ export function MissionsPage() {
         <Modal
           open
           onClose={() => {
+            summaryMissionIdRef.current = null;
             setSummaryId(null);
             setSummary(null);
           }}
@@ -1049,6 +1110,61 @@ export function MissionsPage() {
                 </div>
               ) : null}
             </dl>
+
+            <div className="space-y-3 border-t border-slate-800 pt-4">
+              <p className="text-xs font-medium uppercase text-slate-500">ไฟล์แนบภารกิจ</p>
+              <p className="text-xs text-slate-500">
+                เลือกได้หลายไฟล์พร้อมกัน (สูงสุด 24 ไฟล์ต่อครั้ง, ไฟล์ละไม่เกิน ~15 MB)
+              </p>
+              <div className="flex flex-wrap items-center gap-2">
+                <input
+                  id="mission-summary-attachment-input"
+                  type="file"
+                  multiple
+                  className="max-w-full text-xs text-slate-300 file:mr-2 file:rounded file:border-0 file:bg-slate-700 file:px-2 file:py-1 file:text-slate-200"
+                  disabled={summaryAttachUploading}
+                  onChange={(e) => {
+                    const input = e.target;
+                    /** ต้องคัดลอกเป็น File[] ก่อนล้าง value — FileList อ้างอิง input ถ้าล้างก่อน รายการจะว่างทันที */
+                    const files = input.files?.length ? Array.from(input.files) : [];
+                    input.value = "";
+                    if (files.length) void uploadMissionSummaryFiles(files);
+                  }}
+                />
+                {summaryAttachUploading ? (
+                  <span className="text-xs text-teal-400">กำลังอัปโหลด…</span>
+                ) : null}
+              </div>
+              {(summary.attachments ?? []).length === 0 ? (
+                <p className="text-sm text-slate-500">ยังไม่มีไฟล์แนบ</p>
+              ) : (
+                <ul className="max-h-36 space-y-1.5 overflow-y-auto text-sm">
+                  {(summary.attachments ?? []).map((a) => (
+                    <li
+                      key={a.id}
+                      className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-slate-800/80 bg-slate-950/50 px-2 py-1.5"
+                    >
+                      <a
+                        href={missionAttachmentHref(a.fileUrl)}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="min-w-0 flex-1 truncate text-teal-400 hover:underline"
+                        title={a.originalName ?? a.fileUrl}
+                      >
+                        {a.originalName?.trim() || "ดาวน์โหลด / เปิดไฟล์"}
+                      </a>
+                      <button
+                        type="button"
+                        className="shrink-0 rounded border border-rose-900/40 px-2 py-0.5 text-xs text-rose-400 hover:bg-slate-800"
+                        onClick={() => void deleteMissionSummaryAttachment(a.id)}
+                      >
+                        ลบ
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
 
             {(() => {
               const cargo = Number(summary.totalCargoValue ?? 0);
@@ -1143,6 +1259,7 @@ export function MissionsPage() {
               type="button"
               className="w-full rounded-lg bg-slate-800 py-2.5 text-white hover:bg-slate-700"
               onClick={() => {
+                summaryMissionIdRef.current = null;
                 setSummaryId(null);
                 setSummary(null);
               }}

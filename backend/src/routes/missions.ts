@@ -1,6 +1,8 @@
 import { Router } from "express";
 import { MissionStatus, MissionVehicleFuelType, Prisma } from "@prisma/client";
 import { prisma } from "../lib/prisma.js";
+import { routeParam } from "../lib/routeParam.js";
+import { unlinkUploadFile, upload } from "../lib/upload.js";
 
 export const missionsRouter = Router();
 
@@ -55,6 +57,34 @@ function normalizeFuelType(v: unknown): MissionVehicleFuelType | null {
   return null;
 }
 
+function serializeMissionAttachment(a: {
+  id: string;
+  storedFilename: string;
+  originalName: string | null;
+  mimeType: string | null;
+  sortOrder: number;
+  createdAt: Date;
+}) {
+  return {
+    id: a.id,
+    /** path สัมพันธ์กับโฮสต์ API — ฝั่ง client ใช้ apiUrl() ประกอบกับ VITE_API_URL / proxy */
+    fileUrl: `/uploads/${a.storedFilename}`,
+    originalName: a.originalName,
+    mimeType: a.mimeType,
+    sortOrder: a.sortOrder,
+    createdAt: a.createdAt.toISOString(),
+  };
+}
+
+function multerFilesErrorMessage(err: unknown): string | null {
+  if (!err || typeof err !== "object" || !("code" in err)) return null;
+  const code = String((err as { code: unknown }).code);
+  if (code === "LIMIT_FILE_SIZE") return "ไฟล์ใหญ่เกิน ~15 MB ต่อไฟล์";
+  if (code === "LIMIT_FILE_COUNT") return "เลือกได้ไม่เกิน 24 ไฟล์ต่อครั้ง";
+  if (code === "LIMIT_UNEXPECTED_FILE") return "ฟิลด์ไฟล์ไม่ถูกต้อง — ใช้ชื่อฟิลด์ files";
+  return null;
+}
+
 async function missionSummary(missionId: string) {
   const masters = await prisma.missionExpenseTypeMaster.findMany({
     orderBy: [{ sortOrder: "asc" }, { name: "asc" }],
@@ -101,6 +131,11 @@ async function missionSummary(missionId: string) {
     overBudget = total.gt(budget);
   }
 
+  const attRows = await prisma.missionAttachment.findMany({
+    where: { missionId },
+    orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }],
+  });
+
   return {
     missionId: mission.id,
     code: mission.code,
@@ -112,6 +147,7 @@ async function missionSummary(missionId: string) {
     expensesByType: byType,
     variance,
     overBudget,
+    attachments: attRows.map(serializeMissionAttachment),
   };
 }
 
@@ -261,7 +297,9 @@ missionsRouter.get("/", async (_req, res, next) => {
       orderBy: { createdAt: "desc" },
       include: {
         route: true,
-        _count: { select: { personnel: true, vehicles: true, destinations: true, expenses: true } },
+        _count: {
+          select: { personnel: true, vehicles: true, destinations: true, expenses: true, attachments: true },
+        },
       },
     });
     res.json(rows);
@@ -280,6 +318,85 @@ missionsRouter.get("/:id/summary", async (req, res, next) => {
   }
 });
 
+missionsRouter.get("/:id/attachments", async (req, res, next) => {
+  try {
+    const missionId = routeParam(req.params.id);
+    const m = await prisma.mission.findUnique({ where: { id: missionId }, select: { id: true } });
+    if (!m) return res.status(404).json({ error: "Not found" });
+    const rows = await prisma.missionAttachment.findMany({
+      where: { missionId },
+      orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }],
+    });
+    res.json(rows.map(serializeMissionAttachment));
+  } catch (e) {
+    next(e);
+  }
+});
+
+missionsRouter.post(
+  "/:id/attachments",
+  (req, res, next) => {
+    upload.array("files", 24)(req, res, (err: unknown) => {
+      if (err) {
+        const msg = multerFilesErrorMessage(err);
+        if (msg) return res.status(400).json({ error: msg });
+        return next(err);
+      }
+      next();
+    });
+  },
+  async (req, res, next) => {
+    try {
+      const missionId = routeParam(req.params.id);
+      const m = await prisma.mission.findUnique({ where: { id: missionId }, select: { id: true } });
+      if (!m) return res.status(404).json({ error: "ไม่พบภารกิจ" });
+      const files = req.files as Express.Multer.File[] | undefined;
+      if (!files?.length)
+        return res.status(400).json({
+          error: "ไม่ได้รับไฟล์ — ลองเลือกไฟล์อีกครั้ง หรือรีเฟรชหน้าแล้วลองใหม่",
+        });
+
+      const maxSort = await prisma.missionAttachment.aggregate({
+        where: { missionId },
+        _max: { sortOrder: true },
+      });
+      let order = (maxSort._max.sortOrder ?? -1) + 1;
+      const created = [];
+      for (const f of files) {
+        const row = await prisma.missionAttachment.create({
+          data: {
+            missionId,
+            storedFilename: f.filename,
+            mimeType: f.mimetype || null,
+            originalName: f.originalname || null,
+            sortOrder: order++,
+          },
+        });
+        created.push(serializeMissionAttachment(row));
+      }
+      res.status(201).json(created);
+    } catch (e) {
+      next(e);
+    }
+  },
+);
+
+missionsRouter.delete("/:id/attachments/:attachmentId", async (req, res, next) => {
+  try {
+    const missionId = routeParam(req.params.id);
+    const attachmentId = routeParam(req.params.attachmentId);
+    const existing = await prisma.missionAttachment.findFirst({
+      where: { id: attachmentId, missionId },
+    });
+    if (!existing) return res.status(404).json({ error: "Not found" });
+    await prisma.missionAttachment.delete({ where: { id: existing.id } });
+    unlinkUploadFile(existing.storedFilename);
+    res.status(204).send();
+  } catch (e) {
+    next(e);
+  }
+});
+
 missionsRouter.get("/:id", async (req, res, next) => {
   try {
     const row = await prisma.mission.findUnique({
@@ -290,10 +407,15 @@ missionsRouter.get("/:id", async (req, res, next) => {
         vehicles: { include: { vehicle: true, vehicleRole: true } },
         destinations: { orderBy: { sortOrder: "asc" } },
         expenses: { include: { expenseType: true }, orderBy: { incurredAt: "desc" } },
+        attachments: { orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }] },
       },
     });
     if (!row) return res.status(404).json({ error: "Not found" });
-    res.json(row);
+    const { attachments, ...rest } = row;
+    res.json({
+      ...rest,
+      attachments: attachments.map(serializeMissionAttachment),
+    });
   } catch (e) {
     next(e);
   }
@@ -414,9 +536,11 @@ missionsRouter.post("/", async (req, res, next) => {
         vehicles: { include: { vehicle: true, vehicleRole: true } },
         destinations: true,
         expenses: { include: { expenseType: true } },
+        attachments: { orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }] },
       },
     });
-    res.status(201).json(row);
+    const { attachments, ...rest } = row;
+    res.status(201).json({ ...rest, attachments: attachments.map(serializeMissionAttachment) });
   } catch (e: unknown) {
     if (e && typeof e === "object" && "code" in e && (e as { code: string }).code === "P2002")
       return res.status(409).json({ error: "code must be unique" });
@@ -539,11 +663,13 @@ missionsRouter.put("/:id", async (req, res, next) => {
           vehicles: { include: { vehicle: true, vehicleRole: true } },
           destinations: true,
           expenses: { include: { expenseType: true } },
+          attachments: { orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }] },
         },
       });
     });
 
-    res.json(row);
+    const { attachments, ...rest } = row;
+    res.json({ ...rest, attachments: attachments.map(serializeMissionAttachment) });
   } catch (e) {
     next(e);
   }
@@ -585,9 +711,11 @@ missionsRouter.patch("/:id", async (req, res, next) => {
         vehicles: { include: { vehicle: true, vehicleRole: true } },
         destinations: true,
         expenses: { include: { expenseType: true } },
+        attachments: { orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }] },
       },
     });
-    res.json(row);
+    const { attachments, ...rest } = row;
+    res.json({ ...rest, attachments: attachments.map(serializeMissionAttachment) });
   } catch (e: unknown) {
     if (e && typeof e === "object" && "code" in e && (e as { code: string }).code === "P2025")
       return res.status(404).json({ error: "Not found" });
@@ -597,7 +725,10 @@ missionsRouter.patch("/:id", async (req, res, next) => {
 
 missionsRouter.delete("/:id", async (req, res, next) => {
   try {
-    await prisma.mission.delete({ where: { id: req.params.id } });
+    const id = routeParam(req.params.id);
+    const att = await prisma.missionAttachment.findMany({ where: { missionId: id }, select: { storedFilename: true } });
+    await prisma.mission.delete({ where: { id } });
+    for (const a of att) unlinkUploadFile(a.storedFilename);
     res.status(204).send();
   } catch (e: unknown) {
     if (e && typeof e === "object" && "code" in e && (e as { code: string }).code === "P2025")

@@ -300,6 +300,56 @@ export interface AssetDetail extends Asset {
   documents: AssetDocument[];
 }
 
+export type ArmorMonthlyCheckKey =
+  | "outerShell"
+  | "strapsFasteners"
+  | "ballisticLayer"
+  | "cleanlinessStorage"
+  | "overallReadiness";
+
+export interface ArmorMonthlyInspection {
+  id: string;
+  assetId: string;
+  monthYm: string;
+  outerShell: VehicleWeeklyCheckResult | null;
+  strapsFasteners: VehicleWeeklyCheckResult | null;
+  ballisticLayer: VehicleWeeklyCheckResult | null;
+  cleanlinessStorage: VehicleWeeklyCheckResult | null;
+  overallReadiness: VehicleWeeklyCheckResult | null;
+  remarks: string | null;
+  inspectorName?: string | null;
+  personnelId: string | null;
+  inspectedAt: string;
+  updatedAt: string;
+}
+
+export interface ArmorMonthlyMatrixRow {
+  asset: Asset;
+  inspection: ArmorMonthlyInspection | null;
+}
+
+export interface ArmorMonthlyMatrixResponse {
+  monthYm: string;
+  rows: ArmorMonthlyMatrixRow[];
+}
+
+export interface ArmorMonthlyReportResponse {
+  monthYm: string;
+  totalAssets: number;
+  inspectedCount: number;
+  abnormalRowsCount: number;
+  rows: ArmorMonthlyMatrixRow[];
+}
+
+export interface MissionAttachmentRow {
+  id: string;
+  fileUrl: string;
+  originalName: string | null;
+  mimeType: string | null;
+  sortOrder: number;
+  createdAt: string;
+}
+
 export interface MissionListItem {
   id: string;
   code: string | null;
@@ -310,7 +360,13 @@ export interface MissionListItem {
   plannedEnd: string | null;
   createdAt: string;
   route: RouteMaster | null;
-  _count: { personnel: number; vehicles: number; destinations: number; expenses: number };
+  _count: {
+    personnel: number;
+    vehicles: number;
+    destinations: number;
+    expenses: number;
+    attachments?: number;
+  };
 }
 
 /** รายละเอียดภารกิจจาก GET /api/missions/:id — ใช้โหลดฟอร์มแก้ไข */
@@ -337,6 +393,7 @@ export interface MissionDetail {
   }>;
   destinations: Array<{ address: string; cargoValue: string; containerCount: number; sortOrder: number }>;
   expenses: Array<{ expenseTypeId: string; amount: string }>;
+  attachments?: MissionAttachmentRow[];
 }
 
 export interface MissionSummary {
@@ -352,6 +409,7 @@ export interface MissionSummary {
   expensesByType: Record<string, string>;
   variance: string | null;
   overBudget: boolean;
+  attachments?: MissionAttachmentRow[];
 }
 
 /** GET /api/missions/stats/year */

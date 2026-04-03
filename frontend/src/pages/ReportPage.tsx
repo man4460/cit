@@ -3,14 +3,18 @@ import { Link, useParams, useSearchParams } from "react-router-dom";
 import { apiJson } from "../api/client";
 import { Modal, ModalFormActions, ModalFormBody } from "../components/Modal";
 import { PageFilterPrintBar } from "../components/PageFilterPrintBar";
+import { PickableDateInput } from "../components/PickableDateInput";
 import { useAuth } from "../context/AuthContext";
 import { currentUserLabel } from "../lib/currentUserLabel";
 import { mondayOfWeekContaining } from "../lib/inspectionWeek";
 import { rowMatchesFilter } from "../lib/searchNormalize";
+import { ARMOR_MONTHLY_TOPICS } from "../lib/armorMonthlyTopics";
 import { VEHICLE_WEEKLY_TOPICS, type VehicleWeeklyTopicKey } from "../lib/vehicleWeeklyTopics";
 import { REPORT_TYPES } from "./reportsConfig";
 import {
   vehicleDisplayLabel,
+  type ArmorMonthlyInspection,
+  type ArmorMonthlyReportResponse,
   type VehicleWeeklyCheckResult,
   type VehicleWeeklyInspection,
   type VehicleWeeklyInspectionReportResponse,
@@ -250,12 +254,7 @@ function WeeklyInspectionReportView({ reportTitle }: { reportTitle: string }) {
       <div className="no-print flex flex-wrap items-end gap-4">
         <label className="block">
           <span className="text-xs font-medium text-slate-500">สัปดาห์อ้างอิง</span>
-          <input
-            type="date"
-            className="mt-1 block rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-white"
-            value={weekStart}
-            onChange={(e) => setWeek(e.target.value)}
-          />
+          <PickableDateInput type="date" className="mt-1" value={weekStart} onChange={setWeek} />
         </label>
         <button
           type="button"
@@ -441,6 +440,216 @@ function WeeklyInspectionReportView({ reportTitle }: { reportTitle: string }) {
   );
 }
 
+function armorCheckSymbol(v: VehicleWeeklyCheckResult | null): string {
+  if (v === "NORMAL") return "ป";
+  if (v === "ABNORMAL") return "ผ";
+  return "—";
+}
+
+function armorInspectionSummaryTh(i: ArmorMonthlyInspection | null): string {
+  if (!i) return "ยังไม่ตรวจ";
+  const f = [
+    i.outerShell,
+    i.strapsFasteners,
+    i.ballisticLayer,
+    i.cleanlinessStorage,
+    i.overallReadiness,
+  ];
+  const set = f.filter((x): x is NonNullable<typeof x> => x != null);
+  if (set.length === 0) return "บันทึกแล้ว (ยังไม่กรอกหัวข้อ)";
+  if (f.some((x) => x === "ABNORMAL")) return "มีผิดปกติ";
+  if (set.length === 5 && set.every((x) => x === "NORMAL")) return "ครบทุกหัวข้อ — ปกติ";
+  if (set.every((x) => x === "NORMAL")) return "ที่กรอก — ปกติ";
+  return "กรอกบางหัวข้อ";
+}
+
+function currentMonthYm(): string {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+}
+
+function ArmorMonthlyReportView({ reportTitle }: { reportTitle: string }) {
+  const [searchParams, setSearchParams] = useSearchParams();
+  const monthFromUrl = searchParams.get("month")?.trim();
+  const defaultMonth = useMemo(() => currentMonthYm(), []);
+  const monthYm =
+    monthFromUrl && /^\d{4}-\d{2}$/.test(monthFromUrl) ? monthFromUrl : defaultMonth;
+
+  const [listFilter, setListFilter] = useState("");
+  const [data, setData] = useState<ArmorMonthlyReportResponse | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [err, setErr] = useState<string | null>(null);
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    setErr(null);
+    try {
+      const res = await apiJson<ArmorMonthlyReportResponse>(
+        `/api/armor-inspections/monthly/report?month=${encodeURIComponent(monthYm)}`,
+      );
+      setData(res);
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : "โหลดไม่สำเร็จ");
+      setData(null);
+    } finally {
+      setLoading(false);
+    }
+  }, [monthYm]);
+
+  useEffect(() => {
+    void load();
+  }, [load]);
+
+  const filteredRows = useMemo(() => {
+    if (!data?.rows.length) return [];
+    const f = listFilter.trim();
+    if (!f) return data.rows;
+    return data.rows.filter((row) =>
+      rowMatchesFilter(f, [
+        row.asset.serialNumber,
+        row.asset.itemName,
+        row.asset.location,
+        row.asset.armorUnitNumber,
+        row.inspection?.inspectorName,
+        row.inspection?.remarks,
+        armorInspectionSummaryTh(row.inspection),
+      ]),
+    );
+  }, [data, listFilter]);
+
+  function setMonth(ym: string) {
+    setSearchParams(ym === defaultMonth ? {} : { month: ym });
+  }
+
+  const printTitle = useMemo(() => {
+    const base = `${reportTitle} — เดือน ${monthYm}`;
+    const ft = listFilter.trim();
+    return ft ? `${base} — กรอง: ${ft}` : base;
+  }, [reportTitle, monthYm, listFilter]);
+
+  return (
+    <div className="armor-monthly-report space-y-4">
+      <PageFilterPrintBar
+        value={listFilter}
+        onChange={setListFilter}
+        printTitle={printTitle}
+        placeholder="กรองเลขครุภัณฑ์ ชื่อ ที่ตั้ง ผู้ตรวจ หมายเหตุ สรุปผล…"
+      />
+
+      <div className="no-print flex flex-wrap items-end gap-4">
+        <label className="block">
+          <span className="text-xs font-medium text-slate-500">เดือนอ้างอิง</span>
+          <PickableDateInput type="month" className="mt-1" value={monthYm} onChange={setMonth} />
+        </label>
+        <button
+          type="button"
+          className="rounded-lg border border-slate-600 px-3 py-2 text-sm text-slate-300 hover:bg-slate-800"
+          onClick={() => setMonth(currentMonthYm())}
+        >
+          เดือนนี้
+        </button>
+        <Link
+          to={`/assets/armor-monthly?month=${encodeURIComponent(monthYm)}`}
+          className="rounded-lg border border-violet-800/60 px-3 py-2 text-sm text-violet-300 hover:bg-slate-800"
+        >
+          ไปตารางตรวจ / บันทึก
+        </Link>
+      </div>
+
+      {err ? <p className="text-sm text-rose-400 print:hidden">{err}</p> : null}
+
+      {loading ? (
+        <p className="text-slate-500 print:hidden">กำลังโหลด…</p>
+      ) : data ? (
+        <>
+          <div className="rounded-xl border border-slate-800 bg-slate-950/50 px-4 py-3 text-sm text-slate-300 print:border-gray-400 print:bg-white print:text-black">
+            <p>
+              <span className="font-medium text-white print:text-black">เดือน {data.monthYm}:</span> ตรวจแล้ว{" "}
+              <span className="tabular-nums text-violet-300 print:text-black">{data.inspectedCount}</span> รายการ จากทั้งหมด{" "}
+              <span className="tabular-nums">{data.totalAssets}</span> รายการ
+              {data.totalAssets > data.inspectedCount ? (
+                <span className="text-slate-500 print:text-gray-600">
+                  {" "}
+                  (ยังไม่บันทึก {data.totalAssets - data.inspectedCount} รายการ)
+                </span>
+              ) : null}
+            </p>
+            <p className="mt-1">
+              <span className="text-slate-400 print:text-gray-800">แถวที่มีหัวข้อ «ผิดปกติ» อย่างน้อยหนึ่งข้อ:</span>{" "}
+              <span className="font-medium text-rose-300 print:text-black">{data.abnormalRowsCount}</span> รายการ
+            </p>
+            {listFilter.trim() ? (
+              <p className="mt-1 text-slate-400 print:text-gray-800">
+                หลังกรองแสดง <span className="font-medium text-violet-300 print:text-black">{filteredRows.length}</span> รายการ
+              </p>
+            ) : null}
+          </div>
+
+          {data.rows.length === 0 ? (
+            <p className="rounded-xl border border-dashed border-slate-700 bg-slate-900/30 px-4 py-8 text-center text-sm text-slate-500 print:hidden">
+              ยังไม่มีรายการเสื้อเกราะในระบบ
+            </p>
+          ) : filteredRows.length === 0 ? (
+            <p className="rounded-xl border border-dashed border-amber-900/40 bg-amber-950/10 px-4 py-8 text-center text-sm text-amber-200/90 print:hidden">
+              ไม่มีรายการตรงกับการกรอง
+            </p>
+          ) : (
+            <div className="overflow-x-auto rounded-xl border border-slate-800 print:border-gray-400">
+              <table className="w-full min-w-[48rem] border-collapse text-left text-xs print:text-black sm:text-sm">
+                <thead>
+                  <tr className="border-b border-slate-700 bg-slate-800/80 print:border-gray-400 print:bg-gray-100">
+                    <th className="px-2 py-2 font-medium text-slate-200 print:text-black">#</th>
+                    <th className="px-2 py-2 font-medium text-slate-200 print:text-black">เลขครุภัณฑ์</th>
+                    <th className="px-2 py-2 font-medium text-slate-200 print:text-black">ชื่อ</th>
+                    {ARMOR_MONTHLY_TOPICS.map((t) => (
+                      <th key={t.key} className="max-w-[4.5rem] px-1 py-2 text-center text-[10px] font-medium leading-tight text-slate-200 print:text-black sm:text-xs">
+                        {t.title}
+                      </th>
+                    ))}
+                    <th className="px-2 py-2 font-medium text-slate-200 print:text-black">ผู้ตรวจ</th>
+                    <th className="px-2 py-2 font-medium text-slate-200 print:text-black">สรุป</th>
+                    <th className="min-w-[6rem] px-2 py-2 font-medium text-slate-200 print:text-black">หมายเหตุ</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {filteredRows.map((row, idx) => {
+                    const i = row.inspection;
+                    return (
+                      <tr
+                        key={row.asset.id}
+                        className={`border-b border-slate-800 print:border-gray-300 ${
+                          idx % 2 === 0 ? "bg-slate-900/20 print:bg-white" : "bg-violet-950/10 print:bg-gray-50"
+                        }`}
+                      >
+                        <td className="px-2 py-2 tabular-nums text-slate-500 print:text-gray-700">{idx + 1}</td>
+                        <td className="px-2 py-2 font-mono text-teal-300 print:text-black">{row.asset.serialNumber}</td>
+                        <td className="px-2 py-2 text-slate-300 print:text-black">{row.asset.itemName}</td>
+                        {ARMOR_MONTHLY_TOPICS.map((t) => (
+                          <td key={t.key} className="px-1 py-2 text-center tabular-nums text-slate-300 print:text-black">
+                            {armorCheckSymbol(i ? i[t.key] : null)}
+                          </td>
+                        ))}
+                        <td className="px-2 py-2 text-slate-300 print:text-black">{i?.inspectorName?.trim() || "—"}</td>
+                        <td className="px-2 py-2 text-slate-200 print:text-black">{armorInspectionSummaryTh(i)}</td>
+                        <td className="px-2 py-2 whitespace-pre-wrap text-slate-400 print:text-gray-800">
+                          {i?.remarks?.trim() || "—"}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
+          <p className="text-[11px] text-slate-600 print:text-gray-700">
+            สัญลักษณ์: ป = ปกติ, ผ = ผิดปกติ, — = ยังไม่กรอก
+          </p>
+        </>
+      ) : null}
+    </div>
+  );
+}
+
 export function ReportPage() {
   const { slug } = useParams();
   const meta = REPORT_TYPES.find((r) => r.slug === slug);
@@ -453,6 +662,7 @@ export function ReportPage() {
   );
 
   const isWeeklyVehicleInspection = slug === "weekly";
+  const isArmorMonthlyReport = slug === "monthly";
 
   return (
     <div>
@@ -467,10 +677,19 @@ export function ReportPage() {
           กรองรายการได้จากช่องค้นหา — ปุ่มพิมพ์จะพิมพ์เฉพาะแถวที่ผ่านการกรอง แก้ไข/ลบบันทึกได้จากคอลัมน์จัดการ
         </p>
       ) : null}
+      {isArmorMonthlyReport ? (
+        <p className="mt-1 text-sm text-slate-400 print:text-gray-700">
+          สรุปผลตรวจสภาพเสื้อเกราะรายเดือน — ป = ปกติ ผ = ผิดปกติ แก้ไขรายละเอียดได้ที่ «ไปตารางตรวจ / บันทึก»
+        </p>
+      ) : null}
 
       {isWeeklyVehicleInspection ? (
         <div className="mt-4">
           <WeeklyInspectionReportView reportTitle={title} />
+        </div>
+      ) : isArmorMonthlyReport ? (
+        <div className="mt-4">
+          <ArmorMonthlyReportView reportTitle={title} />
         </div>
       ) : (
         <>

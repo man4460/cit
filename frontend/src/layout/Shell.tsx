@@ -19,6 +19,7 @@ const mainNav = [
   { to: "/disposition-registry", label: "ทะเบียนจำหน่าย/ส่งคืน" },
   { to: "/documents", label: "คลังเอกสาร" },
   { to: "/assets", label: "ครุภัณฑ์ & QR" },
+  { to: "/assets/armor-monthly", label: "ตรวจเสื้อเกราะรายเดือน" },
   { to: "/activities", label: "กิจกรรม" },
   { to: "/reports", label: "รายงาน" },
   { to: "/scan", label: "สแกน QR" },
