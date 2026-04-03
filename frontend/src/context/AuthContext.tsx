@@ -30,13 +30,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setLoading(false);
       return;
     }
+    const timeoutMs = 15_000;
+    let timeoutId: ReturnType<typeof setTimeout> | undefined;
+    const timeoutPromise = new Promise<never>((_, reject) => {
+      timeoutId = window.setTimeout(() => reject(new Error("timeout")), timeoutMs);
+    });
     try {
-      const me = await apiJson<AuthUser>("/api/me");
+      const me = await Promise.race([apiJson<AuthUser>("/api/me"), timeoutPromise]);
       setUser(me);
     } catch {
       setUser(null);
       setToken(null);
     } finally {
+      if (timeoutId !== undefined) window.clearTimeout(timeoutId);
       setLoading(false);
     }
   }, []);

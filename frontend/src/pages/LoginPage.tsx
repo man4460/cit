@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
+import { BrandLogo } from "../components/BrandLogo";
 import { useAuth } from "../context/AuthContext";
 
 export function LoginPage() {
@@ -34,8 +35,10 @@ export function LoginPage() {
   return (
     <div className="flex min-h-screen min-h-[100dvh] flex-col items-center justify-center bg-slate-950 px-4 py-8">
       <div className="w-full max-w-md rounded-2xl border border-slate-800 bg-slate-900/80 p-6 shadow-xl sm:p-8">
-        <p className="text-center text-xs font-semibold uppercase tracking-wider text-teal-500">all for one</p>
-        <h1 className="mt-2 text-center text-xl font-bold text-white">เข้าสู่ระบบ</h1>
+        <div className="flex justify-center">
+          <BrandLogo variant="stacked" className="h-24 w-auto max-w-full object-contain sm:h-28" />
+        </div>
+        <h1 className="mt-4 text-center text-xl font-bold text-white">เข้าสู่ระบบ</h1>
         <p className="mt-1 text-center text-sm text-slate-500">ใช้บัญชีที่ผู้ดูแลระบบสร้างให้</p>
 
         <form onSubmit={onSubmit} className="mt-8 space-y-4">

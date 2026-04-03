@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
+import { BrandLogo } from "../components/BrandLogo";
 import { useAuth } from "../context/AuthContext";
 import { APP_VERSION } from "../version";
 
@@ -111,7 +112,10 @@ export function Shell() {
           </button>
           <div className="min-w-0">
             <p className="text-[10px] font-semibold uppercase tracking-wider text-teal-600/90">ระบบปฏิบัติการ</p>
-            <p className="truncate text-sm font-bold text-white lg:text-lg">all for one</p>
+            <BrandLogo
+              variant="horizontal"
+              className="mt-0.5 h-5 w-auto max-w-[min(100%,9.5rem)] object-contain object-left sm:max-w-[10rem] lg:h-6 lg:max-w-[11rem]"
+            />
           </div>
         </div>
         <div className="flex min-w-0 shrink-0 items-center gap-2 sm:gap-3">

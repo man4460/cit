@@ -34,7 +34,14 @@ export async function apiJson<T>(path: string, init?: RequestInit): Promise<T> {
   });
   if (res.status === 204) return undefined as T;
   const text = await res.text();
-  const data = text ? JSON.parse(text) : null;
+  let data: { error?: string; details?: string } | null = null;
+  if (text) {
+    try {
+      data = JSON.parse(text) as { error?: string; details?: string };
+    } catch {
+      throw new Error(`คำตอบจาก API ไม่ใช่ JSON (${path}) — ตรวจสอบว่า backend รันและ VITE_API_URL ถูกต้อง`);
+    }
+  }
   if (res.status === 401) {
     setToken(null);
     window.dispatchEvent(new Event("afo:auth"));
@@ -55,8 +62,15 @@ export async function apiFormJson<T>(path: string, formData: FormData, method = 
     body: formData,
   });
   const text = await res.text();
-  const data = text ? JSON.parse(text) : null;
   if (res.status === 204) return undefined as T;
+  let data: { error?: string; details?: string } | null = null;
+  if (text) {
+    try {
+      data = JSON.parse(text) as { error?: string; details?: string };
+    } catch {
+      throw new Error(`คำตอบจาก API ไม่ใช่ JSON (${path})`);
+    }
+  }
   if (res.status === 401) {
     setToken(null);
     window.dispatchEvent(new Event("afo:auth"));

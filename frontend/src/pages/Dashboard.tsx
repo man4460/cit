@@ -637,7 +637,9 @@ export function Dashboard() {
         <div className="text-center sm:text-left">
           <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-teal-500/90">จัดทำโดย</p>
           <p className="mt-2 text-lg font-semibold text-white">พ.ต.ต.เร๊าะมัน หะนิแร</p>
-          <p className="mt-1 text-sm text-slate-500">แดชบอร์ดภาพรวม · ระบบปฏิบัติการ all for one</p>
+          <p className="mt-2 text-center text-sm text-slate-500 sm:text-left">
+            แดชบอร์ดภาพรวม · ระบบปฏิบัติการ all for one
+          </p>
         </div>
         <div className="h-px w-full shrink-0 bg-slate-800 sm:h-12 sm:w-px" aria-hidden />
         <p className="max-w-sm text-center text-xs leading-relaxed text-slate-500 sm:text-right">
