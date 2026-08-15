@@ -82,15 +82,15 @@ export function AssetQrModal({
           <div className="rounded-xl bg-white p-4 shadow-inner">
             <QRCodeCanvas ref={canvasRef} value={scanUrl} size={240} level="M" />
           </div>
-          <div className="max-w-md space-y-3 text-sm text-slate-300">
+          <div className="max-w-md space-y-3 text-sm text-slate-700">
             <p>
-              <span className="text-slate-500">รายการ:</span> <span className="font-medium text-white">{itemName}</span>
+              <span className="text-slate-700">รายการ:</span> <span className="font-medium text-[#1e1b3a]">{itemName}</span>
             </p>
             <p>
-              <span className="text-slate-500">เลขครุภัณฑ์:</span> {serialNumber}
+              <span className="text-slate-700">เลขครุภัณฑ์:</span> {serialNumber}
             </p>
-            <p className="break-all font-mono text-xs text-slate-400">{scanUrl}</p>
-            <p className="text-xs leading-relaxed text-slate-500">
+            <p className="break-all font-mono text-xs text-slate-600">{scanUrl}</p>
+            <p className="text-xs leading-relaxed text-slate-700">
               สแกนด้วยมือถือจะเปิดหน้า &quot;สแกน QR&quot; พร้อมโทเคนของครุภัณฑ์นี้ — ต้องเข้าเว็บจากที่อยู่เดียวกับที่อยู่ใน QR (เช่น IP ใน LAN หรือโดเมนจริง)
             </p>
           </div>
@@ -98,21 +98,21 @@ export function AssetQrModal({
         <div className="flex flex-wrap gap-2">
           <button
             type="button"
-            className="rounded-lg bg-teal-600 px-4 py-2 text-sm font-semibold text-white hover:bg-teal-500"
+            className="rounded-full bg-gradient-to-r from-[#0000BF] via-[#8b5cf6] to-[#ec4899] text-sm font-bold text-white shadow-lg shadow-fuchsia-500/25 hover:from-[#0000a3] hover:via-[#7c3aed] hover:to-[#db2777] px-4 py-2"
             onClick={downloadPng}
           >
             ดาวน์โหลด PNG
           </button>
           <button
             type="button"
-            className="rounded-lg border border-slate-600 px-4 py-2 text-sm font-medium text-slate-200 hover:bg-slate-800"
+            className="rounded-lg border border-slate-200 px-4 py-2 text-sm font-medium text-slate-800 hover:bg-slate-100"
             onClick={printLabel}
           >
             พิมพ์
           </button>
           <button
             type="button"
-            className="rounded-lg border border-slate-600 px-4 py-2 text-sm font-medium text-slate-200 hover:bg-slate-800"
+            className="rounded-lg border border-slate-200 px-4 py-2 text-sm font-medium text-slate-800 hover:bg-slate-100"
             onClick={() => void copyUrl()}
           >
             คัดลอกลิงก์
@@ -120,7 +120,7 @@ export function AssetQrModal({
         </div>
       </ModalFormBody>
       <ModalFormActions>
-        <button type="button" className="rounded-lg border border-slate-600 px-4 py-2 text-sm text-slate-300 hover:bg-slate-800" onClick={onClose}>
+        <button type="button" className="rounded-lg border border-slate-200 px-4 py-2 text-sm text-slate-700 hover:bg-slate-100" onClick={onClose}>
           ปิด
         </button>
       </ModalFormActions>

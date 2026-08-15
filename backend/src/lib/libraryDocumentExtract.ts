@@ -5,15 +5,27 @@ import { prisma } from "./prisma.js";
 
 const OCR_MAX_BYTES = 12 * 1024 * 1024;
 
-export function uploadFilenameFromFileUrl(fileUrl: string): string | null {
+export function uploadRelativePathFromFileUrl(fileUrl: string): string | null {
   try {
     const u = new URL(fileUrl);
-    const seg = u.pathname.split("/").filter(Boolean).pop();
-    return seg && /^[\w.-]+$/i.test(seg) ? seg : null;
+    const idx = u.pathname.toLowerCase().indexOf("/uploads/");
+    if (idx >= 0) {
+      const rel = u.pathname.slice(idx + "/uploads/".length).replace(/^\/+/, "");
+      if (rel && !rel.includes("..")) return decodeURIComponent(rel);
+    }
   } catch {
-    const m = fileUrl.match(/\/uploads\/([^/?#]+)/i);
-    return m?.[1] ?? null;
+    /* relative path */
   }
+  const m = fileUrl.match(/\/uploads\/(.+?)(?:\?|#|$)/i);
+  if (!m?.[1]) return null;
+  const rel = decodeURIComponent(m[1]).replace(/^\/+/, "");
+  if (!rel || rel.includes("..")) return null;
+  return rel;
+}
+
+/** @deprecated ใช้ uploadRelativePathFromFileUrl — รองรับโฟลเดอร์ย่อย */
+export function uploadFilenameFromFileUrl(fileUrl: string): string | null {
+  return uploadRelativePathFromFileUrl(fileUrl);
 }
 
 async function extractPdfText(absPath: string): Promise<string | null> {
@@ -78,7 +90,7 @@ export async function runLibraryDocumentExtract(documentId: string): Promise<str
     });
     return null;
   }
-  const name = uploadFilenameFromFileUrl(row.fileUrl);
+  const name = uploadRelativePathFromFileUrl(row.fileUrl);
   if (!name) {
     await prisma.libraryDocument.update({
       where: { id: documentId },

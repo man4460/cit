@@ -2,7 +2,7 @@ import { Router } from "express";
 import { MissionStatus, MissionVehicleFuelType, Prisma } from "@prisma/client";
 import { prisma } from "../lib/prisma.js";
 import { routeParam } from "../lib/routeParam.js";
-import { unlinkUploadFile, upload } from "../lib/upload.js";
+import { persistUpload, unlinkUploadFile, upload } from "../lib/upload.js";
 
 export const missionsRouter = Router();
 
@@ -94,8 +94,16 @@ async function missionSummary(missionId: string) {
   const mission = await prisma.mission.findUnique({
     where: { id: missionId },
     include: {
-      expenses: { include: { expenseType: true } },
-      destinations: true,
+      route: true,
+      expenses: { include: { expenseType: true }, orderBy: { incurredAt: "asc" } },
+      destinations: { orderBy: { sortOrder: "asc" } },
+      personnel: {
+        include: { personnel: true, personnelRole: true },
+        orderBy: { personnel: { fullName: "asc" } },
+      },
+      vehicles: {
+        include: { vehicle: true, vehicleRole: true },
+      },
     },
   });
   if (!mission) return null;
@@ -112,6 +120,28 @@ async function missionSummary(missionId: string) {
     const key = e.expenseType.name;
     const prev = new Prisma.Decimal(byType[key] ?? "0");
     byType[key] = prev.add(amt).toString();
+  }
+
+  let personnelCompensationTotal = new Prisma.Decimal(0);
+  for (const p of mission.personnel) {
+    personnelCompensationTotal = personnelCompensationTotal.add(p.compensationRate ?? 0);
+  }
+
+  /** แสดงยอดค่าตอบแทนจากรายคน (ไม่บวกซ้ำเข้ารวมรายจ่าย ถ้ามีหมวดอื่นครอบอยู่แล้ว) */
+  const compensationMaster =
+    masters.find((m) => m.name === "ค่าตอบแทน") ??
+    masters.find((m) => m.name.includes("ค่าตอบแทน") && !m.name.includes("บุคคลภายนอก"));
+  if (compensationMaster && personnelCompensationTotal.gt(0)) {
+    const cur = new Prisma.Decimal(byType[compensationMaster.name] ?? "0");
+    if (cur.eq(0)) {
+      byType[compensationMaster.name] = personnelCompensationTotal.toString();
+    }
+  }
+
+  /** ตัดหมวดที่ยอดเป็น 0 ออกจากรายการแสดง */
+  const expensesByType: Record<string, string> = {};
+  for (const [k, v] of Object.entries(byType)) {
+    if (new Prisma.Decimal(v).gt(0)) expensesByType[k] = v;
   }
 
   const budget = mission.budgetAmount;
@@ -140,13 +170,45 @@ async function missionSummary(missionId: string) {
     missionId: mission.id,
     code: mission.code,
     title: mission.title,
+    status: mission.status,
+    plannedStart: mission.plannedStart?.toISOString() ?? null,
+    plannedEnd: mission.plannedEnd?.toISOString() ?? null,
+    route: mission.route
+      ? {
+          id: mission.route.id,
+          name: mission.route.name,
+          startLocation: mission.route.startLocation,
+          endLocation: mission.route.endLocation,
+        }
+      : null,
     budgetAmount: budget?.toString() ?? null,
     totalExpenses: totalStr,
     totalCargoValue: totalCargoStr,
     expenseToCargoPercent,
-    expensesByType: byType,
+    expensesByType,
+    personnelCompensationTotal: personnelCompensationTotal.toString(),
     variance,
     overBudget,
+    personnel: mission.personnel.map((p) => ({
+      personnelId: p.personnelId,
+      fullName: p.personnel.fullName,
+      rank: p.personnel.rank,
+      roleName: p.personnelRole.name,
+      compensationRate: p.compensationRate.toString(),
+    })),
+    vehicles: mission.vehicles.map((v) => ({
+      vehicleId: v.vehicleId,
+      licensePlate: v.vehicle.licensePlate,
+      roleName: v.vehicleRole.name,
+      fuelLiters: v.fuelLiters?.toString() ?? null,
+      fuelType: v.fuelType,
+    })),
+    destinations: mission.destinations.map((d) => ({
+      address: d.address,
+      cargoValue: d.cargoValue.toString(),
+      containerCount: d.containerCount,
+      sortOrder: d.sortOrder,
+    })),
     attachments: attRows.map(serializeMissionAttachment),
   };
 }
@@ -178,13 +240,23 @@ const MONTH_LABELS_TH = [
   "ธ.ค.",
 ];
 
-/** ปี ค.ศ. ที่มีข้อมูลในฐาน (ภารกิจ + บันทึกบำรุงรักษารถ) — เรียงใหม่ → เก่า */
+/** ปี ค.ศ. ที่มีข้อมูลในฐาน (ภารกิจตาม plannedStart + บันทึกบำรุงรักษารถ) — เรียงใหม่ → เก่า */
 async function getDashboardYears(): Promise<number[]> {
   const years = new Set<number>();
   const missions = await prisma.mission.findMany({
-    select: { plannedStart: true, createdAt: true },
+    select: { plannedStart: true, code: true },
   });
-  for (const m of missions) years.add((m.plannedStart ?? m.createdAt).getFullYear());
+  for (const m of missions) {
+    if (m.plannedStart) {
+      years.add(m.plannedStart.getUTCFullYear());
+      continue;
+    }
+    const fromCode = m.code?.match(/TRIP-(\d{4})/i);
+    if (fromCode) {
+      const be = Number(fromCode[1]);
+      if (Number.isFinite(be) && be >= 2400) years.add(be - 543);
+    }
+  }
   const maint = await prisma.maintenanceLog.findMany({ select: { date: true } });
   for (const r of maint) years.add(r.date.getFullYear());
   return [...years].sort((a, b) => b - a);
@@ -205,17 +277,14 @@ missionsRouter.get("/stats/year", async (req, res, next) => {
   try {
     const y = parseInt(String(req.query.year ?? ""), 10);
     const year = Number.isFinite(y) && y >= 2000 && y <= 2100 ? y : new Date().getFullYear();
-    const start = new Date(year, 0, 1);
-    const end = new Date(year + 1, 0, 1);
+    const start = new Date(Date.UTC(year, 0, 1, 0, 0, 0));
+    const end = new Date(Date.UTC(year + 1, 0, 1, 0, 0, 0));
 
     const availableYears = await getDashboardYears();
 
     const missions = await prisma.mission.findMany({
       where: {
-        OR: [
-          { plannedStart: { gte: start, lt: end } },
-          { plannedStart: null, createdAt: { gte: start, lt: end } },
-        ],
+        plannedStart: { gte: start, lt: end },
       },
       include: {
         destinations: true,
@@ -232,16 +301,22 @@ missionsRouter.get("/stats/year", async (req, res, next) => {
     const fuelDieselLiters: Prisma.Decimal[] = Array.from({ length: 12 }, () => new Prisma.Decimal(0));
 
     for (const m of missions) {
-      const ref = m.plannedStart ?? m.createdAt;
-      if (ref < start || ref >= end) continue;
-      const mo = ref.getMonth();
+      const ref = m.plannedStart;
+      if (!ref || ref < start || ref >= end) continue;
+      const mo = ref.getUTCMonth();
       missionCount[mo] += 1;
       for (const d of m.destinations) {
         cargo[mo] = cargo[mo].add(d.cargoValue);
         containers[mo] += d.containerCount;
       }
-      for (const e of m.expenses) {
-        expenses[mo] = expenses[mo].add(e.amount);
+      // ใช้ budgetAmount (= คอลัมน์ «รวมค่าใช้จ่าย» ใน Excel) เป็นหลัก
+      // ถ้าไม่มีค่อยรวมรายการ expenses — กันยอดเพี้ยนจากหมวดย่อยซ้ำ
+      if (m.budgetAmount != null) {
+        expenses[mo] = expenses[mo].add(m.budgetAmount);
+      } else {
+        for (const e of m.expenses) {
+          expenses[mo] = expenses[mo].add(e.amount);
+        }
       }
       for (const v of m.vehicles) {
         if (v.fuelLiters == null) continue;
@@ -363,17 +438,33 @@ missionsRouter.post(
       let order = (maxSort._max.sortOrder ?? -1) + 1;
       const created = [];
       for (const f of files) {
-        const row = await prisma.missionAttachment.create({
-          data: {
-            missionId,
-            storedFilename: f.filename,
-            mimeType: f.mimetype || null,
-            originalName: f.originalname || null,
-            sortOrder: order++,
-          },
-        });
-        created.push(serializeMissionAttachment(row));
+        try {
+          const saved = await persistUpload(f, {
+            module: "missions",
+            userId: req.auth?.userId,
+            kind: "attach",
+            allowPdf: true,
+          });
+          const row = await prisma.missionAttachment.create({
+            data: {
+              missionId,
+              storedFilename: saved.relativePath,
+              mimeType: saved.mimeType,
+              originalName: saved.displayName,
+              sortOrder: order++,
+            },
+          });
+          created.push(serializeMissionAttachment(row));
+        } catch (e) {
+          return res.status(400).json({
+            error: e instanceof Error ? e.message : "อัปโหลดไฟล์ไม่สำเร็จ",
+          });
+        }
       }
+      if (!created.length)
+        return res.status(400).json({
+          error: "ไม่ได้รับไฟล์ — ลองเลือกไฟล์อีกครั้ง หรือรีเฟรชหน้าแล้วลองใหม่",
+        });
       res.status(201).json(created);
     } catch (e) {
       next(e);

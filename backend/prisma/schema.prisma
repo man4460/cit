@@ -1,13 +1,13 @@
 // Cash-in-Transit & Mission Management
-// Default dev: SQLite (DATABASE_URL=file:./dev.db) — npx prisma db push
-// Production: set provider to postgresql + DATABASE_URL and run migrate
+// MySQL: ตั้ง DATABASE_URL ใน .env แล้วรัน npx prisma db push
+// ตัวอย่าง: mysql://USER:PASSWORD@localhost:3306/cit_mission
 
 generator client {
   provider = "prisma-client-js"
 }
 
 datasource db {
-  provider = "sqlite"
+  provider = "mysql"
   url      = env("DATABASE_URL")
 }
 
@@ -51,9 +51,9 @@ model Personnel {
   insuranceCompany      String?
   insurancePolicyNumber String?
   insuranceExpiry       DateTime?
-  insuranceNotes        String?
+  insuranceNotes        String? @db.Text
 
-  remarks   String?
+  remarks   String? @db.Text
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -177,7 +177,7 @@ model Vehicle {
   vehicleStatus   VehicleStatus? @relation(fields: [vehicleStatusId], references: [id], onDelete: SetNull)
 
   /// หมายเหตุ / ข้อมูลเสริมจากทะเบียน (เช่น ศูนย์ต้นทุน ประเภทน้ำมัน วันสำรวจ)
-  notes String?
+  notes String? @db.Text
 
   /// วันจัดซื้อ (ใช้คำนวณอายุรถในหน้าเว็บ)
   purchasedAt DateTime?
@@ -208,6 +208,8 @@ model VehicleDispositionLog {
   licensePlate   String
   brandModel     String
   note           String?
+  actorUserId    String?
+  actorUsername  String?
   recordedAt     DateTime        @default(now())
 }
 
@@ -226,7 +228,7 @@ model VehicleWeeklyInspection {
   cctvThinkware   VehicleWeeklyCheckResult?
   engineStart5Min VehicleWeeklyCheckResult?
 
-  remarks       String?
+  remarks       String? @db.Text
   /// ชื่อผู้ตรวจ (ข้อความ)
   inspectorName String?
 
@@ -253,7 +255,7 @@ model MaintenanceLog {
   vehicleId String
   vehicle   Vehicle  @relation(fields: [vehicleId], references: [id], onDelete: Cascade)
   date      DateTime
-  detail    String
+  detail    String  @db.Text
   cost      Decimal
   createdAt DateTime @default(now())
 }
@@ -266,7 +268,7 @@ model FuelConsumptionLog {
   liters    Decimal?
   cost      Decimal?
   odometer  Decimal?
-  notes     String?
+  notes     String?  @db.Text
   createdAt DateTime @default(now())
 }
 
@@ -285,9 +287,9 @@ model DocumentType {
 model LibraryDocument {
   id             String        @id @default(uuid())
   title          String
-  details        String
+  details        String   @db.Text
   /** ข้อความถอดจากไฟล์ (PDF / รูป OCR / ข้อความล้วน) */
-  extractedText  String?
+  extractedText  String?  @db.LongText
   documentTypeId String?
   documentType   DocumentType? @relation(fields: [documentTypeId], references: [id], onDelete: Restrict)
   fileUrl        String?
@@ -295,6 +297,115 @@ model LibraryDocument {
   originalName   String?
   createdAt      DateTime      @default(now())
   updatedAt      DateTime      @updatedAt
+}
+
+// --- อัคคีภัย / ถังดับเพลิง ---
+
+model FireExtinguisher {
+  id             String    @id @default(uuid())
+  code           String    @unique
+  location       String
+  kind           String
+  sizeLabel      String
+  manufacturedAt DateTime?
+  status         String    @default("ปกติ")
+  guardTeam      String?
+  notes          String?   @db.Text
+  sortOrder      Int       @default(0)
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+}
+
+/** ตู้สายดับเพลิง / โฮสต์อัคคีภัย (จาก FireHost.csv) */
+model FireHost {
+  id        String   @id @default(uuid())
+  code      String   @unique
+  detail    String   @db.Text
+  location  String
+  guardTeam String?
+  track     Boolean  @default(true)
+  sortOrder Int      @default(0)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+/** เสื้อเกราะกันกระสุน (จาก bulletproof_vest.csv) */
+model BulletproofVest {
+  id              String    @id @default(uuid())
+  code            String    @unique
+  description     String    @db.Text
+  level           String    @default("")
+  team            String?
+  capturedAt      DateTime?
+  costCenter      String?
+  registerNo      String?
+  permitBeginsAt  DateTime?
+  permitExpiresAt DateTime?
+  notes           String?   @db.Text
+  docUrl          String?   @db.Text
+  mailUrl         String?   @db.Text
+  sortOrder       Int       @default(0)
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+}
+
+/** อาวุธปืน (จาก Gun.csv) */
+model Firearm {
+  id           String    @id @default(uuid())
+  code         String    @unique
+  costCenter   String?
+  brand        String     @db.VarChar(512)
+  serial       String?
+  registerNo   String?
+  registerCard String?
+  purchasedAt  DateTime?
+  detail       String?   @db.Text
+  team         String?
+  docUrl       String?   @db.Text
+  photoUrl     String?   @db.Text
+  status       String    @default("")
+  checked      String?
+  fixNote      String?   @db.Text
+  sortOrder    Int       @default(0)
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+}
+
+/** กระสุนปืน — สต๊อกรายล็อตตามวันจัดซื้อ (อายุ 5 ปี) */
+model Ammunition {
+  id           String     @id @default(uuid())
+  sourceKey    String     @unique
+  code         String
+  kind         String
+  purchasedAt  DateTime?
+  team         String?
+  detail       String?    @db.Text
+  receivedQty  Int        @default(0)
+  remainingQty Int        @default(0)
+  sortOrder    Int        @default(0)
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
+  moves        AmmoMove[]
+}
+
+enum AmmoMoveKind {
+  IN
+  OUT
+}
+
+model AmmoMove {
+  id             String       @id @default(uuid())
+  ammunitionId   String
+  ammunition     Ammunition   @relation(fields: [ammunitionId], references: [id], onDelete: Cascade)
+  kind           AmmoMoveKind
+  quantity       Int
+  movedAt        DateTime
+  withdrawnBy    String?
+  note           String?
+  remainingAfter Int
+  createdAt      DateTime     @default(now())
+
+  @@index([ammunitionId, movedAt])
 }
 
 // --- Assets (ครุภัณฑ์) & inspections ---
@@ -357,7 +468,7 @@ model Asset {
   location            String
   /// เลขประจำตัวเครื่อง
   machineSerialNumber String?
-  notes               String?
+  notes               String? @db.Text
 
   /// ศูนย์ต้นทุน (Cost center)
   costCenter  String?
@@ -412,15 +523,17 @@ model Asset {
 }
 
 model AssetDispositionLog {
-  id           String          @id @default(uuid())
-  assetId      String
-  asset        Asset           @relation(fields: [assetId], references: [id], onDelete: Cascade)
-  kind         DispositionKind
-  statusName   String
-  serialNumber String
-  itemName     String
-  note         String?
-  recordedAt   DateTime        @default(now())
+  id            String          @id @default(uuid())
+  assetId       String
+  asset         Asset           @relation(fields: [assetId], references: [id], onDelete: Cascade)
+  kind          DispositionKind
+  statusName    String
+  serialNumber  String
+  itemName      String
+  note          String?
+  actorUserId   String?
+  actorUsername String?
+  recordedAt    DateTime        @default(now())
 }
 
 model AssetDocument {
@@ -442,7 +555,7 @@ model AssetInspection {
   personnelId   String?
   personnel     Personnel? @relation(fields: [personnelId], references: [id], onDelete: SetNull)
   status        String    @default("OK")
-  notes         String?
+  notes         String?   @db.Text
   inspectedAt   DateTime  @default(now())
 }
 
@@ -460,7 +573,7 @@ model ArmorMonthlyInspection {
   cleanlinessStorage VehicleWeeklyCheckResult?
   overallReadiness   VehicleWeeklyCheckResult?
 
-  remarks       String?
+  remarks       String? @db.Text
   inspectorName String?
   personnelId   String?
   personnel     Personnel? @relation(fields: [personnelId], references: [id], onDelete: SetNull)
@@ -620,8 +733,187 @@ model MissionExpense {
   expenseType   MissionExpenseTypeMaster @relation(fields: [expenseTypeId], references: [id], onDelete: Restrict)
 
   amount      Decimal
-  description String?
+  description String? @db.Text
   incurredAt  DateTime @default(now())
+}
+
+// --- งบประมาณ ---
+
+enum BudgetFiscalYearStatus {
+  ACTIVE
+  CLOSED
+}
+
+enum BudgetAccountKind {
+  EXPENSE
+  CAPEX
+}
+
+enum BudgetSpendSource {
+  IMPORT
+  MANUAL
+}
+
+/// งบประจำปี vs งบผูกพัน (หลายปี)
+enum BudgetFundingType {
+  ANNUAL
+  COMMITMENT
+}
+
+model BudgetFiscalYear {
+  id        String                  @id @default(uuid())
+  yearBe    Int                     @unique
+  status    BudgetFiscalYearStatus  @default(ACTIVE)
+  notes     String?                 @db.Text
+  createdAt DateTime                @default(now())
+  updatedAt DateTime                @updatedAt
+
+  lines BudgetYearLine[]
+}
+
+/// หมวดเอกสารประกอบงบ
+model BudgetDocumentCategory {
+  id        String   @id @default(uuid())
+  name      String   @unique
+  sortOrder Int      @default(0)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  documents BudgetDocument[]
+}
+
+/// เอกสารประกอบงบตาม bucket (ปี 2569 / 2570 / …)
+model BudgetDocument {
+  id           String   @id @default(uuid())
+  /// "2569" | "2570" | …
+  bucketKey    String
+  title        String
+  notes        String?  @db.Text
+  categoryId   String?
+  category     BudgetDocumentCategory? @relation(fields: [categoryId], references: [id], onDelete: Restrict)
+  fileUrl      String
+  mimeType     String?
+  originalName String?
+  sortOrder    Int      @default(0)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@index([bucketKey])
+  @@index([categoryId])
+}
+
+model BudgetCategory {
+  id        String            @id @default(uuid())
+  name      String
+  kind      BudgetAccountKind @default(EXPENSE)
+  sortOrder Int               @default(0)
+  createdAt DateTime          @default(now())
+  updatedAt DateTime          @updatedAt
+
+  accounts BudgetAccount[]
+
+  @@index([kind])
+}
+
+model BudgetAccount {
+  id         String            @id @default(uuid())
+  parentId   String?
+  parent     BudgetAccount?    @relation("BudgetAccountTree", fields: [parentId], references: [id], onDelete: SetNull)
+  children   BudgetAccount[]   @relation("BudgetAccountTree")
+  categoryId String?
+  category   BudgetCategory?   @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+  ciCode     String?
+  superiorCi String?
+  fileRef    String?
+  name       String
+  definition String?           @db.Text
+  kind       BudgetAccountKind @default(EXPENSE)
+  sortOrder  Int               @default(0)
+  isSummary  Boolean           @default(false)
+  createdAt  DateTime          @default(now())
+  updatedAt  DateTime          @updatedAt
+
+  yearLines BudgetYearLine[]
+  requests  BudgetRequest[]
+
+  @@index([ciCode])
+  @@index([parentId])
+  @@index([categoryId])
+  @@index([kind])
+}
+
+model BudgetYearLine {
+  id               String             @id @default(uuid())
+  fiscalYearId     String
+  fiscalYear       BudgetFiscalYear   @relation(fields: [fiscalYearId], references: [id], onDelete: Cascade)
+  accountId        String
+  account          BudgetAccount      @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  /// ANNUAL = งบประจำปีนั้น · COMMITMENT = งบผูกพันของปีอ้างอิง
+  fundingType      BudgetFundingType  @default(ANNUAL)
+  allocatedAmount  Decimal            @default(0)
+  carryInAmount    Decimal            @default(0)
+  /// ยอดผูกพันสำรอง (ใช้เมื่อ fundingType=ANNUAL และมีคอลัมน์คู่ขนาน) — รายการ COMMITMENT ใส่ยอดใน allocatedAmount
+  commitmentAmount Decimal            @default(0)
+  buyerName        String?
+  requestingUnit   String?
+  quantity         String?
+  /// ลิงก์เอกสารประกอบ (URL)
+  documentUrl      String?            @db.Text
+  notes            String?            @db.Text
+  createdAt        DateTime           @default(now())
+  updatedAt        DateTime           @updatedAt
+
+  snapshots    BudgetSpendSnapshot[]
+  transactions BudgetTransaction[]
+
+  @@unique([fiscalYearId, accountId, fundingType])
+  @@index([fiscalYearId])
+  @@index([fundingType])
+}
+
+model BudgetSpendSnapshot {
+  id          String            @id @default(uuid())
+  yearLineId  String
+  yearLine    BudgetYearLine    @relation(fields: [yearLineId], references: [id], onDelete: Cascade)
+  asOfDate    DateTime
+  spentAmount Decimal           @default(0)
+  source      BudgetSpendSource @default(MANUAL)
+  notes       String?           @db.Text
+  createdAt   DateTime          @default(now())
+
+  @@index([yearLineId, asOfDate])
+}
+
+model BudgetTransaction {
+  id          String         @id @default(uuid())
+  yearLineId  String
+  yearLine    BudgetYearLine @relation(fields: [yearLineId], references: [id], onDelete: Cascade)
+  amount      Decimal
+  occurredAt  DateTime       @default(now())
+  description String?        @db.Text
+  refNo       String?
+  createdAt   DateTime       @default(now())
+  updatedAt   DateTime       @updatedAt
+
+  @@index([yearLineId, occurredAt])
+}
+
+model BudgetRequest {
+  id              String        @id @default(uuid())
+  accountId       String
+  account         BudgetAccount @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  targetYearBe    Int
+  requestedAmount Decimal       @default(0)
+  deltaAmount     Decimal?
+  deltaPercent    Decimal?
+  changeDirection String?
+  reason          String?       @db.Text
+  planEndAmount   Decimal?
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+
+  @@unique([accountId, targetYearBe])
+  @@index([targetYearBe])
 }
 
 // --- Auth & admin ---
@@ -637,9 +929,34 @@ model User {
   passwordHash String
   role         UserRole @default(OPERATOR)
   fullName     String?
+  /// รูปโปรไฟล์ — path เช่น /uploads/uuid.png
+  avatarUrl    String?
   active       Boolean  @default(true)
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
+}
+
+enum AuditAction {
+  CREATE
+  UPDATE
+  DELETE
+}
+
+/// ประวัติการแก้ไขระบบ (audit trail)
+model AuditLog {
+  id            String      @id @default(uuid())
+  entityType    String
+  entityId      String
+  action        AuditAction
+  summary       String      @db.Text
+  beforeJson    String?     @db.LongText
+  afterJson     String?     @db.LongText
+  actorUserId   String?
+  actorUsername String?
+  createdAt     DateTime    @default(now())
+
+  @@index([entityType, entityId])
+  @@index([createdAt])
 }
 
 // --- กิจกรรม (เดิม WorkTask / Notion — notionUrl เก็บย้อนหลังได้) ---
@@ -653,8 +970,8 @@ enum WorkTaskStatus {
 model WorkTask {
   id          String         @id @default(uuid())
   title       String
-  notionUrl   String?
-  description String?
+  notionUrl   String?        @db.Text
+  description String?        @db.Text
   startsAt    DateTime?
   endsAt      DateTime?
   location    String?
@@ -675,4 +992,39 @@ model WorkTaskPhoto {
   originalName String?
   sortOrder    Int      @default(0)
   createdAt    DateTime @default(now())
+}
+
+// --- เหตุการณ์ไม่ปกติ (Security Incident Report) ---
+
+model SecurityIncident {
+  id                   String    @id @default(uuid())
+  externalId           Int       @unique
+  title                String    @db.Text
+  location             String?
+  incidentAt           DateTime?
+  timeOfIncident       DateTime?
+  incidentType         String?
+  impactLevel          String?   @db.Text
+  statusResolved       Boolean   @default(false)
+  impactTypes          String?   @db.Text
+  damageValue          String?   @db.Text
+  cause                String?   @db.LongText
+  details              String?   @db.LongText
+  actionExecuted       String?   @db.LongText
+  preventiveSolutions  String?   @db.LongText
+  commanderOrder       String?   @db.LongText
+  linkBotShare         String?   @db.Text
+  reportingOfficer     String?   @db.Text
+  createdBy            String?
+  sourceCreatedAt      DateTime?
+  sourceModifiedBy     String?
+  sourceModifiedAt     DateTime?
+  attachmentsCount     Int       @default(0)
+  createdAt            DateTime  @default(now())
+  updatedAt            DateTime  @updatedAt
+
+  @@index([incidentAt])
+  @@index([incidentType])
+  @@index([location])
+  @@index([statusResolved])
 }

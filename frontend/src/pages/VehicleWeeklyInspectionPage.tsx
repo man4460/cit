@@ -1,11 +1,14 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { apiJson } from "../api/client";
+import { PageHeaderBar } from "../components/PageHeaderBar";
 import { PickableDateInput } from "../components/PickableDateInput";
+import { ReportsSubNav } from "../components/ReportsSubNav";
 import { useAuth } from "../context/AuthContext";
 import { currentUserLabel } from "../lib/currentUserLabel";
 import { mondayOfWeekContaining } from "../lib/inspectionWeek";
 import { VEHICLE_WEEKLY_TOPICS } from "../lib/vehicleWeeklyTopics";
+import { toolbarLinkBtnClass, toolbarMasterGroupClass } from "../lib/uiTokens";
 import { vehicleDisplayLabel, type VehicleWeeklyCheckResult, type VehicleWeeklyInspectionMatrixResponse } from "../types";
 
 type RowDraft = {
@@ -56,7 +59,7 @@ function CheckPairCells({
   value: VehicleWeeklyCheckResult | null;
   onPick: (v: VehicleWeeklyCheckResult | null) => void;
 }) {
-  const td = "border border-slate-700 p-0.5 text-center align-middle print:border-gray-400";
+  const td = "border border-slate-200 p-0.5 text-center align-middle print:border-gray-400";
   return (
     <>
       <td className={td}>
@@ -64,7 +67,7 @@ function CheckPairCells({
           type="button"
           title="ปกติ"
           className={`flex h-9 w-full min-w-[2rem] items-center justify-center rounded text-base sm:min-w-[2.25rem] ${
-            value === "NORMAL" ? "bg-emerald-900/55 font-semibold text-emerald-200" : "text-slate-600 hover:bg-slate-800"
+            value === "NORMAL" ? "bg-emerald-900/55 font-semibold text-emerald-200" : "text-slate-600 hover:bg-slate-100"
           }`}
           onClick={() => onPick(value === "NORMAL" ? null : "NORMAL")}
         >
@@ -76,7 +79,7 @@ function CheckPairCells({
           type="button"
           title="ผิดปกติ / ไม่ปกติ"
           className={`flex h-9 w-full min-w-[2rem] items-center justify-center rounded text-base sm:min-w-[2.25rem] ${
-            value === "ABNORMAL" ? "bg-rose-900/45 font-semibold text-rose-200" : "text-slate-600 hover:bg-slate-800"
+            value === "ABNORMAL" ? "bg-rose-900/45 font-semibold text-rose-200" : "text-slate-600 hover:bg-slate-100"
           }`}
           onClick={() => onPick(value === "ABNORMAL" ? null : "ABNORMAL")}
         >
@@ -188,72 +191,70 @@ export function VehicleWeeklyInspectionPage() {
   }
 
   const thGroup =
-    "border border-slate-600 bg-slate-800/90 px-1 py-2 text-center align-bottom text-[10px] font-semibold leading-tight text-slate-100 sm:text-xs";
-  const thSub = "border border-slate-600 bg-slate-800/60 px-0.5 py-1.5 text-[9px] font-medium text-slate-400 sm:text-[10px]";
-  const tdCell = "border border-slate-700 px-0.5 py-1 align-middle sm:px-1";
+    "border border-slate-200 bg-slate-100/90 px-1 py-2 text-center align-bottom text-[10px] font-semibold leading-tight text-slate-100 sm:text-xs";
+  const thSub = "border border-slate-200 bg-slate-100/60 px-0.5 py-1.5 text-[9px] font-medium text-slate-700 sm:text-[10px]";
+  const tdCell = "border border-slate-200 px-0.5 py-1 align-middle sm:px-1";
 
   return (
     <div className="weekly-inspection-print">
-      <div className="flex flex-wrap items-start justify-between gap-4 print:hidden">
-        <div>
-          <h1 className="text-2xl font-bold text-white">ตรวจยานพาหนะประจำสัปดาห์</h1>
-          <p className="mt-1 max-w-2xl text-sm text-slate-400">
-            ตารางตรวจตามหัวข้อหลัก — เลือกวันจันทร์ของสัปดาห์ (หรือวันอ้างอิง) แล้วทำเครื่องหมายปกติ / ผิดปกติ คอลัมน์สตาร์ท 5 นาที ใช้ความหมายเดียวกับ &quot;ไม่ปกติ&quot; ที่ผิดปกติ
-          </p>
-        </div>
-        <Link
-          to="/vehicles"
-          className="shrink-0 rounded-lg border border-slate-600 px-4 py-2 text-sm text-slate-300 hover:bg-slate-800"
-        >
-          ← รายการยานพาหนะ
-        </Link>
-      </div>
+      <PageHeaderBar
+        className="print:hidden"
+        title="ตรวจยานพาหนะประจำสัปดาห์"
+        filter={{
+          value: "",
+          onChange: () => {},
+          printTitle: `ตรวจยานพาหนะประจำสัปดาห์ — วันอ้างอิง ${weekStart}`,
+          showSearch: false,
+        }}
+        segments={
+          <div className={`${toolbarMasterGroupClass} items-center gap-1 px-1`}>
+            <PickableDateInput
+              type="date"
+              className="h-8 min-w-[9.5rem] border-0 bg-transparent px-1 text-[11px] font-bold text-[#2e2a58] sm:h-9 sm:text-xs"
+              value={weekStart}
+              onChange={setWeek}
+            />
+            <button
+              type="button"
+              className={toolbarLinkBtnClass}
+              onClick={() => setWeek(mondayOfWeekContaining(new Date()))}
+            >
+              สัปดาห์นี้
+            </button>
+          </div>
+        }
+        extras={
+          <>
+            <Link to="/reports/weekly" className={toolbarLinkBtnClass}>
+              รายงานสัปดาห์
+            </Link>
+            <ReportsSubNav />
+          </>
+        }
+      />
 
-      <div className="mt-4 flex flex-wrap items-end gap-4 print:hidden">
-        <label className="block">
-          <span className="text-xs font-medium text-slate-500">สัปดาห์อ้างอิง (แนะนำวันจันทร์)</span>
-          <PickableDateInput type="date" className="mt-1" value={weekStart} onChange={setWeek} />
-        </label>
-        <button
-          type="button"
-          className="rounded-lg border border-slate-600 px-3 py-2 text-sm text-slate-300 hover:bg-slate-800"
-          onClick={() => setWeek(mondayOfWeekContaining(new Date()))}
-        >
-          สัปดาห์นี้
-        </button>
-      </div>
+      {err ? <p className="mt-3 text-sm text-rose-600 print:hidden">{err}</p> : null}
 
-      {err ? <p className="mt-3 text-sm text-rose-400 print:hidden">{err}</p> : null}
-
-      <div className="no-print mb-4 mt-4 flex flex-wrap items-center gap-2">
-        <button
-          type="button"
-          onClick={() => window.print()}
-          className="rounded-lg border border-slate-600 bg-slate-900 px-4 py-2 text-sm font-medium text-slate-200 hover:bg-slate-800"
-        >
-          พิมพ์ตาราง
-        </button>
-      </div>
-      <h2 className="mb-3 hidden text-center text-lg font-bold text-black print:block">
+      <h2 className="mb-3 hidden text-center text-lg font-bold text-black print:mb-1 print:block print:text-[11pt]">
         ตรวจยานพาหนะประจำสัปดาห์ — วันอ้างอิง {weekStart}
       </h2>
 
       {loading ? (
-        <p className="mt-8 text-center text-slate-500 print:hidden">กำลังโหลด…</p>
+        <p className="mt-8 text-center text-slate-600 print:hidden">กำลังโหลด…</p>
       ) : !matrix?.rows.length ? (
-        <p className="mt-8 text-center text-slate-500 print:hidden">ยังไม่มียานพาหนะในระบบ</p>
+        <p className="mt-8 text-center text-slate-600 print:hidden">ยังไม่มียานพาหนะในระบบ</p>
       ) : (
-        <div className="mt-4 overflow-x-auto rounded-xl border border-slate-800 bg-slate-950/40 print:border-0 print:bg-transparent">
-          <table className="w-full min-w-[920px] border-collapse text-left print:text-black">
+        <div className="mt-4 overflow-x-auto rounded-xl border border-slate-200 bg-white/40 print:mt-1 print:overflow-visible print:border-0 print:bg-transparent">
+          <table className="w-full min-w-[920px] border-collapse text-left print:min-w-0 print:w-full print:text-black">
             <thead>
               <tr>
-                <th rowSpan={2} className={`${thGroup} sticky left-0 z-20 min-w-[7rem] bg-slate-800 print:static`}>
+                <th rowSpan={2} className={`${thGroup} sticky left-0 z-20 min-w-[7rem] bg-slate-100 print:static`}>
                   ทะเบียน
                 </th>
                 {VEHICLE_WEEKLY_TOPICS.map((t) => (
                   <th key={t.key} colSpan={2} className={thGroup}>
                     <div>{t.title}</div>
-                    {t.subtitle ? <div className="mt-0.5 font-normal text-slate-400">{t.subtitle}</div> : null}
+                    {t.subtitle ? <div className="mt-0.5 font-normal text-slate-600">{t.subtitle}</div> : null}
                   </th>
                 ))}
                 <th rowSpan={2} className={`${thGroup} min-w-[5rem]`}>
@@ -281,14 +282,14 @@ export function VehicleWeeklyInspectionPage() {
               {matrix.rows.map((r, idx) => {
                 const d = drafts[r.vehicle.id] ?? emptyDraft(inspectorDefault);
                 const label = vehicleDisplayLabel(r.vehicle);
-                const stripe = idx % 2 === 0 ? "bg-emerald-950/15" : "bg-slate-900/30";
+                const stripe = idx % 2 === 0 ? "bg-emerald-950/15" : "bg-white/90/30";
                 return (
                   <tr key={r.vehicle.id} className={`${stripe} print:bg-white`}>
                     <td
-                      className={`${tdCell} sticky left-0 z-10 border-slate-700 bg-slate-900/95 text-[11px] text-slate-200 print:static print:bg-white print:text-black sm:text-xs`}
+                      className={`${tdCell} sticky left-0 z-10 border-slate-200 bg-white/95 text-[11px] text-slate-800 print:static print:bg-white print:text-black sm:text-xs`}
                     >
-                      <span className="font-mono text-teal-300 print:text-black">{r.vehicle.licensePlate}</span>
-                      <span className="mt-0.5 block text-[10px] text-slate-500 print:text-gray-700">{label}</span>
+                      <span className="font-mono text-[#4d47b6] print:text-black">{r.vehicle.licensePlate}</span>
+                      <span className="mt-0.5 block text-[10px] text-slate-600 print:text-gray-700">{label}</span>
                     </td>
                     {VEHICLE_WEEKLY_TOPICS.map((t) => (
                       <CheckPairCells
@@ -300,7 +301,7 @@ export function VehicleWeeklyInspectionPage() {
                     <td className={`${tdCell} print:border print:border-gray-400`}>
                       <input
                         type="text"
-                        className="w-full min-w-[4rem] rounded border border-slate-700 bg-slate-950 px-1 py-1 text-[11px] text-slate-200 print:border-gray-400 print:bg-white print:text-black"
+                        className="w-full min-w-[4rem] rounded border border-slate-200 bg-white px-1 py-1 text-[11px] text-slate-800 print:border-gray-400 print:bg-white print:text-black"
                         placeholder="ชื่อ"
                         value={d.inspectorName}
                         onChange={(e) => updateDraft(r.vehicle.id, { inspectorName: e.target.value })}
@@ -309,7 +310,7 @@ export function VehicleWeeklyInspectionPage() {
                     <td className={`${tdCell} print:border print:border-gray-400`}>
                       <textarea
                         rows={2}
-                        className="w-full min-w-[6rem] resize-y rounded border border-slate-700 bg-slate-950 px-1.5 py-1 text-[11px] text-slate-200 print:border-gray-400 print:bg-white print:text-black"
+                        className="w-full min-w-[6rem] resize-y rounded border border-slate-200 bg-white px-1.5 py-1 text-[11px] text-slate-800 print:border-gray-400 print:bg-white print:text-black"
                         placeholder="เช่น ไม่ได้นำไปปฏิบัติภารกิจ"
                         value={d.remarks}
                         onChange={(e) => updateDraft(r.vehicle.id, { remarks: e.target.value })}
@@ -319,7 +320,7 @@ export function VehicleWeeklyInspectionPage() {
                       <button
                         type="button"
                         disabled={savingId === r.vehicle.id}
-                        className="w-full rounded-lg bg-teal-700 px-2 py-1.5 text-[11px] font-medium text-white hover:bg-teal-600 disabled:opacity-50"
+                        className="w-full rounded-full bg-gradient-to-r from-[#0000BF] via-[#8b5cf6] to-[#ec4899] text-sm font-bold text-white shadow-lg shadow-fuchsia-500/25 hover:from-[#0000a3] hover:via-[#7c3aed] hover:to-[#db2777] px-2 py-1.5 text-[11px] disabled:opacity-50"
                         onClick={() => void saveRow(r.vehicle.id)}
                       >
                         {savingId === r.vehicle.id ? "…" : "บันทึก"}

@@ -80,23 +80,23 @@ export function VehicleStatusMasterModal({
   return (
     <Modal open={open} onClose={onClose} title="สถานะรถ (เพิ่ม / แก้ไข / ลบ)">
       <ModalFormBody className="!space-y-4">
-        {err && <p className="text-sm text-rose-400">{err}</p>}
+        {err && <p className="text-sm text-rose-600">{err}</p>}
         <form onSubmit={add} className="space-y-2">
           <div className="flex gap-2">
             <input
               placeholder="ชื่อสถานะใหม่"
-              className="min-w-0 flex-1 rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-white"
+              className="min-w-0 flex-1 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900"
               value={newName}
               onChange={(e) => setNewName(e.target.value)}
             />
-            <button type="submit" className="shrink-0 rounded-lg bg-teal-600 px-3 py-2 text-sm font-medium text-white">
+            <button type="submit" className="shrink-0 rounded-full bg-gradient-to-r from-[#0000BF] via-[#8b5cf6] to-[#ec4899] text-sm font-bold text-white shadow-lg shadow-fuchsia-500/25 hover:from-[#0000a3] hover:via-[#7c3aed] hover:to-[#db2777] px-3 py-2">
               เพิ่ม
             </button>
           </div>
-          <label className="flex cursor-pointer items-center gap-2 text-xs text-slate-400">
+          <label className="flex cursor-pointer items-center gap-2 text-xs text-slate-600">
             <input
               type="checkbox"
-              className="rounded border-slate-600 bg-slate-950"
+              className="rounded border-slate-200 bg-white"
               checked={newExcludesFleetCare}
               onChange={(e) => setNewExcludesFleetCare(e.target.checked)}
             />
@@ -104,18 +104,18 @@ export function VehicleStatusMasterModal({
           </label>
         </form>
         {editing ? (
-          <form onSubmit={saveEdit} className="rounded-lg border border-teal-900/40 bg-slate-950/50 p-3">
-            <p className="text-xs text-slate-500">แก้ไข</p>
+          <form onSubmit={saveEdit} className="rounded-lg border border-[#0000BF]/25 bg-white/80 p-3">
+            <p className="text-xs text-slate-600">แก้ไข</p>
             <input
-              className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-white"
+              className="mt-1 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-slate-900"
               value={editName}
               onChange={(e) => setEditName(e.target.value)}
             />
             <div className="mt-2 flex gap-2">
-              <button type="submit" className="rounded-lg bg-teal-600 px-3 py-1.5 text-sm text-white">
+              <button type="submit" className="rounded-full bg-gradient-to-r from-[#0000BF] via-[#8b5cf6] to-[#ec4899] text-sm font-bold text-white shadow-lg shadow-fuchsia-500/25 hover:from-[#0000a3] hover:via-[#7c3aed] hover:to-[#db2777] px-3 py-1.5">
                 บันทึก
               </button>
-              <button type="button" className="text-sm text-slate-400" onClick={() => setEditing(null)}>
+              <button type="button" className="text-sm text-slate-600" onClick={() => setEditing(null)}>
                 ยกเลิก
               </button>
             </div>
@@ -125,9 +125,9 @@ export function VehicleStatusMasterModal({
           {rows.map((r) => (
             <li
               key={r.id}
-              className="flex items-center justify-between gap-2 rounded-lg border border-slate-800 bg-slate-900/40 px-3 py-2 text-sm"
+              className="flex items-center justify-between gap-2 rounded-lg border border-slate-200 bg-white/75 px-3 py-2 text-sm"
             >
-              <span className="min-w-0 truncate text-slate-200">
+              <span className="min-w-0 truncate text-slate-800">
                 {r.name}
                 {r.excludesFromFleetCare ? (
                   <span className="ml-1.5 text-[10px] font-normal text-amber-400/90">(นอกยอดตรวจ)</span>
@@ -136,7 +136,7 @@ export function VehicleStatusMasterModal({
               <span className="flex shrink-0 gap-1">
                 <button
                   type="button"
-                  className="rounded px-2 py-0.5 text-xs text-teal-400 hover:bg-slate-800"
+                  className="rounded px-2 py-0.5 text-xs text-[#5b61ff] hover:bg-slate-100"
                   onClick={() => {
                     setEditing(r);
                     setEditName(r.name);
@@ -147,7 +147,7 @@ export function VehicleStatusMasterModal({
                 </button>
                 <button
                   type="button"
-                  className="rounded px-2 py-0.5 text-xs text-rose-400 hover:bg-slate-800"
+                  className="rounded px-2 py-0.5 text-xs text-rose-600 hover:bg-slate-100"
                   onClick={() => void remove(r)}
                 >
                   ลบ

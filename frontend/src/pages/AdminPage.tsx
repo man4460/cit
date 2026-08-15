@@ -3,8 +3,9 @@ import { Navigate } from "react-router-dom";
 import { apiJson } from "../api/client";
 import { Modal, ModalFormActions, ModalFormBody } from "../components/Modal";
 import { useAuth } from "../context/AuthContext";
-import { PageFilterPrintBar } from "../components/PageFilterPrintBar";
+import { PageHeaderBar } from "../components/PageHeaderBar";
 import { rowMatchesFilter } from "../lib/searchNormalize";
+import { listCardAccentClass, listCardClass, toolbarPrimaryBtnClass } from "../lib/uiTokens";
 
 type AdminUserRow = {
   id: string;
@@ -14,6 +15,16 @@ type AdminUserRow = {
   active: boolean;
   createdAt: string;
 };
+
+function roleLabel(role: AdminUserRow["role"]) {
+  return role === "ADMIN" ? "ผู้ดูแลระบบ" : "ผู้ปฏิบัติการ";
+}
+
+function formatCreatedAt(iso: string) {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "—";
+  return d.toLocaleDateString("th-TH", { day: "numeric", month: "short", year: "numeric" });
+}
 
 export function AdminPage() {
   const { user, refreshMe } = useAuth();
@@ -138,6 +149,7 @@ export function AdminPage() {
           r.username,
           r.fullName,
           r.role,
+          roleLabel(r.role),
           r.active ? "เปิดใช้งาน" : "ปิดใช้งาน",
         ]),
       ),
@@ -146,65 +158,63 @@ export function AdminPage() {
 
   return (
     <div>
-      <div className="flex flex-wrap items-start justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-bold text-white">จัดการผู้ใช้ (Admin)</h1>
-          <p className="mt-1 text-slate-400">สร้าง แก้ไข ลบบัญชี และเปิด/ปิดการใช้งาน</p>
-        </div>
-        <button
-          type="button"
-          onClick={() => {
-            setCreateErr(null);
-            setCreateOpen(true);
-          }}
-          className="shrink-0 rounded-lg bg-teal-600 px-4 py-2.5 text-sm font-semibold text-white shadow-lg shadow-teal-900/25 hover:bg-teal-500"
-        >
-          เพิ่มผู้ใช้
-        </button>
-      </div>
-
-      <PageFilterPrintBar
-        value={listFilter}
-        onChange={setListFilter}
-        printTitle="จัดการผู้ใช้ (Admin)"
-        placeholder="กรองชื่อผู้ใช้ / ชื่อแสดง / บทบาท / สถานะ…"
+      <PageHeaderBar
+        title="จัดการผู้ใช้"
+        filter={{
+          value: listFilter,
+          onChange: setListFilter,
+          printTitle: "จัดการผู้ใช้ (ผู้ดูแลระบบ)",
+          placeholder: "กรองชื่อผู้ใช้ / ชื่อแสดง / บทบาท / สถานะ…",
+        }}
+        primary={
+          <button
+            type="button"
+            onClick={() => {
+              setCreateErr(null);
+              setCreateOpen(true);
+            }}
+            className={toolbarPrimaryBtnClass}
+          >
+            เพิ่มผู้ใช้
+          </button>
+        }
       />
 
       <Modal open={createOpen} onClose={() => setCreateOpen(false)} title="เพิ่มผู้ใช้">
         <form onSubmit={createUser}>
           <ModalFormBody>
-            {createErr && <p className="text-sm text-rose-400">{createErr}</p>}
+            {createErr && <p className="text-sm text-rose-600">{createErr}</p>}
             <label className="block">
-              <span className="text-xs text-slate-400">ชื่อผู้ใช้</span>
+              <span className="text-xs text-slate-600">ชื่อผู้ใช้</span>
               <input
                 required
-                className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-white"
+                className="mt-1 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-slate-900"
                 value={newUsername}
                 onChange={(e) => setNewUsername(e.target.value)}
               />
             </label>
             <label className="block">
-              <span className="text-xs text-slate-400">รหัสผ่าน</span>
+              <span className="text-xs text-slate-600">รหัสผ่าน</span>
               <input
                 required
                 type="password"
-                className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-white"
+                className="mt-1 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-slate-900"
                 value={newPassword}
                 onChange={(e) => setNewPassword(e.target.value)}
               />
             </label>
             <label className="block">
-              <span className="text-xs text-slate-400">ชื่อแสดง</span>
+              <span className="text-xs text-slate-600">ชื่อแสดง</span>
               <input
-                className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-white"
+                className="mt-1 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-slate-900"
                 value={newFullName}
                 onChange={(e) => setNewFullName(e.target.value)}
               />
             </label>
             <label className="block">
-              <span className="text-xs text-slate-400">บทบาท</span>
+              <span className="text-xs text-slate-600">บทบาท</span>
               <select
-                className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-white"
+                className="mt-1 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-slate-900"
                 value={newRole}
                 onChange={(e) => setNewRole(e.target.value as "ADMIN" | "OPERATOR")}
               >
@@ -214,12 +224,12 @@ export function AdminPage() {
             </label>
           </ModalFormBody>
           <ModalFormActions>
-            <button type="submit" className="rounded-lg bg-teal-600 px-4 py-2 text-sm font-semibold text-white">
+            <button type="submit" className="rounded-full bg-gradient-to-r from-[#0000BF] via-[#8b5cf6] to-[#ec4899] text-sm font-bold text-white shadow-lg shadow-fuchsia-500/25 hover:from-[#0000a3] hover:via-[#7c3aed] hover:to-[#db2777] px-4 py-2">
               สร้าง
             </button>
             <button
               type="button"
-              className="rounded-lg border border-slate-600 px-4 py-2 text-sm text-slate-300"
+              className="rounded-lg border border-slate-200 px-4 py-2 text-sm text-slate-700"
               onClick={() => setCreateOpen(false)}
             >
               ยกเลิก
@@ -231,30 +241,30 @@ export function AdminPage() {
       <Modal open={!!editTarget} onClose={() => setEditTarget(null)} title="แก้ไขผู้ใช้">
         <form onSubmit={saveEdit}>
           <ModalFormBody>
-            {editErr && <p className="text-sm text-rose-400">{editErr}</p>}
+            {editErr && <p className="text-sm text-rose-600">{editErr}</p>}
             <label className="block">
-              <span className="text-xs text-slate-400">ชื่อผู้ใช้</span>
+              <span className="text-xs text-slate-600">ชื่อผู้ใช้</span>
               <input
                 required
-                className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-white"
+                className="mt-1 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-slate-900"
                 value={editUsername}
                 onChange={(e) => setEditUsername(e.target.value)}
               />
             </label>
             <label className="block">
-              <span className="text-xs text-slate-400">ชื่อแสดง</span>
+              <span className="text-xs text-slate-600">ชื่อแสดง</span>
               <input
-                className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-white"
+                className="mt-1 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-slate-900"
                 value={editFullName}
                 onChange={(e) => setEditFullName(e.target.value)}
               />
             </label>
             <label className="block">
-              <span className="text-xs text-slate-400">บทบาท</span>
+              <span className="text-xs text-slate-600">บทบาท</span>
               <select
                 disabled={editingSelf}
                 title={editingSelf ? "ไม่สามารถเปลี่ยนบทบาทของตัวเอง" : undefined}
-                className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-white disabled:cursor-not-allowed disabled:opacity-50"
+                className="mt-1 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-slate-900 disabled:cursor-not-allowed disabled:opacity-50"
                 value={editRole}
                 onChange={(e) => setEditRole(e.target.value as "ADMIN" | "OPERATOR")}
               >
@@ -269,28 +279,28 @@ export function AdminPage() {
                 title={editingSelf ? "ใช้ปิดบัญชีตัวเองไม่ได้" : undefined}
                 checked={editActive}
                 onChange={(e) => setEditActive(e.target.checked)}
-                className="rounded border-slate-600"
+                className="rounded border-slate-200"
               />
-              <span className="text-sm text-slate-300">เปิดใช้งานบัญชี</span>
+              <span className="text-sm text-slate-700">เปิดใช้งานบัญชี</span>
             </label>
             <label className="block">
-              <span className="text-xs text-slate-400">รหัสผ่านใหม่ (เว้นว่างถ้าไม่เปลี่ยน)</span>
+              <span className="text-xs text-slate-600">รหัสผ่านใหม่ (เว้นว่างถ้าไม่เปลี่ยน)</span>
               <input
                 type="password"
                 autoComplete="new-password"
-                className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-white"
+                className="mt-1 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-slate-900"
                 value={editPassword}
                 onChange={(e) => setEditPassword(e.target.value)}
               />
             </label>
           </ModalFormBody>
           <ModalFormActions>
-            <button type="submit" className="rounded-lg bg-teal-600 px-4 py-2 text-sm font-semibold text-white">
+            <button type="submit" className="rounded-full bg-gradient-to-r from-[#0000BF] via-[#8b5cf6] to-[#ec4899] text-sm font-bold text-white shadow-lg shadow-fuchsia-500/25 hover:from-[#0000a3] hover:via-[#7c3aed] hover:to-[#db2777] px-4 py-2">
               บันทึก
             </button>
             <button
               type="button"
-              className="rounded-lg border border-slate-600 px-4 py-2 text-sm text-slate-300"
+              className="rounded-lg border border-slate-200 px-4 py-2 text-sm text-slate-700"
               onClick={() => setEditTarget(null)}
             >
               ยกเลิก
@@ -299,75 +309,91 @@ export function AdminPage() {
         </form>
       </Modal>
 
-      <div className="mt-8 overflow-x-auto rounded-2xl border border-slate-800">
-        <table className="w-full text-left text-sm">
-          <thead className="border-b border-slate-800 bg-slate-900/80 text-slate-400">
-            <tr>
-              <th className="p-3">ชื่อผู้ใช้</th>
-              <th className="p-3">ชื่อ</th>
-              <th className="p-3">บทบาท</th>
-              <th className="p-3">สถานะ</th>
-              <th className="p-3 text-right min-w-[200px]">การจัดการ</th>
-            </tr>
-          </thead>
-          <tbody>
-            {rows.length === 0 ? (
-              <tr>
-                <td colSpan={5} className="p-6 text-center text-slate-500">
-                  ยังไม่มีผู้ใช้ในระบบ
-                </td>
-              </tr>
-            ) : filteredRows.length === 0 ? (
-              <tr>
-                <td colSpan={5} className="p-6 text-center text-slate-500">
-                  ไม่มีรายการที่ตรงกับการกรอง
-                </td>
-              </tr>
-            ) : (
-              filteredRows.map((r) => (
-              <tr key={r.id} className="border-b border-slate-800/80">
-                <td className="p-3 font-medium text-white">{r.username}</td>
-                <td className="p-3 text-slate-300">{r.fullName ?? "—"}</td>
-                <td className="p-3 text-slate-400">{r.role}</td>
-                <td className="p-3">
-                  <span className={r.active ? "text-emerald-400" : "text-slate-500"}>
-                    {r.active ? "ใช้งาน" : "ปิด"}
-                  </span>
-                </td>
-                <td className="p-3">
-                  <div className="flex flex-wrap items-center justify-end gap-2">
-                    <button
-                      type="button"
-                      className="rounded-md px-2 py-1 text-xs text-teal-400 hover:bg-slate-800"
-                      onClick={() => openEdit(r)}
-                    >
-                      แก้ไข
-                    </button>
-                    {r.id !== currentUser.id && (
-                      <>
-                        <button
-                          type="button"
-                          className="rounded-md px-2 py-1 text-xs text-slate-400 hover:bg-slate-800"
-                          onClick={() => void toggleActive(r)}
-                        >
-                          {r.active ? "ปิดชั่วคราว" : "เปิดใช้งาน"}
-                        </button>
-                        <button
-                          type="button"
-                          className="rounded-md px-2 py-1 text-xs text-rose-400 hover:bg-slate-800"
-                          onClick={() => void deleteUser(r)}
-                        >
-                          ลบ
-                        </button>
-                      </>
-                    )}
+      <div className="mt-6">
+        {rows.length === 0 ? (
+          <p className="rounded-[1.25rem] border border-[#e8e6fc] bg-white/75 px-4 py-10 text-center text-sm text-slate-500">
+            ยังไม่มีผู้ใช้ในระบบ
+          </p>
+        ) : filteredRows.length === 0 ? (
+          <p className="rounded-[1.25rem] border border-[#e8e6fc] bg-white/75 px-4 py-10 text-center text-sm text-slate-500">
+            ไม่มีรายการที่ตรงกับการกรอง
+          </p>
+        ) : (
+          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+            {filteredRows.map((r, i) => {
+              const isSelf = r.id === currentUser.id;
+              return (
+                <article key={r.id} className={`${listCardClass} p-0`}>
+                  <div className={`absolute inset-y-0 left-0 w-1 ${listCardAccentClass(i)}`} />
+                  <div className="flex flex-1 flex-col gap-3 p-4 pl-5">
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="min-w-0">
+                        <p className="truncate font-black tracking-tight text-[#1e1b4b]">{r.username}</p>
+                        <p className="mt-0.5 truncate text-sm text-slate-600">{r.fullName?.trim() || "—"}</p>
+                      </div>
+                      <span
+                        className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] font-black ${
+                          r.active
+                            ? "bg-emerald-50 text-emerald-700 ring-1 ring-emerald-200"
+                            : "bg-slate-100 text-slate-500 ring-1 ring-slate-200"
+                        }`}
+                      >
+                        {r.active ? "ใช้งาน" : "ปิด"}
+                      </span>
+                    </div>
+
+                    <div className="flex flex-wrap gap-1.5">
+                      <span
+                        className={`rounded-full px-2.5 py-0.5 text-[11px] font-bold ${
+                          r.role === "ADMIN"
+                            ? "bg-[#0000BF]/10 text-[#4d47b6]"
+                            : "bg-white text-slate-600 ring-1 ring-[#e8e6fc]"
+                        }`}
+                      >
+                        {roleLabel(r.role)}
+                      </span>
+                      {isSelf ? (
+                        <span className="rounded-full bg-[#ec4899]/10 px-2.5 py-0.5 text-[11px] font-bold text-[#be185d]">
+                          บัญชีนี้
+                        </span>
+                      ) : null}
+                    </div>
+
+                    <p className="text-[11px] text-slate-500">สร้างเมื่อ {formatCreatedAt(r.createdAt)}</p>
+
+                    <div className="mt-auto flex flex-wrap gap-1.5 border-t border-[#ecebff] pt-3">
+                      <button
+                        type="button"
+                        className="inline-flex h-8 items-center rounded-xl border border-[#e0ddf8] bg-white px-3 text-xs font-bold text-[#4d47b6] shadow-sm transition hover:border-[#0000BF]/30 hover:bg-[#f5f3ff]"
+                        onClick={() => openEdit(r)}
+                      >
+                        แก้ไข
+                      </button>
+                      {!isSelf ? (
+                        <>
+                          <button
+                            type="button"
+                            className="inline-flex h-8 items-center rounded-xl border border-[#e0ddf8] bg-white px-3 text-xs font-bold text-slate-600 shadow-sm transition hover:bg-slate-50"
+                            onClick={() => void toggleActive(r)}
+                          >
+                            {r.active ? "ปิดชั่วคราว" : "เปิดใช้งาน"}
+                          </button>
+                          <button
+                            type="button"
+                            className="inline-flex h-8 items-center rounded-xl border border-rose-200 bg-rose-50 px-3 text-xs font-bold text-rose-600 shadow-sm transition hover:bg-rose-100"
+                            onClick={() => void deleteUser(r)}
+                          >
+                            ลบ
+                          </button>
+                        </>
+                      ) : null}
+                    </div>
                   </div>
-                </td>
-              </tr>
-            ))
-            )}
-          </tbody>
-        </table>
+                </article>
+              );
+            })}
+          </div>
+        )}
       </div>
     </div>
   );

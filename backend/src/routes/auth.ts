@@ -34,6 +34,7 @@ authRouter.post("/login", async (req, res, next) => {
         username: user.username,
         role: user.role,
         fullName: user.fullName,
+        avatarUrl: user.avatarUrl,
         active: user.active,
       },
     });

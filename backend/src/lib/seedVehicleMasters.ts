@@ -4,10 +4,31 @@ const DEFAULT_TYPES = ["รถตู้", "รถกระบะ", "รถเก
 
 const DEFAULT_WORK_GROUPS = ["ขนส่งเงินสด", "ประจำฐาน / สาขา", "สนับสนุนภารกิจ", "ซ่อมบำรุง / สำรอง", "อื่นๆ"];
 
-const DEFAULT_STATUSES = ["ใช้งานปกติ", "ซ่อมบำรุง", "พักใช้ชั่วคราว", "จำหน่าย / คัดจำหน่าย", "อื่นๆ"];
+/** สถานะหลักที่ต้องการให้มีเสมอ — รวม «ใช้งาน» และ «จำหน่าย» */
+const DEFAULT_STATUSES = ["ใช้งาน", "ซ่อมบำรุง", "พักใช้ชั่วคราว", "จำหน่าย", "อื่นๆ"];
+
+/** สถานะเก่าที่ยัง upsert ไว้เพื่อข้อมูลเดิมไม่พัง */
+const LEGACY_STATUSES = ["ใช้งานปกติ", "จำหน่าย / คัดจำหน่าย"];
 
 function vehicleStatusExcludesFromFleetCare(name: string): boolean {
   return /จำหน่าย|ส่งคืน/.test(name);
+}
+
+async function upsertStatuses(names: string[], startOrder: number): Promise<number> {
+  let order = startOrder;
+  for (const name of names) {
+    const excludesFromFleetCare = vehicleStatusExcludesFromFleetCare(name);
+    await prisma.vehicleStatus.upsert({
+      where: { name },
+      create: { name, sortOrder: order, excludesFromFleetCare },
+      update: {
+        sortOrder: order,
+        ...(excludesFromFleetCare ? { excludesFromFleetCare: true } : {}),
+      },
+    });
+    order++;
+  }
+  return order;
 }
 
 async function syncVehicleStatusExcludesFlags(): Promise<void> {
@@ -40,17 +61,8 @@ export async function seedVehicleMasterData(): Promise<void> {
     console.log("[seed] work category groups created");
   }
 
-  const stCount = await prisma.vehicleStatus.count();
-  if (stCount === 0) {
-    let s = 0;
-    for (const name of DEFAULT_STATUSES) {
-      await prisma.vehicleStatus.create({
-        data: { name, sortOrder: s++, excludesFromFleetCare: vehicleStatusExcludesFromFleetCare(name) },
-      });
-    }
-    console.log("[seed] vehicle statuses created");
-  }
-
+  let nextOrder = await upsertStatuses(DEFAULT_STATUSES, 0);
+  await upsertStatuses(LEGACY_STATUSES, nextOrder);
   await syncVehicleStatusExcludesFlags();
 
   const legacy = await prisma.vehicle.findMany({ where: { brand: "" } });

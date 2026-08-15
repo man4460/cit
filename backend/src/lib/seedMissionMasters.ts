@@ -2,10 +2,17 @@ import { prisma } from "./prisma.js";
 
 export async function seedMissionMasterData() {
   const personnelRoles = [
-    { name: "คนขับ", sortOrder: 0 },
-    { name: "เจ้าหน้าที่รักษาความปลอดภัย", sortOrder: 1 },
-    { name: "หัวหน้าทีม", sortOrder: 2 },
-    { name: "อื่นๆ (บุคลากร)", sortOrder: 3 },
+    { name: "ผอ.เดินทาง", sortOrder: 0 },
+    { name: "ผช.ผอ.เดินทาง", sortOrder: 1 },
+    { name: "จนท.ฝรภ.", sortOrder: 2 },
+    { name: "ตร.ทางหลวง", sortOrder: 3 },
+    { name: "ตร.กองปราบ", sortOrder: 4 },
+    { name: "ตร.อรินทราช", sortOrder: 5 },
+    { name: "ตำรวจ / ประสาน", sortOrder: 6 },
+    { name: "คนขับ", sortOrder: 7 },
+    { name: "เจ้าหน้าที่รักษาความปลอดภัย", sortOrder: 8 },
+    { name: "หัวหน้าทีม", sortOrder: 9 },
+    { name: "อื่นๆ (บุคลากร)", sortOrder: 10 },
   ];
   for (const r of personnelRoles) {
     await prisma.missionPersonnelRoleMaster.upsert({

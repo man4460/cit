@@ -18,17 +18,18 @@
 
 ### 1) Backend
 
+ใช้ **MySQL ที่ติดตั้งบนเครื่อง** (พอร์ต 3306):
+
 ```bash
 cd backend
 cp .env.example .env
-# แก้ .env ตามต้องการ (อย่างน้อย DATABASE_URL, JWT_SECRET, INITIAL_ADMIN_PASSWORD)
+# แก้ DATABASE_URL เป็น mysql://USER:PASSWORD@127.0.0.1:3306/cit_mission
 npm install
-npx prisma generate
-npx prisma db push
+npm run db:setup-mysql
 npm run bootstrap:admin
 ```
 
-- ค่าเริ่มต้นฐานข้อมูลเป็น **SQLite** (`DATABASE_URL="file:./dev.db"` ใน `.env.example`)
+- `db:setup-mysql` สร้าง database (ถ้ายังไม่มี) แล้ว `prisma db push`
 - `bootstrap:admin` สร้างผู้ดูแลคนแรกเมื่อยังไม่มี user และมี `INITIAL_ADMIN_PASSWORD` ใน `.env`
 
 ### 2) Frontend
@@ -75,7 +76,7 @@ npm run dev
 
 | ตัวแปร | ที่ใช้ | หมายเหตุ |
 |--------|--------|----------|
-| `DATABASE_URL` | backend | SQLite หรือ PostgreSQL (ดู `prisma/schema.prisma`) |
+| `DATABASE_URL` | backend | MySQL ในเครื่อง เช่น `mysql://root:PASSWORD@127.0.0.1:3306/cit_mission` |
 | `PORT`, `HOST` | backend | ค่าเริ่มต้น 4000, `0.0.0.0` |
 | `JWT_SECRET` | backend | ตั้งยาวและสุ่มใน production |
 | `UPLOAD_DIR` | backend | ที่เก็บไฟล์อัปโหลด (เสิร์ฟที่ `/uploads`) |
@@ -106,9 +107,10 @@ npm run build
 
 ## ฐานข้อมูลและสำรองข้อมูล
 
-- **SQLite**: ไฟล์อยู่ตาม `DATABASE_URL` (เช่น `backend/dev.db`) — สำรองโดยคัดลอกไฟล์ขณะหยุดบริการหรือใช้สคริปต์สำรอง
-- รันสำรอง (ถ้ามีสคริปต์): `cd backend && npm run db:backup`
-- **PostgreSQL**: ปรับ `provider` ใน `prisma/schema.prisma` และ `DATABASE_URL` แล้วใช้ `prisma migrate` ตาม workflow ของทีม
+- **MySQL ในเครื่อง (ค่าเริ่มต้น):** ตั้ง `DATABASE_URL` ใน `backend/.env` แล้วรัน `npm run db:setup-mysql`
+- สำรอง: `cd backend && npm run db:backup` (mysqldump → `backend/backups/`)
+- ไฟล์อัปโหลด (`uploads/`) สำรองแยกจากฐานข้อมูล และห้ามขึ้น Git
+- ข้อมูล/รหัสลับ (`.env`, dump, uploads) **ย้ายนอก Git** ไปยัง server
 
 ## สคริปต์อื่นใน backend
 

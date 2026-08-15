@@ -17,12 +17,12 @@ export class AppErrorBoundary extends Component<Props, State> {
   render() {
     if (this.state.err) {
       return (
-        <div className="flex min-h-screen min-h-[100dvh] flex-col items-center justify-center gap-4 bg-slate-950 px-4 text-center">
-          <p className="text-lg font-semibold text-white">เกิดข้อผิดพลาดในแอป</p>
-          <p className="max-w-md text-sm text-slate-400 whitespace-pre-wrap">{this.state.err.message}</p>
+        <div className="flex min-h-screen min-h-[100dvh] flex-col items-center justify-center gap-4 px-4 text-center">
+          <p className="text-lg font-black text-[#1e1b3a]">เกิดข้อผิดพลาดในแอป</p>
+          <p className="max-w-md text-sm text-slate-600 whitespace-pre-wrap">{this.state.err.message}</p>
           <button
             type="button"
-            className="rounded-lg bg-teal-600 px-4 py-2 text-sm font-medium text-white hover:bg-teal-500"
+            className="rounded-full bg-gradient-to-r from-[#0000BF] via-[#8b5cf6] to-[#ec4899] px-4 py-2 text-sm font-bold text-white shadow-lg shadow-fuchsia-500/25 hover:from-[#0000a3] hover:via-[#7c3aed] hover:to-[#db2777]"
             onClick={() => window.location.reload()}
           >
             โหลดหน้าใหม่

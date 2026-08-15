@@ -7,6 +7,7 @@ import cors from "cors";
 import { ensureUploadDir } from "./lib/upload.js";
 import { ensureBootstrapAdmin } from "./lib/bootstrapAdmin.js";
 import { authMiddleware } from "./middleware/auth.js";
+import { auditTrailMiddleware } from "./middleware/auditTrail.js";
 import { authRouter } from "./routes/auth.js";
 import { meRouter } from "./routes/me.js";
 import { adminUsersRouter } from "./routes/adminUsers.js";
@@ -21,6 +22,7 @@ import { workCategoryGroupsRouter } from "./routes/workCategoryGroups.js";
 import { vehicleStatusesRouter } from "./routes/vehicleStatuses.js";
 import { seedVehicleMasterData } from "./lib/seedVehicleMasters.js";
 import { seedAssetMasterData } from "./lib/seedAssetMasters.js";
+import { seedRadioAssets } from "./lib/seedRadios.js";
 import { assetCategoriesRouter } from "./routes/assetCategories.js";
 import { assetRoutinesRouter } from "./routes/assetRoutines.js";
 import { assetAffiliationsRouter } from "./routes/assetAffiliations.js";
@@ -37,7 +39,18 @@ import { trainingCoursesRouter } from "./routes/trainingCourses.js";
 import { trainingEnrollmentsRouter } from "./routes/trainingEnrollments.js";
 import { documentTypesRouter } from "./routes/documentTypes.js";
 import { libraryDocumentsRouter } from "./routes/libraryDocuments.js";
+import { fireExtinguishersRouter } from "./routes/fireExtinguishers.js";
+import { fireHostsRouter } from "./routes/fireHosts.js";
+import { firearmsRouter } from "./routes/firearms.js";
+import { ammunitionRouter } from "./routes/ammunition.js";
+import { bulletproofVestsRouter } from "./routes/bulletproofVests.js";
+import { auditLogsRouter } from "./routes/auditLogs.js";
+import { securityIncidentsRouter } from "./routes/securityIncidents.js";
+import { budgetRouter } from "./routes/budget.js";
 import { seedDocumentMasterData } from "./lib/seedDocumentMasters.js";
+import { seedFireExtinguisherData } from "./lib/seedFireExtinguishers.js";
+import { seedWeaponData } from "./lib/seedWeapons.js";
+import { seedBulletproofVestData } from "./lib/seedBulletproofVests.js";
 
 const app = express();
 const port = Number(process.env.PORT) || 4000;
@@ -60,6 +73,7 @@ app.use("/api/auth", authRouter);
 
 const secured = express.Router();
 secured.use(authMiddleware);
+secured.use(auditTrailMiddleware());
 secured.use(meRouter);
 secured.use("/personnel-categories", personnelCategoriesRouter);
 secured.use("/organization-unit-types", organizationUnitTypesRouter);
@@ -68,6 +82,11 @@ secured.use("/training-courses", trainingCoursesRouter);
 secured.use("/training-enrollments", trainingEnrollmentsRouter);
 secured.use("/document-types", documentTypesRouter);
 secured.use("/library-documents", libraryDocumentsRouter);
+secured.use("/fire-extinguishers", fireExtinguishersRouter);
+secured.use("/fire-hosts", fireHostsRouter);
+secured.use("/firearms", firearmsRouter);
+secured.use("/ammunition", ammunitionRouter);
+secured.use("/bulletproof-vests", bulletproofVestsRouter);
 secured.use("/vehicle-types", vehicleTypesRouter);
 secured.use("/work-category-groups", workCategoryGroupsRouter);
 secured.use("/vehicle-statuses", vehicleStatusesRouter);
@@ -85,6 +104,9 @@ secured.use("/mission-expense-types", missionExpenseTypesRouter);
 secured.use("/missions", missionsRouter);
 secured.use("/tasks", tasksRouter);
 secured.use("/admin/users", adminUsersRouter);
+secured.use("/audit-logs", auditLogsRouter);
+secured.use("/security-incidents", securityIncidentsRouter);
+secured.use("/budget", budgetRouter);
 
 app.use("/api", secured);
 
@@ -131,8 +153,12 @@ void ensureBootstrapAdmin()
   .then(() => seedPersonnelMasterData())
   .then(() => seedVehicleMasterData())
   .then(() => seedAssetMasterData())
+  .then(() => seedRadioAssets())
   .then(() => seedMissionMasterData())
   .then(() => seedDocumentMasterData())
+  .then(() => seedFireExtinguisherData())
+  .then(() => seedWeaponData())
+  .then(() => seedBulletproofVestData())
   .then(() => {
     app.listen(port, host, () => {
       const hint = host === "0.0.0.0" ? "ทุก interface (LAN ใช้ http://<IP-เครื่องนี้>:" + port + ")" : host;

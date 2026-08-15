@@ -81,25 +81,25 @@ export function AssetPermitModal({
   return (
     <Modal open={open} onClose={onClose} title={`ส่วนการขออนุญาต — ${itemLabel}`} overlayZClass="z-[100]">
       {loading && !detail ? (
-        <p className="text-slate-500">กำลังโหลด…</p>
+        <p className="text-slate-700">กำลังโหลด…</p>
       ) : (
         <>
           <ModalFormBody className="!space-y-4">
             {permit ? (
-              <div className="rounded-lg border border-slate-700 bg-slate-950/50 p-3">
-                <p className="text-xs text-slate-500">ไฟล์แนบปัจจุบัน</p>
-                <p className="mt-1 truncate text-sm text-slate-200">{permit.originalName ?? "เอกสาร"}</p>
+              <div className="rounded-lg border border-slate-200 bg-white/80 p-3">
+                <p className="text-xs text-slate-600">ไฟล์แนบปัจจุบัน</p>
+                <p className="mt-1 truncate text-sm text-slate-800">{permit.originalName ?? "เอกสาร"}</p>
                 <div className="mt-3 flex flex-wrap gap-2">
                   <button
                     type="button"
-                    className="rounded-lg bg-teal-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-teal-500"
+                    className="rounded-full bg-gradient-to-r from-[#0000BF] via-[#8b5cf6] to-[#ec4899] text-sm font-bold text-white shadow-lg shadow-fuchsia-500/25 hover:from-[#0000a3] hover:via-[#7c3aed] hover:to-[#db2777] px-3 py-1.5"
                     onClick={openPermit}
                   >
                     แสดง / เปิดไฟล์
                   </button>
                   <button
                     type="button"
-                    className="rounded-lg border border-slate-600 px-3 py-1.5 text-sm text-slate-300 hover:bg-slate-800"
+                    className="rounded-lg border border-slate-200 px-3 py-1.5 text-sm text-slate-700 hover:bg-slate-100"
                     onClick={() => void removePermit()}
                   >
                     ลบใบอนุญาต
@@ -107,21 +107,21 @@ export function AssetPermitModal({
                 </div>
               </div>
             ) : (
-              <p className="text-sm text-slate-500">ยังไม่มีใบอนุญาตแนบ</p>
+              <p className="text-sm text-slate-600">ยังไม่มีใบอนุญาตแนบ</p>
             )}
             <form onSubmit={onUpload} className="space-y-2">
               <label className="block">
-                <span className="text-xs font-medium text-slate-400">
+                <span className="text-xs font-medium text-slate-700">
                   {permit ? "แทนที่ด้วยไฟล์ใหม่" : "แนบใบอนุญาต (รูปหรือ PDF)"}
                 </span>
                 <input
                   id={inputId}
                   type="file"
                   accept="image/*,.pdf,application/pdf"
-                  className="mt-1 block w-full text-sm text-slate-300 file:mr-3 file:rounded-lg file:border-0 file:bg-teal-600 file:px-3 file:py-2 file:text-sm file:font-medium file:text-white"
+                  className="mt-1 block w-full text-sm text-slate-700 file:mr-3 file:rounded-lg file:border-0 file:bg-[#0000BF] file:px-3 file:py-2 file:text-sm file:font-medium file:text-[#2e2a58]"
                 />
               </label>
-              <button type="submit" className="rounded-lg bg-teal-600 px-4 py-2 text-sm font-semibold text-white hover:bg-teal-500">
+              <button type="submit" className="rounded-full bg-gradient-to-r from-[#0000BF] via-[#8b5cf6] to-[#ec4899] text-sm font-bold text-white shadow-lg shadow-fuchsia-500/25 hover:from-[#0000a3] hover:via-[#7c3aed] hover:to-[#db2777] px-4 py-2">
                 อัปโหลด
               </button>
             </form>
@@ -129,7 +129,7 @@ export function AssetPermitModal({
           <ModalFormActions>
             <button
               type="button"
-              className="rounded-lg border border-slate-600 px-4 py-2 text-sm text-slate-300 hover:bg-slate-800"
+              className="rounded-lg border border-slate-200 px-4 py-2 text-sm text-slate-700 hover:bg-slate-100"
               onClick={onClose}
             >
               ปิด

@@ -1,13 +1,61 @@
 import { Router } from "express";
 import { Prisma, VehicleWeeklyCheckResult } from "@prisma/client";
+import { diffSummary, resolveActorLabel, writeAuditLog } from "../lib/auditLog.js";
 import { logVehicleDispositionIfNeeded } from "../lib/dispositionLog.js";
 import { vehicleFleetCareActiveWhere, vehicleRetiredFromFleetCareWhere } from "../lib/fleetCareWhere.js";
 import { prisma } from "../lib/prisma.js";
 import { routeParam } from "../lib/routeParam.js";
 import { requireAdmin } from "../middleware/auth.js";
-import { publicFileUrl, upload } from "../lib/upload.js";
+import { persistUpload, upload } from "../lib/upload.js";
 
 export const vehiclesRouter = Router();
+
+function vehicleAuditSnapshot(v: {
+  id: string;
+  licensePlate: string;
+  brandModel: string;
+  brand: string;
+  model: string;
+  assetCode: string | null;
+  vehicleStatusId: string | null;
+  vehicleTypeId: string | null;
+  workCategoryGroupId: string | null;
+  currentMileage: unknown;
+  notes: string | null;
+  purchasedAt: Date | null;
+  vehicleStatus?: { name: string } | null;
+}) {
+  return {
+    id: v.id,
+    licensePlate: v.licensePlate,
+    brandModel: v.brandModel,
+    brand: v.brand,
+    model: v.model,
+    assetCode: v.assetCode,
+    vehicleStatusId: v.vehicleStatusId,
+    vehicleStatusName: v.vehicleStatus?.name ?? null,
+    vehicleTypeId: v.vehicleTypeId,
+    workCategoryGroupId: v.workCategoryGroupId,
+    currentMileage: String(v.currentMileage ?? ""),
+    notes: v.notes,
+    purchasedAt: v.purchasedAt?.toISOString() ?? null,
+  };
+}
+
+const VEHICLE_AUDIT_KEYS = [
+  "licensePlate",
+  "brandModel",
+  "brand",
+  "model",
+  "assetCode",
+  "vehicleStatusId",
+  "vehicleStatusName",
+  "vehicleTypeId",
+  "workCategoryGroupId",
+  "currentMileage",
+  "notes",
+  "purchasedAt",
+];
 
 function yyyyMmDdUtcNoon(s: string): Date | null {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(s)) return null;
@@ -368,6 +416,18 @@ vehiclesRouter.post("/", async (req, res, next) => {
       include: vehicleListInclude,
     });
 
+    const actor = await resolveActorLabel(prisma, req.auth?.userId);
+    const afterSnap = vehicleAuditSnapshot(row);
+    await writeAuditLog(prisma, {
+      entityType: "Vehicle",
+      entityId: row.id,
+      action: "CREATE",
+      summary: `ยานพาหนะ ${row.licensePlate}: สร้างใหม่`,
+      after: afterSnap,
+      actor,
+      req,
+    });
+
     const dn = (req.body as { dispositionNote?: unknown })?.dispositionNote;
     await logVehicleDispositionIfNeeded(prisma, {
       wasExcluded: false,
@@ -376,6 +436,7 @@ vehiclesRouter.post("/", async (req, res, next) => {
       brandModel: row.brandModel,
       nextStatus: row.vehicleStatus,
       note: dn != null ? String(dn) : undefined,
+      actor: { actorUserId: actor.userId, actorUsername: actor.username },
     });
 
     res.status(201).json(row);
@@ -463,6 +524,20 @@ vehiclesRouter.put("/:id", async (req, res, next) => {
       include: vehicleListInclude,
     });
 
+    const actor = await resolveActorLabel(prisma, req.auth?.userId);
+    const beforeSnap = vehicleAuditSnapshot(existing);
+    const afterSnap = vehicleAuditSnapshot(row);
+    await writeAuditLog(prisma, {
+      entityType: "Vehicle",
+      entityId: row.id,
+      action: "UPDATE",
+      summary: diffSummary(`ยานพาหนะ ${row.licensePlate}`, beforeSnap, afterSnap, VEHICLE_AUDIT_KEYS),
+      before: beforeSnap,
+      after: afterSnap,
+      actor,
+      req,
+    });
+
     const wasExcluded = existing.vehicleStatus?.excludesFromFleetCare === true;
     await logVehicleDispositionIfNeeded(prisma, {
       wasExcluded,
@@ -471,6 +546,7 @@ vehiclesRouter.put("/:id", async (req, res, next) => {
       brandModel: row.brandModel,
       nextStatus: row.vehicleStatus,
       note: dispositionNote != null ? String(dispositionNote) : undefined,
+      actor: { actorUserId: actor.userId, actorUsername: actor.username },
     });
 
     res.json(row);
@@ -485,7 +561,22 @@ vehiclesRouter.put("/:id", async (req, res, next) => {
 
 vehiclesRouter.delete("/:id", requireAdmin, async (req, res, next) => {
   try {
-    await prisma.vehicle.delete({ where: { id: routeParam(req.params.id) } });
+    const existing = await prisma.vehicle.findUnique({
+      where: { id: routeParam(req.params.id) },
+      include: { vehicleStatus: true },
+    });
+    if (!existing) return res.status(404).json({ error: "Not found" });
+    await prisma.vehicle.delete({ where: { id: existing.id } });
+    const actor = await resolveActorLabel(prisma, req.auth?.userId);
+    await writeAuditLog(prisma, {
+      entityType: "Vehicle",
+      entityId: existing.id,
+      action: "DELETE",
+      summary: `ยานพาหนะ ${existing.licensePlate}: ลบ`,
+      before: vehicleAuditSnapshot(existing),
+      actor,
+      req,
+    });
     res.status(204).send();
   } catch (e: unknown) {
     if (e && typeof e === "object" && "code" in e && (e as { code: string }).code === "P2025")
@@ -510,19 +601,27 @@ vehiclesRouter.post("/:id/photos", upload.array("photos", 24), async (req, res, 
     let order = (maxSort._max.sortOrder ?? -1) + 1;
     const created: Awaited<ReturnType<typeof prisma.vehicleDocument.create>>[] = [];
     for (const f of files) {
-      const mime = f.mimetype ?? "";
-      if (!mime.startsWith("image/")) continue;
-      const row = await prisma.vehicleDocument.create({
-        data: {
-          vehicleId,
-          fileUrl: publicFileUrl(f.filename),
-          mimeType: mime,
-          originalName: f.originalname,
-          kind: "PHOTO",
-          sortOrder: order++,
-        },
-      });
-      created.push(row);
+      try {
+        const saved = await persistUpload(f, {
+          module: "vehicles",
+          userId: req.auth?.userId,
+          kind: "photo",
+          forceImage: true,
+        });
+        const row = await prisma.vehicleDocument.create({
+          data: {
+            vehicleId,
+            fileUrl: saved.fileUrl,
+            mimeType: saved.mimeType,
+            originalName: saved.displayName,
+            kind: "PHOTO",
+            sortOrder: order++,
+          },
+        });
+        created.push(row);
+      } catch {
+        /* skip invalid */
+      }
     }
     if (!created.length) return res.status(400).json({ error: "อัปโหลดเฉพาะไฟล์รูปภาพ (image/*)" });
     res.status(201).json(created);
@@ -535,12 +634,18 @@ vehiclesRouter.post("/:id/photos", upload.array("photos", 24), async (req, res, 
 vehiclesRouter.post("/:id/documents", upload.single("file"), async (req, res, next) => {
   try {
     if (!req.file) return res.status(400).json({ error: "file required" });
+    const saved = await persistUpload(req.file, {
+      module: "vehicles",
+      userId: req.auth?.userId,
+      kind: "doc",
+      allowPdf: true,
+    });
     const row = await prisma.vehicleDocument.create({
       data: {
         vehicleId: routeParam(req.params.id),
-        fileUrl: publicFileUrl(req.file.filename),
-        mimeType: req.file.mimetype,
-        originalName: req.file.originalname,
+        fileUrl: saved.fileUrl,
+        mimeType: saved.mimeType,
+        originalName: saved.displayName,
         kind: "DOCUMENT",
       },
     });
@@ -548,6 +653,7 @@ vehiclesRouter.post("/:id/documents", upload.single("file"), async (req, res, ne
   } catch (e: unknown) {
     if (e && typeof e === "object" && "code" in e && (e as { code: string }).code === "P2003")
       return res.status(404).json({ error: "Vehicle not found" });
+    if (e instanceof Error) return res.status(400).json({ error: e.message });
     next(e);
   }
 });
@@ -560,6 +666,46 @@ vehiclesRouter.delete("/:vehicleId/documents/:docId", async (req, res, next) => 
     if (!existing) return res.status(404).json({ error: "Not found" });
     await prisma.vehicleDocument.delete({ where: { id: existing.id } });
     res.status(204).send();
+  } catch (e) {
+    next(e);
+  }
+});
+
+/** ตั้งรูปเป็นรูปหน้าการ์ด (sortOrder = 0) */
+vehiclesRouter.post("/:vehicleId/documents/:docId/card-front", async (req, res, next) => {
+  try {
+    const vehicleId = routeParam(req.params.vehicleId);
+    const docId = routeParam(req.params.docId);
+    const target = await prisma.vehicleDocument.findFirst({
+      where: { id: docId, vehicleId, kind: "PHOTO" },
+    });
+    if (!target) return res.status(404).json({ error: "ไม่พบรูปนี้" });
+
+    const photos = await prisma.vehicleDocument.findMany({
+      where: { vehicleId, kind: "PHOTO" },
+      orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }],
+    });
+
+    await prisma.$transaction(async (tx) => {
+      let order = 1;
+      for (const p of photos) {
+        if (p.id === target.id) continue;
+        await tx.vehicleDocument.update({
+          where: { id: p.id },
+          data: { sortOrder: order++ },
+        });
+      }
+      await tx.vehicleDocument.update({
+        where: { id: target.id },
+        data: { sortOrder: 0 },
+      });
+    });
+
+    const updated = await prisma.vehicleDocument.findMany({
+      where: { vehicleId, kind: "PHOTO" },
+      orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }],
+    });
+    res.json(updated);
   } catch (e) {
     next(e);
   }

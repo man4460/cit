@@ -10,9 +10,13 @@ frontend/dist/
 .env.local
 .env.*.local
 
-# SQLite (ข้อมูลเครื่อง dev)
+# SQLite (legacy)
 *.db
 *.db-journal
+
+# DB backups (อย่าขึ้น Git)
+backend/backups/
+*.sql
 
 # ไฟล์อัปโหลดจากผู้ใช้
 backend/uploads/

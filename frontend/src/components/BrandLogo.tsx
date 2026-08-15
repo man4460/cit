@@ -2,7 +2,7 @@ type BrandLogoProps = {
   variant?: "horizontal" | "stacked";
   className?: string;
   /**
-   * ปรับโทนสีให้เข้ากับ UI (อมเขียวมรกต/นวลขึ้นบนพื้นเข้ม)
+   * ปรับโทนสีให้เข้ากับ UI แบรนด์น้ำเงิน–ม่วง (โทน Ai Cluster)
    * ตั้ง false ถ้าต้องการสีจากไฟล์ PNG ตรง ๆ
    */
   themed?: boolean;
@@ -10,8 +10,8 @@ type BrandLogoProps = {
 
 export function BrandLogo({ variant = "horizontal", className = "", themed = true }: BrandLogoProps) {
   const src = variant === "stacked" ? "/logo-stacked.png" : "/logo-horizontal.png";
-  /** โทนเข้ากับ accent เขียวมรกต (#0d9488 / teal) บนพื้น slate เข้ม */
-  const themedFilter = "brightness(1.08) saturate(0.82) hue-rotate(26deg) contrast(1.06)";
+  /** โทนเข้ากับแบรนด์ #0000BF / violet บนพื้นอ่อน */
+  const themedFilter = "brightness(1.02) saturate(1.05) hue-rotate(-8deg) contrast(1.04)";
 
   return (
     <span className="inline-flex max-w-full select-none bg-transparent align-middle [isolation:isolate]">

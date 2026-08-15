@@ -1,7 +1,8 @@
 import { Router } from "express";
+import { diffSummary, resolveActorLabel, writeAuditLog } from "../lib/auditLog.js";
 import { prisma } from "../lib/prisma.js";
 import { routeParam } from "../lib/routeParam.js";
-import { publicFileUrl, upload } from "../lib/upload.js";
+import { persistUpload, upload } from "../lib/upload.js";
 
 export const personnelRouter = Router();
 
@@ -10,6 +11,47 @@ const personnelInclude = {
   organizationUnitType: true,
   beneficiaries: { orderBy: { sortOrder: "asc" as const } },
 } as const;
+
+function personnelAuditSnapshot(p: {
+  id: string;
+  fullName: string;
+  idNumber: string;
+  rank: string | null;
+  position: string | null;
+  phone: string | null;
+  personnelCategoryId: string | null;
+  organizationUnitTypeId: string | null;
+  remarks: string | null;
+  personnelCategory?: { name: string } | null;
+  organizationUnitType?: { name: string } | null;
+}) {
+  return {
+    id: p.id,
+    fullName: p.fullName,
+    idNumber: p.idNumber,
+    rank: p.rank,
+    position: p.position,
+    phone: p.phone,
+    personnelCategoryId: p.personnelCategoryId,
+    personnelCategoryName: p.personnelCategory?.name ?? null,
+    organizationUnitTypeId: p.organizationUnitTypeId,
+    organizationUnitTypeName: p.organizationUnitType?.name ?? null,
+    remarks: p.remarks,
+  };
+}
+
+const PERSONNEL_AUDIT_KEYS = [
+  "fullName",
+  "idNumber",
+  "rank",
+  "position",
+  "phone",
+  "personnelCategoryId",
+  "personnelCategoryName",
+  "organizationUnitTypeId",
+  "organizationUnitTypeName",
+  "remarks",
+];
 
 type BenInput = {
   fullName: string;
@@ -63,6 +105,60 @@ personnelRouter.get("/", async (_req, res, next) => {
   }
 });
 
+personnelRouter.get("/:id/missions", async (req, res, next) => {
+  try {
+    const id = routeParam(req.params.id);
+    const person = await prisma.personnel.findUnique({ where: { id }, select: { id: true } });
+    if (!person) return res.status(404).json({ error: "Not found" });
+
+    const rows = await prisma.missionPersonnel.findMany({
+      where: { personnelId: id },
+      include: {
+        personnelRole: true,
+        mission: {
+          select: {
+            id: true,
+            code: true,
+            title: true,
+            status: true,
+            plannedStart: true,
+            plannedEnd: true,
+            route: { select: { startLocation: true, endLocation: true } },
+          },
+        },
+      },
+      orderBy: { mission: { plannedStart: "desc" } },
+    });
+
+    const compensationTotal = rows.reduce(
+      (s, r) => s + Number(r.compensationRate ?? 0),
+      0,
+    );
+
+    res.json({
+      personnelId: id,
+      missionCount: rows.length,
+      compensationTotal: String(compensationTotal),
+      missions: rows.map((r) => ({
+        assignmentId: r.id,
+        missionId: r.mission.id,
+        code: r.mission.code,
+        title: r.mission.title,
+        status: r.mission.status,
+        plannedStart: r.mission.plannedStart?.toISOString() ?? null,
+        plannedEnd: r.mission.plannedEnd?.toISOString() ?? null,
+        routeLabel: r.mission.route
+          ? `${r.mission.route.startLocation} → ${r.mission.route.endLocation}`
+          : null,
+        roleName: r.personnelRole.name,
+        compensationRate: r.compensationRate.toString(),
+      })),
+    });
+  } catch (e) {
+    next(e);
+  }
+});
+
 personnelRouter.get("/:id", async (req, res, next) => {
   try {
     const row = await prisma.personnel.findUnique({
@@ -109,7 +205,20 @@ personnelRouter.post("/", upload.single("photo"), async (req, res, next) => {
     }
 
     const beneficiaries = parseBeneficiaries(benRaw);
-    const photoUrl = req.file ? publicFileUrl(req.file.filename) : b.photoUrl || null;
+    let photoUrl: string | null = b.photoUrl || null;
+    if (req.file) {
+      try {
+        const saved = await persistUpload(req.file, {
+          module: "personnel",
+          userId: req.auth?.userId,
+          kind: "photo",
+          forceImage: true,
+        });
+        photoUrl = saved.fileUrl;
+      } catch (e) {
+        return res.status(400).json({ error: e instanceof Error ? e.message : "อัปโหลดรูปไม่สำเร็จ" });
+      }
+    }
 
     const row = await prisma.personnel.create({
       data: {
@@ -137,6 +246,16 @@ personnelRouter.post("/", upload.single("photo"), async (req, res, next) => {
         },
       },
       include: personnelInclude,
+    });
+    const actor = await resolveActorLabel(prisma, req.auth?.userId);
+    await writeAuditLog(prisma, {
+      entityType: "Personnel",
+      entityId: row.id,
+      action: "CREATE",
+      summary: `บุคลากร ${row.fullName}: สร้างใหม่`,
+      after: personnelAuditSnapshot(row),
+      actor,
+      req,
     });
     res.status(201).json(row);
   } catch (e: unknown) {
@@ -186,10 +305,27 @@ personnelRouter.put("/:id", upload.single("photo"), async (req, res, next) => {
     if (insuranceExpiry !== undefined) data.insuranceExpiry = parseOptionalDate(insuranceExpiry);
     if (insuranceNotes !== undefined) data.insuranceNotes = insuranceNotes ? String(insuranceNotes) : null;
     if (remarks !== undefined) data.remarks = remarks || null;
-    if (req.file) data.photoUrl = publicFileUrl(req.file.filename);
-    else if (bodyPhoto !== undefined) data.photoUrl = bodyPhoto || null;
+    if (req.file) {
+      try {
+        const saved = await persistUpload(req.file, {
+          module: "personnel",
+          userId: req.auth?.userId,
+          kind: "photo",
+          forceImage: true,
+        });
+        data.photoUrl = saved.fileUrl;
+      } catch (e) {
+        return res.status(400).json({ error: e instanceof Error ? e.message : "อัปโหลดรูปไม่สำเร็จ" });
+      }
+    } else if (bodyPhoto !== undefined) data.photoUrl = bodyPhoto || null;
 
     const beneficiaries = benRaw !== undefined ? parseBeneficiaries(benRaw) : null;
+
+    const existing = await prisma.personnel.findUnique({
+      where: { id },
+      include: { personnelCategory: true, organizationUnitType: true },
+    });
+    if (!existing) return res.status(404).json({ error: "Not found" });
 
     const row = await prisma.$transaction(async (tx) => {
       if (beneficiaries !== null) {
@@ -217,6 +353,20 @@ personnelRouter.put("/:id", upload.single("photo"), async (req, res, next) => {
       });
     });
 
+    const actor = await resolveActorLabel(prisma, req.auth?.userId);
+    const beforeSnap = personnelAuditSnapshot(existing);
+    const afterSnap = personnelAuditSnapshot(row);
+    await writeAuditLog(prisma, {
+      entityType: "Personnel",
+      entityId: row.id,
+      action: "UPDATE",
+      summary: diffSummary(`บุคลากร ${row.fullName}`, beforeSnap, afterSnap, PERSONNEL_AUDIT_KEYS),
+      before: beforeSnap,
+      after: afterSnap,
+      actor,
+      req,
+    });
+
     res.json(row);
   } catch (e: unknown) {
     if (e && typeof e === "object" && "code" in e && (e as { code: string }).code === "P2025")
@@ -229,7 +379,22 @@ personnelRouter.put("/:id", upload.single("photo"), async (req, res, next) => {
 
 personnelRouter.delete("/:id", async (req, res, next) => {
   try {
-    await prisma.personnel.delete({ where: { id: routeParam(req.params.id) } });
+    const existing = await prisma.personnel.findUnique({
+      where: { id: routeParam(req.params.id) },
+      include: { personnelCategory: true, organizationUnitType: true },
+    });
+    if (!existing) return res.status(404).json({ error: "Not found" });
+    await prisma.personnel.delete({ where: { id: existing.id } });
+    const actor = await resolveActorLabel(prisma, req.auth?.userId);
+    await writeAuditLog(prisma, {
+      entityType: "Personnel",
+      entityId: existing.id,
+      action: "DELETE",
+      summary: `บุคลากร ${existing.fullName}: ลบ`,
+      before: personnelAuditSnapshot(existing),
+      actor,
+      req,
+    });
     res.status(204).send();
   } catch (e: unknown) {
     if (e && typeof e === "object" && "code" in e && (e as { code: string }).code === "P2025")

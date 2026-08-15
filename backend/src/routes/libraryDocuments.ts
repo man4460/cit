@@ -2,15 +2,26 @@ import { Router } from "express";
 import { runLibraryDocumentExtract } from "../lib/libraryDocumentExtract.js";
 import { prisma } from "../lib/prisma.js";
 import { routeParam } from "../lib/routeParam.js";
-import { publicFileUrl, upload } from "../lib/upload.js";
+import { persistUpload, upload } from "../lib/upload.js";
 
 export const libraryDocumentsRouter = Router();
 
 const includeType = { documentType: true };
 
-libraryDocumentsRouter.get("/", async (_req, res, next) => {
+libraryDocumentsRouter.get("/", async (req, res, next) => {
   try {
+    const documentTypeId = String(req.query.documentTypeId ?? "").trim();
+    const typeName = String(req.query.typeName ?? "").trim();
+    let typeFilter: string | undefined;
+    if (documentTypeId) {
+      typeFilter = documentTypeId;
+    } else if (typeName) {
+      const t = await prisma.documentType.findUnique({ where: { name: typeName } });
+      if (!t) return res.json([]);
+      typeFilter = t.id;
+    }
     const rows = await prisma.libraryDocument.findMany({
+      where: typeFilter ? { documentTypeId: typeFilter } : undefined,
       orderBy: [{ updatedAt: "desc" }],
       include: includeType,
     });
@@ -50,14 +61,33 @@ libraryDocumentsRouter.post("/", upload.single("file"), async (req, res, next) =
       return res.status(400).json({ error: "ประเภทเอกสารไม่ถูกต้อง" });
     }
     const file = req.file;
+    let fileUrl: string | null = null;
+    let mimeType: string | null = null;
+    let originalName: string | null = null;
+    if (file) {
+      try {
+        const saved = await persistUpload(file, {
+          module: "library",
+          userId: req.auth?.userId,
+          kind: "doc",
+          allowPdf: true,
+          allowOfficeDocs: true,
+        });
+        fileUrl = saved.fileUrl;
+        mimeType = saved.mimeType;
+        originalName = saved.displayName;
+      } catch (e) {
+        return res.status(400).json({ error: e instanceof Error ? e.message : "อัปโหลดไฟล์ไม่สำเร็จ" });
+      }
+    }
     const row = await prisma.libraryDocument.create({
       data: {
         title,
         details,
         documentTypeId,
-        fileUrl: file ? publicFileUrl(file.filename) : null,
-        mimeType: file?.mimetype ?? null,
-        originalName: file?.originalname ?? null,
+        fileUrl,
+        mimeType,
+        originalName,
         extractedText: file ? null : undefined,
       },
       include: includeType,
@@ -95,10 +125,21 @@ libraryDocumentsRouter.put("/:id", upload.single("file"), async (req, res, next)
       data.documentTypeId = documentTypeId;
     }
     if (req.file) {
-      data.fileUrl = publicFileUrl(req.file.filename);
-      data.mimeType = req.file.mimetype;
-      data.originalName = req.file.originalname;
-      data.extractedText = null;
+      try {
+        const saved = await persistUpload(req.file, {
+          module: "library",
+          userId: req.auth?.userId,
+          kind: "doc",
+          allowPdf: true,
+          allowOfficeDocs: true,
+        });
+        data.fileUrl = saved.fileUrl;
+        data.mimeType = saved.mimeType;
+        data.originalName = saved.displayName;
+        data.extractedText = null;
+      } catch (e) {
+        return res.status(400).json({ error: e instanceof Error ? e.message : "อัปโหลดไฟล์ไม่สำเร็จ" });
+      }
     }
 
     const row = await prisma.libraryDocument.update({

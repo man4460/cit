@@ -1,11 +1,19 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import { apiFormJson, apiJson } from "../api/client";
+import { CrudNameMasterModal } from "../components/CrudNameMasterModal";
 import { Modal, ModalFormActions, ModalFormBody, ModalFormSection } from "../components/Modal";
-import { PageFilterPrintBar } from "../components/PageFilterPrintBar";
+import { PageHeaderBar } from "../components/PageHeaderBar";
+import { PrintA4Table } from "../components/PrintA4Table";
 import { rowMatchesFilter } from "../lib/searchNormalize";
+import {
+  listCardAccentClass,
+  listCardClass,
+  toolbarMasterBtnClass,
+  toolbarMasterGroupClass,
+  toolbarPrimaryBtnClass,
+} from "../lib/uiTokens";
 import type { DocumentType, LibraryDocument } from "../types";
-
-type MasterRow = { id: string; name: string; sortOrder: number };
 
 /** ใช้ path /uploads/… บน origin ปัจจุบัน เพื่อให้ Vite proxy ชี้ไป backend ตอน dev */
 function fileUrlForEmbed(fileUrl: string): string {
@@ -32,159 +40,24 @@ function libraryEmbedKind(doc: Pick<LibraryDocument, "mimeType" | "originalName"
   return "none";
 }
 
-function DocumentTypeMasterModal({
-  open,
-  onClose,
-  onChanged,
-}: {
-  open: boolean;
-  onClose: () => void;
-  onChanged: () => void;
-}) {
-  const apiPath = "/api/document-types";
-  const [rows, setRows] = useState<MasterRow[]>([]);
-  const [newName, setNewName] = useState("");
-  const [editing, setEditing] = useState<MasterRow | null>(null);
-  const [editName, setEditName] = useState("");
-  const [err, setErr] = useState<string | null>(null);
-
-  const load = useCallback(async () => {
-    setRows(await apiJson<MasterRow[]>(apiPath));
-  }, []);
-
-  useEffect(() => {
-    if (open) {
-      setErr(null);
-      setEditing(null);
-      void load();
-    }
-  }, [open, load]);
-
-  async function add(e: React.FormEvent) {
-    e.preventDefault();
-    setErr(null);
-    try {
-      await apiJson(apiPath, { method: "POST", body: JSON.stringify({ name: newName.trim() }) });
-      setNewName("");
-      onChanged();
-      load();
-    } catch (e) {
-      setErr(e instanceof Error ? e.message : "เพิ่มไม่สำเร็จ");
-    }
-  }
-
-  async function saveEdit(e: React.FormEvent) {
-    e.preventDefault();
-    if (!editing) return;
-    setErr(null);
-    try {
-      await apiJson(`${apiPath}/${editing.id}`, {
-        method: "PATCH",
-        body: JSON.stringify({ name: editName.trim() }),
-      });
-      setEditing(null);
-      onChanged();
-      load();
-    } catch (e) {
-      setErr(e instanceof Error ? e.message : "บันทึกไม่สำเร็จ");
-    }
-  }
-
-  async function remove(r: MasterRow) {
-    if (!confirm(`ลบประเภท "${r.name}" ?`)) return;
-    setErr(null);
-    try {
-      await apiJson(`${apiPath}/${r.id}`, { method: "DELETE" });
-      onChanged();
-      load();
-    } catch (e) {
-      setErr(e instanceof Error ? e.message : "ลบไม่สำเร็จ");
-    }
-  }
-
-  return (
-    <Modal open={open} onClose={onClose} title="ประเภทเอกสาร (เพิ่ม / แก้ไข / ลบ)">
-      <ModalFormBody className="!space-y-4">
-        {err && <p className="text-sm text-rose-400">{err}</p>}
-        <form onSubmit={add} className="flex gap-2">
-          <input
-            placeholder="เช่น หนังสือ, คำสั่ง, ระเบียบ"
-            className="min-w-0 flex-1 rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-white"
-            value={newName}
-            onChange={(e) => setNewName(e.target.value)}
-          />
-          <button type="submit" className="shrink-0 rounded-lg bg-teal-600 px-3 py-2 text-sm font-medium text-white">
-            เพิ่ม
-          </button>
-        </form>
-        {editing ? (
-          <form onSubmit={saveEdit} className="rounded-lg border border-teal-900/40 bg-slate-950/50 p-3">
-            <p className="text-xs text-slate-500">แก้ไข</p>
-            <input
-              className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-white"
-              value={editName}
-              onChange={(e) => setEditName(e.target.value)}
-            />
-            <div className="mt-2 flex gap-2">
-              <button type="submit" className="rounded-lg bg-teal-600 px-3 py-1.5 text-sm text-white">
-                บันทึก
-              </button>
-              <button type="button" className="text-sm text-slate-400" onClick={() => setEditing(null)}>
-                ยกเลิก
-              </button>
-            </div>
-          </form>
-        ) : null}
-        <ul className="max-h-64 space-y-2 overflow-y-auto">
-          {rows.map((r) => (
-            <li
-              key={r.id}
-              className="flex items-center justify-between gap-2 rounded-lg border border-slate-800 bg-slate-900/40 px-3 py-2 text-sm"
-            >
-              <span className="truncate text-slate-200">{r.name}</span>
-              <span className="flex shrink-0 gap-1">
-                <button
-                  type="button"
-                  className="rounded px-2 py-0.5 text-xs text-teal-400 hover:bg-slate-800"
-                  onClick={() => {
-                    setEditing(r);
-                    setEditName(r.name);
-                  }}
-                >
-                  แก้ไข
-                </button>
-                <button
-                  type="button"
-                  className="rounded px-2 py-0.5 text-xs text-rose-400 hover:bg-slate-800"
-                  onClick={() => void remove(r)}
-                >
-                  ลบ
-                </button>
-              </span>
-            </li>
-          ))}
-        </ul>
-      </ModalFormBody>
-    </Modal>
-  );
-}
-
 function emptyDocForm() {
   return { title: "", documentTypeId: "", details: "", file: null as File | null };
 }
 
 export function DocumentsPage() {
+  const [searchParams, setSearchParams] = useSearchParams();
   const [rows, setRows] = useState<LibraryDocument[]>([]);
   const [types, setTypes] = useState<DocumentType[]>([]);
   const [loading, setLoading] = useState(true);
   const [listFilter, setListFilter] = useState("");
+  /** "" = ทั้งหมด, "none" = ไม่ระบุหมวด, อื่นๆ = id หมวด */
+  const [categoryFilter, setCategoryFilter] = useState("");
   const [typeModalOpen, setTypeModalOpen] = useState(false);
   const [formOpen, setFormOpen] = useState(false);
   const [editing, setEditing] = useState<LibraryDocument | null>(null);
   const [form, setForm] = useState(emptyDocForm);
   const [saving, setSaving] = useState(false);
   const [viewing, setViewing] = useState<LibraryDocument | null>(null);
-  const [reextracting, setReextracting] = useState(false);
 
   const viewFileSrc = useMemo(
     () => (viewing?.fileUrl ? fileUrlForEmbed(viewing.fileUrl) : ""),
@@ -211,49 +84,38 @@ export function DocumentsPage() {
   }, [load]);
 
   useEffect(() => {
-    if (!viewing) return;
-    const { id, fileUrl, extractedText } = viewing;
-    if (!fileUrl || (extractedText != null && extractedText.trim() !== "")) return;
+    const raw = searchParams.get("category")?.trim() ?? "";
+    if (!raw || !types.length) return;
+    if (raw === "none") {
+      setCategoryFilter("none");
+      return;
+    }
+    const byName = types.find((t) => t.name === raw);
+    if (byName) setCategoryFilter(byName.id);
+  }, [searchParams, types]);
 
-    let cancelled = false;
-    let attempts = 0;
-    const iv = setInterval(() => {
-      attempts += 1;
-      if (cancelled || attempts > 50) {
-        clearInterval(iv);
-        return;
-      }
-      void (async () => {
-        try {
-          const fresh = await apiJson<LibraryDocument>(`/api/library-documents/${id}`);
-          if (cancelled) return;
-          setViewing((v) => (v?.id === id ? fresh : v));
-          if (fresh.extractedText != null && fresh.extractedText.trim() !== "") {
-            clearInterval(iv);
-          }
-        } catch {
-          /* ignore */
-        }
-      })();
-    }, 3000);
-    return () => {
-      cancelled = true;
-      clearInterval(iv);
-    };
-  }, [viewing?.id, viewing?.fileUrl, viewing?.extractedText]);
+  useEffect(() => {
+    if (!categoryFilter || categoryFilter === "none") return;
+    if (!types.some((t) => t.id === categoryFilter)) setCategoryFilter("");
+  }, [types, categoryFilter]);
 
   const filteredRows = useMemo(
     () =>
-      rows.filter((d) =>
-        rowMatchesFilter(listFilter, [
+      rows.filter((d) => {
+        if (categoryFilter === "none") {
+          if (d.documentTypeId) return false;
+        } else if (categoryFilter) {
+          if (d.documentTypeId !== categoryFilter) return false;
+        }
+        return rowMatchesFilter(listFilter, [
           d.title,
           d.details,
           d.documentType?.name,
           d.originalName,
           d.extractedText,
-        ]),
-      ),
-    [rows, listFilter],
+        ]);
+      }),
+    [rows, listFilter, categoryFilter],
   );
 
   function openAdd() {
@@ -332,55 +194,64 @@ export function DocumentsPage() {
     }
   }
 
-  async function reextractViewed() {
-    if (!viewing) return;
-    setReextracting(true);
-    try {
-      const fresh = await apiJson<LibraryDocument>(`/api/library-documents/${viewing.id}/extract-text`, {
-        method: "POST",
-      });
-      setViewing(fresh);
-      await load();
-    } catch (err) {
-      alert(err instanceof Error ? err.message : "ถอดข้อความไม่สำเร็จ");
-    } finally {
-      setReextracting(false);
-    }
-  }
-
   return (
     <div>
-      <div className="flex flex-wrap items-start justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-bold text-white">คลังเอกสาร</h1>
-          <p className="mt-1 text-slate-400">ชื่อรายการ ประเภท รายละเอียด และไฟล์แนบ</p>
-        </div>
-        <div className="flex flex-wrap gap-2">
-          <button
-            type="button"
-            onClick={() => setTypeModalOpen(true)}
-            className="shrink-0 rounded-lg border border-slate-600 px-4 py-2.5 text-sm font-medium text-slate-200 hover:bg-slate-800"
-          >
-            จัดการประเภทเอกสาร
-          </button>
-          <button
-            type="button"
-            onClick={openAdd}
-            className="shrink-0 rounded-lg bg-teal-600 px-4 py-2.5 text-sm font-semibold text-white shadow-lg shadow-teal-900/25 hover:bg-teal-500"
-          >
+      <PageHeaderBar
+        title="คลังเอกสาร"
+        filter={{
+          value: listFilter,
+          onChange: setListFilter,
+          printTitle: "คลังเอกสาร",
+          placeholder: "กรองชื่อรายการ / หมวดหมู่ / รายละเอียด / ชื่อไฟล์…",
+        }}
+        segments={
+          <label className="inline-flex h-8 items-center gap-1.5 rounded-xl border border-[#e8e6fc] bg-[#faf9ff]/90 px-2 shadow-sm sm:h-9 sm:px-2.5">
+            <span className="hidden text-[11px] font-bold text-[#4d47b6] sm:inline sm:text-xs">หมวด</span>
+            <select
+              aria-label="กรองตามหมวดหมู่"
+              className="max-w-[9.5rem] cursor-pointer border-0 bg-transparent py-0.5 text-[11px] font-semibold text-[#2e2a58] outline-none sm:max-w-[12rem] sm:text-xs"
+              value={categoryFilter}
+              onChange={(e) => {
+                const v = e.target.value;
+                setCategoryFilter(v);
+                const next = new URLSearchParams(searchParams);
+                if (!v) next.delete("category");
+                else if (v === "none") next.set("category", "none");
+                else {
+                  const name = types.find((t) => t.id === v)?.name;
+                  if (name) next.set("category", name);
+                  else next.delete("category");
+                }
+                setSearchParams(next, { replace: true });
+              }}
+            >
+              <option value="">ทั้งหมด</option>
+              <option value="none">ไม่ระบุ</option>
+              {types.map((t) => (
+                <option key={t.id} value={t.id}>
+                  {t.name}
+                </option>
+              ))}
+            </select>
+          </label>
+        }
+        masters={
+          <div className={toolbarMasterGroupClass}>
+            <button type="button" onClick={() => setTypeModalOpen(true)} className={toolbarMasterBtnClass}>
+              หมวดหมู่
+            </button>
+          </div>
+        }
+        primary={
+          <button type="button" onClick={openAdd} className={toolbarPrimaryBtnClass}>
             เพิ่มเอกสาร
           </button>
-        </div>
-      </div>
-
-      <PageFilterPrintBar
-        value={listFilter}
-        onChange={setListFilter}
-        printTitle="คลังเอกสาร"
-        placeholder="กรองชื่อรายการ / ประเภท / รายละเอียด / ชื่อไฟล์…"
+        }
       />
 
-      <DocumentTypeMasterModal
+      <CrudNameMasterModal
+        title="จัดการหมวดหมู่เอกสาร"
+        apiPath="/api/document-types"
         open={typeModalOpen}
         onClose={() => setTypeModalOpen(false)}
         onChanged={() => void load()}
@@ -391,10 +262,10 @@ export function DocumentsPage() {
           <ModalFormBody className="!space-y-4">
             <div className="flex flex-wrap items-start justify-between gap-2">
               <div className="min-w-0 flex-1">
-                <p className="text-sm font-semibold text-white">{viewing.title}</p>
+                <p className="text-sm font-semibold text-[#1e1b3a]">{viewing.title}</p>
                 <div className="mt-1 flex flex-wrap gap-1">
                   {viewing.documentType?.name ? (
-                    <span className="rounded bg-violet-500/15 px-1.5 py-0.5 text-[10px] font-medium text-violet-300">
+                    <span className="rounded bg-violet-500/15 px-1.5 py-0.5 text-[10px] font-medium text-violet-700">
                       {viewing.documentType.name}
                     </span>
                   ) : null}
@@ -405,7 +276,7 @@ export function DocumentsPage() {
                   href={viewFileSrc || viewing.fileUrl}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="shrink-0 rounded-lg border border-slate-600 px-2.5 py-1.5 text-xs font-medium text-teal-400 hover:bg-slate-800"
+                  className="shrink-0 rounded-lg border border-slate-200 px-2.5 py-1.5 text-xs font-medium text-[#5b61ff] hover:bg-slate-100"
                 >
                   เปิดในแท็บใหม่
                 </a>
@@ -414,7 +285,7 @@ export function DocumentsPage() {
 
             {viewing.fileUrl ? (
               viewEmbedKind !== "none" ? (
-                <div className="overflow-hidden rounded-xl border border-slate-700 bg-slate-950 shadow-inner">
+                <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-inner">
                   {viewEmbedKind === "image" ? (
                     <img
                       src={viewFileSrc}
@@ -425,27 +296,27 @@ export function DocumentsPage() {
                     <iframe
                       title={viewing.title}
                       src={viewFileSrc}
-                      className="h-[min(72vh,880px)] w-full border-0 bg-slate-900"
+                      className="h-[min(72vh,880px)] w-full border-0 bg-white/90"
                     />
                   )}
                 </div>
               ) : (
-                <p className="rounded-xl border border-amber-900/40 bg-amber-950/20 p-4 text-sm text-amber-200/90">
+                <p className="rounded-xl border border-amber-900/40 bg-amber-50 p-4 text-sm text-amber-800">
                   รูปแบบไฟล์นี้ไม่สามารถแสดงในหน้าต่างนี้ได้ — กด «เปิดในแท็บใหม่» หรือลิงก์ด้านล่าง
                 </p>
               )
             ) : (
-              <p className="text-sm text-slate-500">ไม่มีไฟล์แนบ — ถอดข้อความจากไฟล์ไม่ได้</p>
+              <p className="text-sm text-slate-600">ไม่มีไฟล์แนบ</p>
             )}
 
             {viewing.fileUrl ? (
-              <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-slate-500">
+              <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-slate-600">
                 <span>ไฟล์:</span>
                 <a
                   href={viewFileSrc || viewing.fileUrl}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="text-teal-400 underline-offset-2 hover:underline"
+                  className="text-[#5b61ff] underline-offset-2 hover:underline"
                 >
                   {viewing.originalName || "ดาวน์โหลด / เปิดไฟล์"}
                 </a>
@@ -454,40 +325,14 @@ export function DocumentsPage() {
 
             {viewing.details?.trim() ? (
               <div>
-                <p className="text-xs font-medium text-slate-500">รายละเอียด</p>
-                <p className="mt-1 whitespace-pre-wrap text-sm text-slate-300">{viewing.details}</p>
+                <p className="text-xs font-medium text-slate-700">รายละเอียด</p>
+                <p className="mt-1 whitespace-pre-wrap text-sm text-slate-700">{viewing.details}</p>
               </div>
             ) : null}
-            <div>
-              <div className="flex flex-wrap items-center justify-between gap-2">
-                <p className="text-xs font-medium text-slate-500">ข้อความถอดจากเอกสาร</p>
-                {viewing.fileUrl ? (
-                  <button
-                    type="button"
-                    disabled={reextracting}
-                    className="rounded-lg border border-slate-600 px-2.5 py-1 text-xs text-slate-200 hover:bg-slate-800 disabled:opacity-50"
-                    onClick={() => void reextractViewed()}
-                  >
-                    {reextracting ? "กำลังถอด…" : "ถอดข้อความอีกครั้ง"}
-                  </button>
-                ) : null}
-              </div>
-              <div className="mt-2 max-h-[min(50vh,28rem)] overflow-y-auto rounded-lg border border-slate-800 bg-slate-950/80 p-3 text-sm text-slate-200">
-                {!viewing.fileUrl ? (
-                  <p className="text-slate-500">—</p>
-                ) : viewing.extractedText != null && viewing.extractedText.trim() !== "" ? (
-                  <pre className="whitespace-pre-wrap font-sans text-[13px] leading-relaxed">{viewing.extractedText}</pre>
-                ) : (
-                  <p className="text-slate-500">
-                    {reextracting ? "กำลังถอดข้อความ…" : "กำลังถอดข้อความอัตโนมัติหลังอัปโหลด หรือกด «ถอดข้อความอีกครั้ง» — รูป/PDF อาจใช้เวลาสักครู่"}
-                  </p>
-                )}
-              </div>
-            </div>
-            <div className="flex justify-end border-t border-slate-800 pt-3">
+            <div className="flex justify-end border-t border-slate-200 pt-3">
               <button
                 type="button"
-                className="rounded-lg border border-slate-600 px-4 py-2 text-sm text-slate-300 hover:bg-slate-800"
+                className="rounded-lg border border-slate-200 px-4 py-2 text-sm text-slate-700 hover:bg-slate-100"
                 onClick={closeView}
               >
                 ปิด
@@ -508,18 +353,18 @@ export function DocumentsPage() {
             <ModalFormSection title="ข้อมูลเอกสาร">
               <div className="grid gap-4 sm:grid-cols-2">
                 <label className="block sm:col-span-2">
-                  <span className="text-xs font-medium text-slate-400">ชื่อรายการ</span>
+                  <span className="text-xs font-medium text-slate-700">ชื่อรายการ</span>
                   <input
                     required
-                    className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-white"
+                    className="mt-1 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-slate-900"
                     value={form.title}
                     onChange={(e) => setForm((f) => ({ ...f, title: e.target.value }))}
                   />
                 </label>
                 <label className="block sm:col-span-2">
-                  <span className="text-xs font-medium text-slate-400">ประเภท</span>
+                  <span className="text-xs font-medium text-slate-700">หมวดหมู่</span>
                   <select
-                    className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-white"
+                    className="mt-1 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-slate-900"
                     value={form.documentTypeId}
                     onChange={(e) => setForm((f) => ({ ...f, documentTypeId: e.target.value }))}
                   >
@@ -532,28 +377,28 @@ export function DocumentsPage() {
                   </select>
                 </label>
                 <label className="block sm:col-span-2">
-                  <span className="text-xs font-medium text-slate-400">รายละเอียด</span>
+                  <span className="text-xs font-medium text-slate-700">รายละเอียด</span>
                   <textarea
                     rows={10}
-                    className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-white"
+                    className="mt-1 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-slate-900"
                     placeholder="ข้อความเต็ม คำอธิบาย อ้างอิง…"
                     value={form.details}
                     onChange={(e) => setForm((f) => ({ ...f, details: e.target.value }))}
                   />
                 </label>
                 <label className="block sm:col-span-2">
-                  <span className="text-xs font-medium text-slate-400">
+                  <span className="text-xs font-medium text-slate-700">
                     ไฟล์แนบ {editing?.fileUrl ? "(เว้นว่าง = คงไฟล์เดิม)" : ""}
                   </span>
                   <input
                     type="file"
-                    className="mt-1 w-full text-sm text-slate-300 file:mr-3 file:rounded-lg file:border-0 file:bg-slate-700 file:px-3 file:py-2 file:text-sm file:text-white"
+                    className="mt-1 w-full text-sm text-slate-700 file:mr-3 file:rounded-lg file:border-0 file:bg-[#0000BF]/10 file:px-3 file:py-2 file:text-sm file:text-[#2e2a58]"
                     onChange={(e) =>
                       setForm((f) => ({ ...f, file: e.target.files?.[0] ?? null }))
                     }
                   />
                   {editing?.originalName ? (
-                    <p className="mt-1 text-[11px] text-slate-500">ปัจจุบัน: {editing.originalName}</p>
+                    <p className="mt-1 text-[11px] text-slate-600">ปัจจุบัน: {editing.originalName}</p>
                   ) : null}
                 </label>
               </div>
@@ -563,13 +408,13 @@ export function DocumentsPage() {
             <button
               type="submit"
               disabled={saving}
-              className="rounded-lg bg-teal-600 px-4 py-2 text-sm font-semibold text-white hover:bg-teal-500 disabled:opacity-50"
+              className="rounded-full bg-gradient-to-r from-[#0000BF] via-[#8b5cf6] to-[#ec4899] text-sm font-bold text-white shadow-lg shadow-fuchsia-500/25 hover:from-[#0000a3] hover:via-[#7c3aed] hover:to-[#db2777] px-4 py-2 disabled:opacity-50"
             >
               {saving ? "กำลังบันทึก…" : "บันทึก"}
             </button>
             <button
               type="button"
-              className="rounded-lg border border-slate-600 px-4 py-2 text-sm text-slate-300 hover:bg-slate-800"
+              className="rounded-lg border border-slate-200 px-4 py-2 text-sm text-slate-700 hover:bg-slate-100"
               onClick={closeForm}
             >
               ยกเลิก
@@ -578,41 +423,42 @@ export function DocumentsPage() {
         </form>
       </Modal>
 
-      <div className="mt-6">
+      <div className="mt-6 print:hidden">
         {loading ? (
-          <div className="rounded-2xl border border-slate-800 bg-slate-900/40 py-16 text-center text-slate-500">
+          <div className="rounded-2xl border border-slate-200 bg-white/75 py-16 text-center text-slate-600">
             กำลังโหลด…
           </div>
         ) : rows.length === 0 ? (
-          <div className="rounded-2xl border border-dashed border-slate-700 bg-slate-900/30 py-16 text-center text-slate-500">
+          <div className="rounded-2xl border border-dashed border-slate-200 bg-white/90/30 py-16 text-center text-slate-600">
             ยังไม่มีเอกสาร — กด «เพิ่มเอกสาร»
           </div>
         ) : filteredRows.length === 0 ? (
-          <div className="rounded-2xl border border-slate-800 bg-slate-900/40 py-16 text-center text-slate-500">
+          <div className="rounded-2xl border border-slate-200 bg-white/75 py-16 text-center text-slate-600">
             ไม่มีรายการที่ตรงกับการกรอง
           </div>
         ) : (
-          <div className="rounded-2xl border border-slate-800 bg-slate-950/50 p-3 shadow-inner">
+          <div className="rounded-2xl border border-slate-200 bg-white/80 p-3 shadow-inner">
             <div className="max-h-[calc(100vh-16rem)] min-h-[200px] overflow-y-auto overscroll-contain rounded-xl pr-1 [scrollbar-gutter:stable]">
               <ul className="grid gap-2.5 sm:grid-cols-2 xl:grid-cols-3">
-                {filteredRows.map((d) => (
+                {filteredRows.map((d, idx) => (
                   <li key={d.id}>
-                    <div className="flex h-full min-h-[7rem] flex-col rounded-xl border border-slate-800 bg-slate-900/50 p-3 shadow-sm transition hover:border-teal-800/45 hover:bg-slate-900/80">
-                      <div className="min-w-0 flex-1">
-                        <p className="line-clamp-2 text-sm font-semibold leading-snug text-white">{d.title}</p>
+                    <div className={`${listCardClass} min-h-[7rem] p-3`}>
+                      <span className={`absolute inset-y-0 left-0 w-1 ${listCardAccentClass(idx)}`} aria-hidden />
+                      <div className="min-w-0 flex-1 pl-2">
+                        <p className="line-clamp-2 text-sm font-semibold leading-snug text-[#1e1b3a]">{d.title}</p>
                         <div className="mt-1.5 flex flex-wrap gap-1">
                           {d.documentType?.name ? (
-                            <span className="rounded bg-violet-500/15 px-1.5 py-0.5 text-[10px] font-medium text-violet-300">
+                            <span className="rounded bg-violet-500/15 px-1.5 py-0.5 text-[10px] font-medium text-violet-700">
                               {d.documentType.name}
                             </span>
                           ) : (
-                            <span className="rounded bg-slate-700/40 px-1.5 py-0.5 text-[10px] text-slate-500">
-                              ไม่ระบุประเภท
+                            <span className="rounded bg-slate-500/15 px-1.5 py-0.5 text-[10px] text-slate-600">
+                              ไม่ระบุหมวดหมู่
                             </span>
                           )}
                         </div>
                         {d.details?.trim() ? (
-                          <p className="mt-2 line-clamp-3 whitespace-pre-wrap text-[11px] leading-relaxed text-slate-500">
+                          <p className="mt-2 line-clamp-3 whitespace-pre-wrap text-[11px] leading-relaxed text-slate-700">
                             {d.details}
                           </p>
                         ) : null}
@@ -621,7 +467,7 @@ export function DocumentsPage() {
                             href={d.fileUrl}
                             target="_blank"
                             rel="noopener noreferrer"
-                            className="mt-2 inline-block truncate text-[11px] text-teal-400 underline-offset-2 hover:text-teal-300 hover:underline"
+                            className="mt-2 inline-block truncate text-[11px] text-[#5b61ff] underline-offset-2 hover:text-[#4d47b6] hover:underline"
                             title={d.originalName ?? undefined}
                           >
                             {d.originalName || "เปิดไฟล์แนบ"}
@@ -630,24 +476,24 @@ export function DocumentsPage() {
                           <p className="mt-2 text-[11px] text-slate-600">ไม่มีไฟล์แนบ</p>
                         )}
                       </div>
-                      <div className="mt-3 flex flex-wrap gap-2 border-t border-slate-800/80 pt-2">
+                      <div className="mt-3 flex flex-wrap gap-2 border-t border-[#ecebff] pt-2 pl-2">
                         <button
                           type="button"
-                          className="rounded-lg border border-slate-600 px-2.5 py-1 text-xs font-medium text-sky-400 hover:bg-slate-800"
+                          className="rounded-lg border border-slate-200 px-2.5 py-1 text-xs font-medium text-sky-600 hover:bg-slate-100"
                           onClick={() => void openView(d)}
                         >
                           ดูเอกสาร
                         </button>
                         <button
                           type="button"
-                          className="rounded-lg border border-slate-600 px-2.5 py-1 text-xs font-medium text-teal-400 hover:bg-slate-800"
+                          className="rounded-lg border border-amber-200 bg-amber-50 px-2.5 py-1 text-xs font-medium text-amber-800 hover:bg-amber-100"
                           onClick={() => openEdit(d)}
                         >
                           แก้ไข
                         </button>
                         <button
                           type="button"
-                          className="rounded-lg border border-slate-600 px-2.5 py-1 text-xs font-medium text-rose-400 hover:bg-slate-800"
+                          className="rounded-lg border border-rose-200 bg-rose-50 px-2.5 py-1 text-xs font-medium text-rose-600 hover:bg-rose-100"
                           onClick={() => void removeDoc(d)}
                         >
                           ลบ
@@ -661,6 +507,21 @@ export function DocumentsPage() {
           </div>
         )}
       </div>
+
+      <PrintA4Table
+        columns={[
+          { label: "ชื่อเรื่อง" },
+          { label: "หมวด" },
+          { label: "รายละเอียด" },
+          { label: "ไฟล์" },
+        ]}
+        rows={filteredRows.map((d) => [
+          d.title,
+          d.documentType?.name || "ไม่ระบุหมวดหมู่",
+          (d.details || "—").replace(/\s+/g, " "),
+          d.originalName || (d.fileUrl ? "มีไฟล์แนบ" : "—"),
+        ])}
+      />
     </div>
   );
 }

@@ -1,29 +1,23 @@
 import { useEffect, useState } from "react";
 import { NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
-import { BrandLogo } from "../components/BrandLogo";
 import { useAuth } from "../context/AuthContext";
+import {
+  filterGroupItems,
+  findGroupForPath,
+  navGroups,
+  resolveGroupEntryPath,
+} from "../lib/navConfig";
+import { groupTone, NavGlyph } from "../lib/navVisuals";
+import { mediaUrl } from "../lib/uiTokens";
 import { APP_VERSION } from "../version";
+import {
+  ModuleHeaderBarNav,
+  ModuleSectionChrome,
+  MODULE_HEADER_COLLAPSE_EVENT,
+  readModuleHeaderCollapsed,
+} from "./ModuleSectionChrome";
 
-const linkClass = ({ isActive }: { isActive: boolean }) =>
-  `block rounded-lg px-3 py-2.5 text-sm font-medium transition-colors ${
-    isActive ? "bg-teal-600/20 text-teal-300" : "text-slate-400 hover:bg-slate-800 hover:text-slate-200"
-  }`;
-
-const mainNav = [
-  { to: "/", label: "แดชบอร์ด" },
-  { to: "/missions", label: "ภารกิจ" },
-  { to: "/routes", label: "เส้นทางภารกิจ" },
-  { to: "/personnel", label: "บุคลากร" },
-  { to: "/training", label: "ทะเบียนการอบรม" },
-  { to: "/vehicles", label: "ยานพาหนะ" },
-  { to: "/disposition-registry", label: "ทะเบียนจำหน่าย/ส่งคืน" },
-  { to: "/documents", label: "คลังเอกสาร" },
-  { to: "/assets", label: "ครุภัณฑ์ & QR" },
-  { to: "/assets/armor-monthly", label: "ตรวจเสื้อเกราะรายเดือน" },
-  { to: "/activities", label: "กิจกรรม" },
-  { to: "/reports", label: "รายงาน" },
-  { to: "/scan", label: "สแกน QR" },
-];
+const SIDEBAR_COLLAPSE_KEY = "afo_sidebar_collapsed";
 
 function UserCircleIcon({ className }: { className?: string }) {
   return (
@@ -37,16 +31,33 @@ function UserCircleIcon({ className }: { className?: string }) {
   );
 }
 
+function PanelToggleIcon({ collapsed }: { collapsed: boolean }) {
+  return (
+    <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2} aria-hidden>
+      {collapsed ? (
+        <path strokeLinecap="round" strokeLinejoin="round" d="M4 6h16M4 12h10M4 18h16" />
+      ) : (
+        <path strokeLinecap="round" strokeLinejoin="round" d="M4 6h16M4 12h16M4 18h10" />
+      )}
+    </svg>
+  );
+}
+
+function LogoutDoorIcon({ className }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.85} aria-hidden>
+      <path
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        d="M15.75 9V5.25A2.25 2.25 0 0 0 13.5 3h-6a2.25 2.25 0 0 0-2.25 2.25v13.5A2.25 2.25 0 0 0 7.5 21h6a2.25 2.25 0 0 0 2.25-2.25V15m3 0l3-3m0 0l-3-3m3 3H12"
+      />
+    </svg>
+  );
+}
+
 function HamburgerIcon({ open }: { open: boolean }) {
   return (
-    <svg
-      className="h-6 w-6"
-      fill="none"
-      viewBox="0 0 24 24"
-      stroke="currentColor"
-      strokeWidth={2}
-      aria-hidden
-    >
+    <svg className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2} aria-hidden>
       {open ? (
         <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
       ) : (
@@ -56,84 +67,201 @@ function HamburgerIcon({ open }: { open: boolean }) {
   );
 }
 
+function readCollapsed(): boolean {
+  try {
+    return localStorage.getItem(SIDEBAR_COLLAPSE_KEY) === "1";
+  } catch {
+    return false;
+  }
+}
+
 export function Shell() {
   const { user, logout } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
-  const [navOpen, setNavOpen] = useState(false);
+  const [mobileOpen, setMobileOpen] = useState(false);
+  const [collapsed, setCollapsed] = useState(readCollapsed);
+  const [moduleHeaderCollapsed, setModuleHeaderCollapsed] = useState(readModuleHeaderCollapsed);
+  const activeGroup = findGroupForPath(location.pathname, user?.role);
 
   useEffect(() => {
-    setNavOpen(false);
+    setMobileOpen(false);
   }, [location.pathname]);
 
   useEffect(() => {
     const mq = window.matchMedia("(min-width: 1024px)");
     const onChange = () => {
-      if (mq.matches) setNavOpen(false);
+      if (mq.matches) setMobileOpen(false);
     };
     mq.addEventListener("change", onChange);
     return () => mq.removeEventListener("change", onChange);
   }, []);
 
   useEffect(() => {
-    if (!navOpen) return;
+    if (!mobileOpen) return;
     const prev = document.body.style.overflow;
     document.body.style.overflow = "hidden";
     return () => {
       document.body.style.overflow = prev;
     };
-  }, [navOpen]);
+  }, [mobileOpen]);
 
-  const closeNav = () => setNavOpen(false);
+  useEffect(() => {
+    try {
+      localStorage.setItem(SIDEBAR_COLLAPSE_KEY, collapsed ? "1" : "0");
+    } catch {
+      /* ignore */
+    }
+  }, [collapsed]);
+
+  useEffect(() => {
+    const sync = () => setModuleHeaderCollapsed(readModuleHeaderCollapsed());
+    sync();
+    window.addEventListener(MODULE_HEADER_COLLAPSE_EVENT, sync);
+    window.addEventListener("storage", sync);
+    return () => {
+      window.removeEventListener(MODULE_HEADER_COLLAPSE_EVENT, sync);
+      window.removeEventListener("storage", sync);
+    };
+  }, []);
+
+  const closeMobile = () => setMobileOpen(false);
+  const toggleDesktop = () => setCollapsed((v) => !v);
+
+  const goGroup = (groupId: string) => {
+    const group = navGroups.find((g) => g.id === groupId);
+    if (!group) return;
+    const items = filterGroupItems(group, user?.role);
+    if (!items.length) return;
+    closeMobile();
+    navigate(resolveGroupEntryPath(group, user?.role));
+  };
+
+  const navBody = (
+    <>
+      <nav
+        className="flex flex-1 flex-col gap-1 overflow-y-auto overscroll-contain px-0.5 pb-2 pt-1"
+        aria-label="หมวดเมนู"
+      >
+        {navGroups.map((group) => {
+          const items = filterGroupItems(group, user?.role);
+          if (!items.length) return null;
+          const isActive = activeGroup?.id === group.id;
+          const tone = groupTone(group.id);
+          return (
+            <button
+              key={group.id}
+              type="button"
+              onClick={() => goGroup(group.id)}
+              className={`w-full rounded-xl border px-2.5 py-1.5 text-left transition-all ${
+                isActive
+                  ? `border-transparent bg-gradient-to-br from-white via-white to-[#fdf2f8]/60 shadow-sm ring-2 ${tone.ring}`
+                  : "border-[#e8e6fc]/70 bg-gradient-to-br from-white/70 via-white/50 to-[#fdf2f8]/40 hover:border-[#0000BF]/20 hover:bg-white/80"
+              }`}
+            >
+              <div className="flex items-center gap-2">
+                <span
+                  className={`inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg ring-1 ${tone.chip}`}
+                >
+                  <NavGlyph name={tone.icon} className="h-4 w-4" />
+                </span>
+                <div className="min-w-0 flex-1">
+                  <p className={`text-xs font-black leading-tight ${isActive ? tone.text : "text-[#2e2a58]"}`}>
+                    {group.titleTh}
+                  </p>
+                  <p className="mt-0.5 text-[9px] font-medium leading-tight tracking-wide text-slate-500">
+                    {group.titleEn}
+                    <span className="text-[#66638c]"> · {items.length}</span>
+                  </p>
+                </div>
+              </div>
+            </button>
+          );
+        })}
+      </nav>
+      <div className="mt-auto shrink-0 border-t border-[#d8d9ff]/80 pt-2.5">
+        <div className="rounded-xl border border-[#0000BF]/15 bg-gradient-to-br from-[#0000BF]/8 via-[#8b5cf6]/8 to-[#ec4899]/8 px-2.5 py-2">
+          <p className="text-[9px] font-black uppercase tracking-[0.12em] text-[#0000BF]/80">จัดทำโดย</p>
+          <p className="mt-1 text-[11px] font-bold leading-snug text-[#2e2a58]">พ.ต.ต.เร๊าะมัน หะนิแร</p>
+          <p className="mt-0.5 font-mono text-[9px] text-slate-600">version {APP_VERSION}</p>
+        </div>
+      </div>
+    </>
+  );
 
   return (
-    <div className="flex min-h-screen min-h-[100dvh] flex-col bg-slate-950">
-      {navOpen && (
+    <div className="flex min-h-screen min-h-[100dvh] flex-col">
+      {mobileOpen && (
         <button
           type="button"
           aria-label="ปิดเมนู"
-          className="no-print fixed inset-0 z-40 bg-black/60 backdrop-blur-[2px] lg:hidden"
-          onClick={closeNav}
+          className="no-print fixed inset-0 z-40 bg-[#1e1b3a]/35 backdrop-blur-[2px] lg:hidden"
+          onClick={closeMobile}
         />
       )}
 
       <header
-        className="no-print sticky top-0 z-30 flex w-full shrink-0 items-center justify-between gap-3 border-b border-slate-800 bg-slate-950/90 px-3 py-2.5 backdrop-blur-md supports-[backdrop-filter]:bg-slate-950/80 lg:px-6 lg:py-3"
+        className="no-print app-glass-panel sticky top-0 z-30 flex w-full shrink-0 items-center justify-between gap-3 border-b border-white/60 px-3 py-2.5 lg:px-6 lg:py-3"
         style={{ paddingTop: "max(0.625rem, env(safe-area-inset-top))" }}
       >
-        <div className="flex min-w-0 flex-1 items-center gap-3">
+        <div className="flex min-w-0 flex-1 items-center gap-2 sm:gap-3">
           <button
             type="button"
-            className="rounded-lg p-2 text-slate-200 hover:bg-slate-800 hover:text-white lg:hidden"
-            aria-expanded={navOpen}
-            aria-controls="app-sidebar"
-            aria-label={navOpen ? "ปิดเมนู" : "เปิดเมนู"}
-            onClick={() => setNavOpen((v) => !v)}
+            className="rounded-xl p-2 text-[#2e2a58] hover:bg-white/80 lg:hidden"
+            aria-expanded={mobileOpen}
+            aria-controls="app-sidebar-mobile"
+            aria-label={mobileOpen ? "ปิดเมนู" : "เปิดเมนู"}
+            onClick={() => setMobileOpen((v) => !v)}
           >
-            <HamburgerIcon open={navOpen} />
+            <HamburgerIcon open={mobileOpen} />
           </button>
-          <div className="min-w-0">
-            <p className="text-[10px] font-semibold uppercase tracking-wider text-teal-600/90">ระบบปฏิบัติการ</p>
-            <BrandLogo
-              variant="horizontal"
-              className="mt-0.5 h-5 w-auto max-w-[min(100%,9.5rem)] object-contain object-left sm:max-w-[10rem] lg:h-6 lg:max-w-[11rem]"
+          <button
+            type="button"
+            className="hidden rounded-xl p-2 text-[#2e2a58] hover:bg-white/80 lg:inline-flex"
+            aria-expanded={!collapsed}
+            aria-controls="app-sidebar-desktop"
+            aria-label={collapsed ? "แสดงแถบเมนู" : "ซ่อนแถบเมนู"}
+            title={collapsed ? "แสดงแถบเมนู" : "ซ่อนแถบเมนู"}
+            onClick={toggleDesktop}
+          >
+            <PanelToggleIcon collapsed={collapsed} />
+          </button>
+          <div className={`min-w-0 ${moduleHeaderCollapsed ? "hidden sm:block" : ""}`}>
+            <p className="text-[10px] font-black uppercase tracking-[0.16em] text-[#0000BF]/80">ระบบปฏิบัติการ</p>
+            <img
+              src="/logo-login.png"
+              alt="ALL FOR ONE"
+              decoding="async"
+              draggable={false}
+              className="mt-0.5 h-4 w-auto max-w-[min(100%,8rem)] object-contain object-left sm:h-5 sm:max-w-[9.5rem] lg:h-5 lg:max-w-[10.5rem]"
             />
           </div>
+          {moduleHeaderCollapsed ? <ModuleHeaderBarNav role={user?.role} /> : null}
         </div>
-        <div className="flex min-w-0 shrink-0 items-center gap-2 sm:gap-3">
-          <div className="hidden min-w-0 text-right md:block">
-            <p className="max-w-[14rem] truncate text-sm text-slate-300" title={user?.username}>
-              {user?.fullName || user?.username}
-            </p>
-            <p className="text-[10px] uppercase text-slate-600">{user?.role}</p>
-          </div>
+        <div className="flex min-w-0 shrink-0 items-center gap-1.5 border-l border-[#0000BF]/15 pl-2.5 sm:gap-2 sm:pl-3">
           <NavLink
             to="/profile"
-            className="inline-flex items-center gap-1.5 rounded-lg border border-slate-700/80 px-2.5 py-2 text-sm font-medium text-slate-200 hover:border-teal-700/60 hover:bg-slate-800/80 hover:text-teal-200 lg:px-3"
+            className="inline-flex min-w-0 items-center gap-2 rounded-xl border border-[#0000BF]/20 bg-white/80 py-1 pl-1 pr-2.5 text-[#2e2a58] shadow-sm hover:bg-white sm:pr-3"
             aria-label="โปรไฟล์"
+            title="โปรไฟล์"
           >
-            <UserCircleIcon className="h-5 w-5 shrink-0 text-teal-500/90 lg:h-4 lg:w-4" />
-            <span className="hidden lg:inline">โปรไฟล์</span>
+            {mediaUrl(user?.avatarUrl) ? (
+              <img
+                src={mediaUrl(user?.avatarUrl)!}
+                alt=""
+                className="h-8 w-8 shrink-0 rounded-full object-cover ring-2 ring-white"
+              />
+            ) : (
+              <span className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[#0000BF]/10 text-[#0000BF] ring-2 ring-white">
+                <UserCircleIcon className="h-5 w-5" />
+              </span>
+            )}
+            <span className="hidden min-w-0 md:block">
+              <span className="block max-w-[10rem] truncate text-sm font-bold leading-tight lg:max-w-[14rem]">
+                {user?.fullName || user?.username}
+              </span>
+              <span className="block text-[10px] font-semibold uppercase tracking-wide text-slate-500">{user?.role}</span>
+            </span>
           </NavLink>
           <button
             type="button"
@@ -141,92 +269,61 @@ export function Shell() {
               logout();
               navigate("/login", { replace: true });
             }}
-            className="hidden rounded-lg px-3 py-2 text-sm text-slate-400 hover:bg-slate-800 hover:text-white lg:inline"
+            className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-[#0000BF]/20 bg-white/80 text-[#58547f] shadow-sm transition hover:border-red-200 hover:bg-red-50 hover:text-red-700"
+            title="ออกจากระบบ"
+            aria-label="ออกจากระบบ"
           >
-            ออกจากระบบ
+            <LogoutDoorIcon className="h-[1.125rem] w-[1.125rem]" />
           </button>
         </div>
       </header>
 
       <div className="flex min-h-0 min-w-0 flex-1 flex-col lg:flex-row">
         <aside
-          id="app-sidebar"
-          className={`no-print fixed inset-y-0 left-0 z-50 flex w-[min(18rem,calc(100vw-2.5rem))] max-w-[18rem] flex-col border-r border-slate-800 bg-slate-900/95 p-4 pb-[max(1rem,env(safe-area-inset-bottom))] shadow-xl shadow-black/40 backdrop-blur-md transition-transform duration-200 ease-out motion-reduce:transition-none lg:static lg:z-auto lg:max-h-none lg:max-w-none lg:w-56 lg:shrink-0 lg:translate-x-0 lg:self-stretch lg:bg-slate-900/80 lg:shadow-none lg:pt-4 ${
-            navOpen ? "translate-x-0" : "-translate-x-full lg:translate-x-0"
+          id="app-sidebar-mobile"
+          className={`no-print app-glass-panel fixed inset-y-0 left-0 z-50 flex w-[min(20rem,calc(100vw-2.5rem))] max-w-[20rem] flex-col border-r border-white/50 p-4 pb-[max(1rem,env(safe-area-inset-bottom))] shadow-[0_20px_50px_-20px_rgba(68,49,127,0.28)] transition-transform duration-200 ease-out motion-reduce:transition-none lg:hidden ${
+            mobileOpen ? "translate-x-0" : "-translate-x-full"
           }`}
         >
-          <div className="mb-3 flex justify-end lg:hidden">
+          <div className="mb-3 flex items-center justify-between gap-2">
+            <p className="text-xs font-bold text-[#2e2a58]">หมวด</p>
             <button
               type="button"
-              className="rounded-lg p-2 text-slate-400 hover:bg-slate-800 hover:text-white"
+              className="rounded-xl p-2 text-slate-700 hover:bg-white/80 hover:text-[#2e2a58]"
               aria-label="ปิดเมนู"
-              onClick={closeNav}
+              onClick={closeMobile}
             >
               <HamburgerIcon open />
             </button>
           </div>
-          <nav className="flex flex-1 flex-col gap-0.5 overflow-y-auto overscroll-contain pb-4 lg:pt-0" onClick={closeNav}>
-          {mainNav.map((item) => (
-            <NavLink
-              key={item.to}
-              to={item.to}
-              end={item.to === "/"}
-              className={({ isActive }) =>
-                linkClass({
-                  isActive:
-                    isActive ||
-                    (item.to === "/reports" && location.pathname.startsWith("/reports/")),
-                })
-              }
-            >
-              {item.label}
-            </NavLink>
-          ))}
-          {user?.role === "ADMIN" && (
-            <NavLink to="/admin" className={linkClass}>
-              จัดการผู้ใช้ (Admin)
-            </NavLink>
-          )}
-        </nav>
-        <div className="mt-auto shrink-0 space-y-3 border-t border-slate-800 pt-4">
-          <div className="rounded-xl border border-teal-900/30 bg-slate-950/50 px-3 py-3">
-            <p className="text-[10px] font-semibold uppercase tracking-wider text-teal-600/90">จัดทำโดย</p>
-            <p className="mt-1.5 text-xs font-semibold leading-snug text-slate-200">พ.ต.ต.เร๊าะมัน หะนิแร</p>
-            <p className="mt-1 text-[10px] leading-relaxed text-slate-500">แดชบอร์ด</p>
-            <p className="mt-1.5 font-mono text-[10px] text-slate-600">version {APP_VERSION}</p>
-          </div>
-          <div>
-            <p className="truncate px-2 text-xs text-slate-500" title={user?.username}>
-              {user?.fullName || user?.username}
-            </p>
-            <p className="px-2 text-[10px] uppercase text-slate-600">{user?.role}</p>
-            <NavLink
-              to="/profile"
-              onClick={closeNav}
-              className="mt-2 block w-full rounded-lg px-3 py-2.5 text-left text-sm text-slate-400 hover:bg-slate-800 hover:text-white"
-            >
-              โปรไฟล์
-            </NavLink>
-            <button
-              type="button"
-              onClick={() => {
-                logout();
-                navigate("/login", { replace: true });
-              }}
-              className="mt-0.5 w-full rounded-lg px-3 py-2.5 text-left text-sm text-slate-400 hover:bg-slate-800 hover:text-white"
-            >
-              ออกจากระบบ
-            </button>
-          </div>
-        </div>
+          {navBody}
+        </aside>
+
+        <aside
+          id="app-sidebar-desktop"
+          className={`no-print app-glass-panel relative hidden shrink-0 flex-col border-r border-white/50 transition-[width] duration-200 ease-out motion-reduce:transition-none lg:flex lg:self-stretch ${
+            collapsed ? "w-0 overflow-hidden border-transparent p-0" : "w-64 p-3 pt-3"
+          }`}
+          aria-hidden={collapsed}
+        >
+          {!collapsed ? navBody : null}
         </aside>
 
         <main
-          className="min-w-0 flex-1 px-3 py-4 print:max-w-none print:px-4 print:py-3 sm:px-5 sm:py-6 lg:px-8 lg:py-8"
+          className={`min-w-0 flex-1 px-3 pb-4 print:max-w-none print:p-0 sm:px-5 sm:pb-6 lg:px-6 lg:pb-8 ${
+            moduleHeaderCollapsed ? "pt-2 sm:pt-2 lg:pt-2" : "pt-4 sm:pt-6 lg:pt-8"
+          }`}
           style={{ paddingBottom: "max(1rem, env(safe-area-inset-bottom))" }}
         >
-          <div className="mx-auto w-full min-w-0 max-w-7xl print:max-w-none">
-            <Outlet />
+          <div className="w-full min-w-0 print:max-w-none">
+            <ModuleSectionChrome role={user?.role} />
+            <div
+              className={`app-card-surface rounded-[1.5rem] border border-white/70 px-4 pb-4 sm:px-6 sm:pb-6 ${
+                moduleHeaderCollapsed ? "pt-3 sm:pt-4" : "pt-4 sm:pt-6"
+              }`}
+            >
+              <Outlet />
+            </div>
           </div>
         </main>
       </div>

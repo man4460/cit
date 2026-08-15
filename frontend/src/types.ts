@@ -214,6 +214,101 @@ export interface RouteMaster {
   distanceKm: string;
 }
 
+export interface FireExtinguisher {
+  id: string;
+  code: string;
+  location: string;
+  kind: string;
+  sizeLabel: string;
+  manufacturedAt: string | null;
+  status: string;
+  guardTeam: string | null;
+  notes: string | null;
+  sortOrder: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface FireHost {
+  id: string;
+  code: string;
+  detail: string;
+  location: string;
+  guardTeam: string | null;
+  track: boolean;
+  sortOrder: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface BulletproofVest {
+  id: string;
+  code: string;
+  description: string;
+  level: string;
+  team: string | null;
+  capturedAt: string | null;
+  costCenter: string | null;
+  registerNo: string | null;
+  permitBeginsAt: string | null;
+  permitExpiresAt: string | null;
+  notes: string | null;
+  docUrl: string | null;
+  mailUrl: string | null;
+  sortOrder: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface Firearm {
+  id: string;
+  code: string;
+  costCenter: string | null;
+  brand: string;
+  serial: string | null;
+  registerNo: string | null;
+  registerCard: string | null;
+  purchasedAt: string | null;
+  detail: string | null;
+  team: string | null;
+  docUrl: string | null;
+  photoUrl: string | null;
+  status: string;
+  checked: string | null;
+  fixNote: string | null;
+  sortOrder: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface AmmoMove {
+  id: string;
+  ammunitionId: string;
+  kind: "IN" | "OUT";
+  quantity: number;
+  movedAt: string;
+  withdrawnBy: string | null;
+  note: string | null;
+  remainingAfter: number;
+  createdAt: string;
+}
+
+export interface Ammunition {
+  id: string;
+  sourceKey: string;
+  code: string;
+  kind: string;
+  purchasedAt: string | null;
+  team: string | null;
+  detail: string | null;
+  receivedQty: number;
+  remainingQty: number;
+  sortOrder: number;
+  createdAt: string;
+  updatedAt: string;
+  moves?: AmmoMove[];
+}
+
 export interface NameMasterRow {
   id: string;
   name: string;
@@ -231,6 +326,8 @@ export interface VehicleDispositionLogEntry {
   licensePlate: string;
   brandModel: string;
   note: string | null;
+  actorUserId?: string | null;
+  actorUsername?: string | null;
   recordedAt: string;
   vehicle?: { id: string; licensePlate: string; brandModel: string; vehicleStatusId: string | null };
 }
@@ -243,8 +340,25 @@ export interface AssetDispositionLogEntry {
   serialNumber: string;
   itemName: string;
   note: string | null;
+  actorUserId?: string | null;
+  actorUsername?: string | null;
   recordedAt: string;
   asset?: { id: string; serialNumber: string; itemName: string; assetItemStatusId: string | null };
+}
+
+export type AuditAction = "CREATE" | "UPDATE" | "DELETE";
+
+export interface AuditLogEntry {
+  id: string;
+  entityType: string;
+  entityId: string;
+  action: AuditAction;
+  summary: string;
+  beforeJson: string | null;
+  afterJson: string | null;
+  actorUserId: string | null;
+  actorUsername: string | null;
+  createdAt: string;
 }
 
 export type AssetAttachmentKind = "PHOTO" | "PERMIT";
@@ -400,16 +514,66 @@ export interface MissionSummary {
   missionId: string;
   code: string | null;
   title: string | null;
+  status?: MissionStatus;
+  plannedStart?: string | null;
+  plannedEnd?: string | null;
+  route?: {
+    id: string;
+    name: string;
+    startLocation: string;
+    endLocation: string;
+  } | null;
   budgetAmount: string | null;
   totalExpenses: string;
   /** รวมมูลค่าสินค้าตามจุดส่ง */
   totalCargoValue: string;
   /** รายจ่ายเป็น % ของมูลค่าทรัพย์สิน (null ถ้ามูลค่าสินค้าเป็น 0) */
   expenseToCargoPercent: number | null;
+  /** เฉพาะหมวดที่ยอด > 0 */
   expensesByType: Record<string, string>;
+  /** รวมค่าตอบแทนจากบุคลากรรายคนในภารกิจ */
+  personnelCompensationTotal?: string;
   variance: string | null;
   overBudget: boolean;
+  personnel?: Array<{
+    personnelId: string;
+    fullName: string;
+    rank: string | null;
+    roleName: string;
+    compensationRate: string;
+  }>;
+  vehicles?: Array<{
+    vehicleId: string;
+    licensePlate: string;
+    roleName: string;
+    fuelLiters: string | null;
+    fuelType: "GASOLINE" | "DIESEL" | null;
+  }>;
+  destinations?: Array<{
+    address: string;
+    cargoValue: string;
+    containerCount: number;
+    sortOrder: number;
+  }>;
   attachments?: MissionAttachmentRow[];
+}
+
+export interface PersonnelMissionHistory {
+  personnelId: string;
+  missionCount: number;
+  compensationTotal: string;
+  missions: Array<{
+    assignmentId: string;
+    missionId: string;
+    code: string | null;
+    title: string | null;
+    status: MissionStatus;
+    plannedStart: string | null;
+    plannedEnd: string | null;
+    routeLabel: string | null;
+    roleName: string;
+    compensationRate: string;
+  }>;
 }
 
 /** GET /api/missions/stats/year */
@@ -444,4 +608,32 @@ export interface MissionYearStatsResponse {
   months: MissionYearMonthStat[];
   /** รวมทั้งปี — ถ้าไม่มีให้รวมจาก months ฝั่ง client */
   yearTotals?: MissionYearTotals;
+}
+
+export interface SecurityIncident {
+  id: string;
+  externalId: number;
+  title: string;
+  location: string | null;
+  incidentAt: string | null;
+  timeOfIncident: string | null;
+  incidentType: string | null;
+  impactLevel: string | null;
+  statusResolved: boolean;
+  impactTypes: string | null;
+  damageValue: string | null;
+  cause: string | null;
+  details: string | null;
+  actionExecuted: string | null;
+  preventiveSolutions: string | null;
+  commanderOrder: string | null;
+  linkBotShare: string | null;
+  reportingOfficer: string | null;
+  createdBy: string | null;
+  sourceCreatedAt: string | null;
+  sourceModifiedBy: string | null;
+  sourceModifiedAt: string | null;
+  attachmentsCount: number;
+  createdAt: string;
+  updatedAt: string;
 }

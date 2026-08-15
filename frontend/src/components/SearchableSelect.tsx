@@ -31,7 +31,7 @@ export function SearchableSelect({
   allowEmpty = true,
   placeholder = "พิมพ์เพื่อค้นหา…",
   className = "",
-  inputClassName = "mt-1 w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-white",
+  inputClassName = "mt-1 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-slate-900",
   id,
   "aria-label": ariaLabel,
 }: SearchableSelectProps) {
@@ -108,7 +108,7 @@ export function SearchableSelect({
     createPortal(
       <ul
         ref={menuRef}
-        className="fixed z-[200] overflow-y-auto rounded-lg border border-slate-600 bg-slate-900 py-1 shadow-xl shadow-black/40"
+        className="fixed z-[200] overflow-y-auto rounded-xl border border-slate-200 bg-white py-1 shadow-xl shadow-[#0000BF]/15"
         style={{
           top: menuPos.top,
           left: menuPos.left,
@@ -120,7 +120,7 @@ export function SearchableSelect({
         {allowEmpty && (
           <li
             role="option"
-            className="cursor-pointer px-3 py-2 text-sm text-slate-400 hover:bg-slate-800"
+            className="cursor-pointer px-3 py-2 text-sm text-slate-600 hover:bg-slate-100"
             onMouseDown={(e) => e.preventDefault()}
             onClick={() => {
               onChange("");
@@ -132,15 +132,15 @@ export function SearchableSelect({
           </li>
         )}
         {filtered.length === 0 ? (
-          <li className="px-3 py-2 text-sm text-slate-500">ไม่พบรายการ</li>
+          <li className="px-3 py-2 text-sm text-slate-600">ไม่พบรายการ</li>
         ) : (
           filtered.map((o) => (
             <li
               key={o.value}
               role="option"
               aria-selected={o.value === value}
-              className={`cursor-pointer px-3 py-2 text-sm hover:bg-slate-800 ${
-                o.value === value ? "bg-teal-950/50 text-teal-200" : "text-slate-200"
+              className={`cursor-pointer px-3 py-2 text-sm hover:bg-slate-100 ${
+                o.value === value ? "bg-[#0000BF]/10 text-[#2e2a58] font-semibold" : "text-slate-700"
               }`}
               onMouseDown={(e) => e.preventDefault()}
               onClick={() => {

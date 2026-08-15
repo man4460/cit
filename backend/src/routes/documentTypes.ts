@@ -16,14 +16,14 @@ documentTypesRouter.get("/", async (_req, res, next) => {
 documentTypesRouter.post("/", async (req, res, next) => {
   try {
     const { name, sortOrder } = req.body ?? {};
-    if (!name || !String(name).trim()) return res.status(400).json({ error: "กรอกชื่อประเภท" });
+    if (!name || !String(name).trim()) return res.status(400).json({ error: "กรอกชื่อหมวดหมู่" });
     const row = await prisma.documentType.create({
       data: { name: String(name).trim(), sortOrder: sortOrder !== undefined ? Number(sortOrder) : 0 },
     });
     res.status(201).json(row);
   } catch (e: unknown) {
     if (e && typeof e === "object" && "code" in e && (e as { code: string }).code === "P2002")
-      return res.status(409).json({ error: "ชื่อประเภทซ้ำ" });
+      return res.status(409).json({ error: "ชื่อหมวดหมู่ซ้ำ" });
     next(e);
   }
 });
@@ -43,7 +43,7 @@ documentTypesRouter.patch("/:id", async (req, res, next) => {
     res.json(row);
   } catch (e: unknown) {
     if (e && typeof e === "object" && "code" in e && (e as { code: string }).code === "P2002")
-      return res.status(409).json({ error: "ชื่อประเภทซ้ำ" });
+      return res.status(409).json({ error: "ชื่อหมวดหมู่ซ้ำ" });
     if (e && typeof e === "object" && "code" in e && (e as { code: string }).code === "P2025")
       return res.status(404).json({ error: "ไม่พบ" });
     next(e);
@@ -58,7 +58,7 @@ documentTypesRouter.delete("/:id", async (req, res, next) => {
     if (e && typeof e === "object" && "code" in e && (e as { code: string }).code === "P2025")
       return res.status(404).json({ error: "ไม่พบ" });
     if (e && typeof e === "object" && "code" in e && (e as { code: string }).code === "P2003")
-      return res.status(409).json({ error: "มีเอกสารอ้างอิงประเภทนี้อยู่ — ลบหรือย้ายเอกสารก่อน" });
+      return res.status(409).json({ error: "มีเอกสารอ้างอิงหมวดนี้อยู่ — ลบหรือย้ายเอกสารก่อน" });
     next(e);
   }
 });

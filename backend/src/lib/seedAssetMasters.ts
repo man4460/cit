@@ -11,7 +11,7 @@ export async function seedAssetMasterData() {
     });
   }
 
-  const statuses = ["พร้อมใช้งาน", "ซ่อมบำรุง", "เลิกใช้"];
+  const statuses = ["ใช้งาน", "พร้อมใช้งาน", "ซ่อมบำรุง", "จำหน่าย", "เลิกใช้"];
   for (let i = 0; i < statuses.length; i++) {
     const name = statuses[i]!;
     const excludesFromFleetCare = /เลิกใช้|จำหน่าย|ส่งคืน/.test(name);
@@ -34,8 +34,19 @@ export async function seedAssetMasterData() {
   }
 
   await prisma.assetCategory.upsert({
-    where: { name: "ทั่วไป" },
-    create: { name: "ทั่วไป", sortOrder: 0 },
-    update: { sortOrder: 0 },
+    where: { name: "วิทยุสื่อสาร" },
+    create: { name: "วิทยุสื่อสาร", sortOrder: 1 },
+    update: { sortOrder: 1 },
   });
+  const legacyGeneral = await prisma.assetCategory.findUnique({ where: { name: "ทั่วไป" } });
+  if (legacyGeneral) {
+    const target = await prisma.assetCategory.findUnique({ where: { name: "วัสดุทั่วไป" } });
+    if (target && legacyGeneral.id !== target.id) {
+      await prisma.asset.updateMany({
+        where: { assetCategoryId: legacyGeneral.id },
+        data: { assetCategoryId: target.id },
+      });
+      await prisma.assetCategory.delete({ where: { id: legacyGeneral.id } }).catch(() => undefined);
+    }
+  }
 }

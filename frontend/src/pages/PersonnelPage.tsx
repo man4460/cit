@@ -1,15 +1,36 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useSearchParams } from "react-router-dom";
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { Link, useSearchParams } from "react-router-dom";
 import { apiJson, apiUrl, authHeader } from "../api/client";
 import { ImageLightbox } from "../components/ImageLightbox";
+import { ListPagination } from "../components/ListPagination";
 import { Modal, ModalFormActions, ModalFormBody, ModalFormSection } from "../components/Modal";
-import { PageFilterPrintBar } from "../components/PageFilterPrintBar";
+import { PageHeaderBar } from "../components/PageHeaderBar";
+import { PrintA4Table } from "../components/PrintA4Table";
+import { formatBaht } from "../lib/formatNumber";
 import { rowMatchesFilter } from "../lib/searchNormalize";
-import type { OrganizationUnitType, Personnel, PersonnelCategory } from "../types";
+import { prepareImageFileForUpload } from "../lib/prepareImageFileForUpload";
+import {
+  brandGradientFillClass,
+  listCardAccentClass,
+  listCardClass,
+  toolbarMasterBtnClass,
+  toolbarMasterGroupClass,
+  toolbarPrimaryBtnClass,
+} from "../lib/uiTokens";
+import type { OrganizationUnitType, Personnel, PersonnelCategory, PersonnelMissionHistory } from "../types";
+
+const PAGE_SIZE = 24; // 3 คอลัมน์ × 8 แถว
 
 type BeneficiaryFormRow = { fullName: string; relationship: string; phone: string; idNumber: string };
 
 type MasterRow = { id: string; name: string; sortOrder: number };
+
+function formatInsuranceExpiry(iso: string | null | undefined) {
+  if (!iso) return "—";
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return iso.slice(0, 10);
+  return d.toLocaleDateString("th-TH", { day: "numeric", month: "short", year: "numeric" });
+}
 
 function CameraIcon({ className }: { className?: string }) {
   return (
@@ -104,31 +125,31 @@ function MasterDataModal({
   return (
     <Modal open={open} onClose={onClose} title={title}>
       <ModalFormBody className="!space-y-4">
-        {err && <p className="text-sm text-rose-400">{err}</p>}
+        {err && <p className="text-sm text-rose-600">{err}</p>}
         <form onSubmit={add} className="flex gap-2">
         <input
           placeholder="ชื่อใหม่"
-          className="min-w-0 flex-1 rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-white"
+          className="min-w-0 flex-1 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900"
           value={newName}
           onChange={(e) => setNewName(e.target.value)}
         />
-        <button type="submit" className="shrink-0 rounded-lg bg-teal-600 px-3 py-2 text-sm font-medium text-white">
+        <button type="submit" className="shrink-0 rounded-full bg-gradient-to-r from-[#0000BF] via-[#8b5cf6] to-[#ec4899] text-sm font-bold text-white shadow-lg shadow-fuchsia-500/25 hover:from-[#0000a3] hover:via-[#7c3aed] hover:to-[#db2777] px-3 py-2">
           เพิ่ม
         </button>
         </form>
         {editing ? (
-        <form onSubmit={saveEdit} className="rounded-lg border border-teal-900/40 bg-slate-950/50 p-3">
-          <p className="text-xs text-slate-500">แก้ไข</p>
+        <form onSubmit={saveEdit} className="rounded-lg border border-[#0000BF]/25 bg-white/80 p-3">
+          <p className="text-xs text-slate-600">แก้ไข</p>
           <input
-            className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-white"
+            className="mt-1 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-slate-900"
             value={editName}
             onChange={(e) => setEditName(e.target.value)}
           />
           <div className="mt-2 flex gap-2">
-            <button type="submit" className="rounded-lg bg-teal-600 px-3 py-1.5 text-sm text-white">
+            <button type="submit" className="rounded-full bg-gradient-to-r from-[#0000BF] via-[#8b5cf6] to-[#ec4899] text-sm font-bold text-white shadow-lg shadow-fuchsia-500/25 hover:from-[#0000a3] hover:via-[#7c3aed] hover:to-[#db2777] px-3 py-1.5">
               บันทึก
             </button>
-            <button type="button" className="text-sm text-slate-400" onClick={() => setEditing(null)}>
+            <button type="button" className="text-sm text-slate-600" onClick={() => setEditing(null)}>
               ยกเลิก
             </button>
           </div>
@@ -138,13 +159,13 @@ function MasterDataModal({
         {rows.map((r) => (
           <li
             key={r.id}
-            className="flex items-center justify-between gap-2 rounded-lg border border-slate-800 bg-slate-900/40 px-3 py-2 text-sm"
+            className="flex items-center justify-between gap-2 rounded-lg border border-slate-200 bg-white/75 px-3 py-2 text-sm"
           >
-            <span className="truncate text-slate-200">{r.name}</span>
+            <span className="truncate text-slate-800">{r.name}</span>
             <span className="flex shrink-0 gap-1">
               <button
                 type="button"
-                className="rounded px-2 py-0.5 text-xs text-teal-400 hover:bg-slate-800"
+                className="rounded px-2 py-0.5 text-xs text-[#5b61ff] hover:bg-slate-100"
                 onClick={() => {
                   setEditing(r);
                   setEditName(r.name);
@@ -154,7 +175,7 @@ function MasterDataModal({
               </button>
               <button
                 type="button"
-                className="rounded px-2 py-0.5 text-xs text-rose-400 hover:bg-slate-800"
+                className="rounded px-2 py-0.5 text-xs text-rose-600 hover:bg-slate-100"
                 onClick={() => void remove(r)}
               >
                 ลบ
@@ -198,7 +219,12 @@ export function PersonnelPage() {
   /** แสดงเลขประจำตัวจริงต่อแถว (คลิกปุ่มแสดง) */
   const [idRevealed, setIdRevealed] = useState<Record<string, boolean>>({});
   const [editingId, setEditingId] = useState<string | null>(null);
+  const [detailId, setDetailId] = useState<string | null>(null);
+  const [detailIdRevealed, setDetailIdRevealed] = useState(false);
+  const [missionHistory, setMissionHistory] = useState<PersonnelMissionHistory | null>(null);
+  const [missionHistoryLoading, setMissionHistoryLoading] = useState(false);
   const [listFilter, setListFilter] = useState("");
+  const [page, setPage] = useState(1);
 
   const [form, setForm] = useState({
     fullName: "",
@@ -232,6 +258,48 @@ export function PersonnelPage() {
     [rows, listFilter],
   );
 
+  const pageCount = Math.max(1, Math.ceil(filteredPersonnel.length / PAGE_SIZE));
+  const safePage = Math.min(page, pageCount);
+  const pagedPersonnel = useMemo(() => {
+    const start = (safePage - 1) * PAGE_SIZE;
+    return filteredPersonnel.slice(start, start + PAGE_SIZE);
+  }, [filteredPersonnel, safePage]);
+
+  useEffect(() => {
+    setPage(1);
+  }, [listFilter]);
+
+  useEffect(() => {
+    if (page > pageCount) setPage(pageCount);
+  }, [page, pageCount]);
+
+  const detailPerson = useMemo(
+    () => (detailId ? rows.find((r) => r.id === detailId) ?? null : null),
+    [rows, detailId],
+  );
+
+  useEffect(() => {
+    if (!detailId) {
+      setMissionHistory(null);
+      return;
+    }
+    let cancelled = false;
+    setMissionHistoryLoading(true);
+    void apiJson<PersonnelMissionHistory>(`/api/personnel/${detailId}/missions`)
+      .then((data) => {
+        if (!cancelled) setMissionHistory(data);
+      })
+      .catch(() => {
+        if (!cancelled) setMissionHistory(null);
+      })
+      .finally(() => {
+        if (!cancelled) setMissionHistoryLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [detailId]);
+
   const loadLists = useCallback(async () => {
     const [p, c, o] = await Promise.all([
       apiJson<Personnel[]>("/api/personnel"),
@@ -258,13 +326,14 @@ export function PersonnelPage() {
 
   useEffect(() => {
     if (!highlightId || loading) return;
-    const el = document.getElementById(`personnel-row-${highlightId}`);
+    setDetailId(highlightId);
+    const el = document.getElementById(`personnel-card-${highlightId}`);
     if (!el) return;
     el.scrollIntoView({ behavior: "smooth", block: "center" });
-    el.classList.add("ring-2", "ring-teal-500", "ring-offset-2", "ring-offset-slate-950", "rounded-lg");
+    el.classList.add("ring-2", "ring-[#0000BF]", "ring-offset-2", "ring-offset-white");
     if (highlightClearRef.current) clearTimeout(highlightClearRef.current);
     highlightClearRef.current = setTimeout(() => {
-      el.classList.remove("ring-2", "ring-teal-500", "ring-offset-2", "ring-offset-slate-950", "rounded-lg");
+      el.classList.remove("ring-2", "ring-[#0000BF]", "ring-offset-2", "ring-offset-white");
       highlightClearRef.current = null;
       setSearchParams(
         (prev) => {
@@ -360,7 +429,10 @@ export function PersonnelPage() {
     fd.append("beneficiaries", JSON.stringify(benPayload));
 
     const input = document.getElementById("personnel-photo-input") as HTMLInputElement | null;
-    if (input?.files?.[0]) fd.append("photo", input.files[0]);
+    if (input?.files?.[0]) {
+      const prepared = await prepareImageFileForUpload(input.files[0]);
+      fd.append("photo", prepared);
+    }
 
     const url = editingId ? apiUrl(`/api/personnel/${editingId}`) : apiUrl("/api/personnel");
     const method = editingId ? "PUT" : "POST";
@@ -419,38 +491,39 @@ export function PersonnelPage() {
     setModalOpen(true);
   }
 
-  async function deletePersonnel(r: Personnel) {
-    if (!confirm(`ลบบุคลากร «${r.fullName}» ? การดำเนินการนี้ไม่สามารถย้อนกลับได้`)) return;
+  async function deletePersonnel(r: Personnel): Promise<boolean> {
+    if (!confirm(`ลบบุคลากร «${r.fullName}» ? การดำเนินการนี้ไม่สามารถย้อนกลับได้`)) return false;
     try {
       await apiJson(`/api/personnel/${r.id}`, { method: "DELETE" });
       await load();
+      return true;
     } catch (e) {
       alert(e instanceof Error ? e.message : "ลบไม่สำเร็จ");
+      return false;
     }
   }
 
   return (
     <div>
-      <div className="flex flex-wrap items-start justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-bold text-white">บุคลากร</h1>
-          <p className="mt-1 text-slate-400">ข้อมูล ยศ ตำแหน่ง ประเภท ประกัน และผู้รับผลประโยชน์</p>
-        </div>
-        <div className="flex flex-wrap gap-2">
-          <button
-            type="button"
-            onClick={() => setMasterModal("category")}
-            className="rounded-lg border border-slate-600 px-3 py-2 text-sm text-slate-300 hover:bg-slate-800"
-          >
-            จัดการประเภทบุคลากร
-          </button>
-          <button
-            type="button"
-            onClick={() => setMasterModal("org")}
-            className="rounded-lg border border-slate-600 px-3 py-2 text-sm text-slate-300 hover:bg-slate-800"
-          >
-            จัดการประเภทหน่วยงาน
-          </button>
+      <PageHeaderBar
+        title="บุคลากร"
+        filter={{
+          value: listFilter,
+          onChange: setListFilter,
+          printTitle: "บุคลากร",
+          placeholder: "กรองชื่อ / ยศ / ตำแหน่ง / หน่วย / ประเภท / โทร / เลขประจำตัว…",
+        }}
+        masters={
+          <div className={toolbarMasterGroupClass}>
+            <button type="button" onClick={() => setMasterModal("category")} className={toolbarMasterBtnClass}>
+              ประเภท
+            </button>
+            <button type="button" onClick={() => setMasterModal("org")} className={toolbarMasterBtnClass}>
+              หน่วยงาน
+            </button>
+          </div>
+        }
+        primary={
           <button
             type="button"
             onClick={() => {
@@ -458,18 +531,11 @@ export function PersonnelPage() {
               setEditingId(null);
               setModalOpen(true);
             }}
-            className="rounded-lg bg-teal-600 px-4 py-2.5 text-sm font-semibold text-white shadow-lg shadow-teal-900/25 hover:bg-teal-500"
+            className={toolbarPrimaryBtnClass}
           >
             เพิ่มบุคลากร
           </button>
-        </div>
-      </div>
-
-      <PageFilterPrintBar
-        value={listFilter}
-        onChange={setListFilter}
-        printTitle="บุคลากร"
-        placeholder="กรองชื่อ / ยศ / ตำแหน่ง / หน่วย / ประเภท / โทร / เลขประจำตัว…"
+        }
       />
 
       <MasterDataModal
@@ -504,7 +570,7 @@ export function PersonnelPage() {
                   <button
                     type="button"
                     title="ดูรูปใหญ่"
-                    className="rounded-full border-2 border-teal-600/40 shadow-lg ring-offset-2 ring-offset-slate-900 transition hover:ring-2 hover:ring-teal-500/50 focus:outline-none focus:ring-2 focus:ring-teal-500"
+                    className="rounded-full border-2 border-[#0000BF]/35 shadow-lg ring-offset-2 ring-offset-white transition hover:ring-2 hover:ring-[#0000BF]/50 focus:outline-none focus:ring-2 focus:ring-[#0000BF]"
                     onClick={() => {
                       setLightboxUrl(photoPreview);
                       setLightboxTitle(form.fullName.trim() || "รูปถ่าย");
@@ -518,24 +584,24 @@ export function PersonnelPage() {
                   </button>
                   <label
                     htmlFor="personnel-photo-input"
-                    className="mt-4 cursor-pointer text-sm font-medium text-teal-400 hover:underline"
+                    className="mt-4 cursor-pointer text-sm font-medium text-[#5b61ff] hover:underline"
                   >
                     เปลี่ยนรูป
                   </label>
-                  <span className="mt-1 text-center text-xs text-slate-500">คลิกที่รูปเพื่อดูขนาดใหญ่ · JPG, PNG</span>
+                  <span className="mt-1 text-center text-xs text-slate-600">คลิกที่รูปเพื่อดูขนาดใหญ่ · JPG, PNG</span>
                 </div>
               ) : (
                 <label
                   htmlFor="personnel-photo-input"
-                  className="group flex cursor-pointer flex-col items-center justify-center rounded-2xl border-2 border-dashed border-slate-600 bg-gradient-to-b from-slate-900/80 to-slate-950 px-8 py-10 transition hover:border-teal-500/60 hover:from-slate-800/50 hover:shadow-lg hover:shadow-teal-900/10"
+                  className="group flex cursor-pointer flex-col items-center justify-center rounded-2xl border-2 border-dashed border-slate-200 bg-gradient-to-b from-white to-[#f7f6ff] px-8 py-10 transition hover:border-[#0000BF]/45 hover:from-[#0000BF]/5 hover:shadow-lg hover:shadow-[#0000BF]/10"
                 >
-                  <div className="flex h-24 w-24 items-center justify-center rounded-full bg-teal-600/15 text-teal-400 ring-2 ring-teal-500/30 transition group-hover:bg-teal-500/20 group-hover:text-teal-300">
+                  <div className="flex h-24 w-24 items-center justify-center rounded-full bg-[#0000BF]/15 text-[#5b61ff] ring-2 ring-[#0000BF]/30 transition group-hover:bg-[#5b61ff]/20 group-hover:text-[#4d47b6]">
                     <CameraIcon className="h-12 w-12" />
                   </div>
-                  <span className="mt-4 text-center text-sm font-medium text-slate-300 group-hover:text-white">
+                  <span className="mt-4 text-center text-sm font-medium text-slate-700 group-hover:text-[#2e2a58]">
                     แตะเพื่ออัปโหลดรูป
                   </span>
-                  <span className="mt-1 text-center text-xs text-slate-500">JPG, PNG — สูงสุดตามที่เซิร์ฟเวอร์กำหนด</span>
+                  <span className="mt-1 text-center text-xs text-slate-600">JPG, PNG — สูงสุดตามที่เซิร์ฟเวอร์กำหนด</span>
                 </label>
               )}
             </div>
@@ -544,52 +610,52 @@ export function PersonnelPage() {
           <ModalFormSection title="ข้อมูลทั่วไป">
             <div className="grid gap-4 sm:grid-cols-2">
             <label className="block">
-              <span className="text-xs font-medium text-slate-400">ชื่อ–นามสกุล</span>
+              <span className="text-xs font-medium text-slate-700">ชื่อ–นามสกุล</span>
               <input
                 required
-                className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-white"
+                className="mt-1 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-slate-900"
                 value={form.fullName}
                 onChange={(e) => setForm((f) => ({ ...f, fullName: e.target.value }))}
               />
             </label>
             <label className="block">
-              <span className="text-xs font-medium text-slate-400">เลขประจำตัว</span>
+              <span className="text-xs font-medium text-slate-700">เลขประจำตัว</span>
               <input
                 required
-                className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-white"
+                className="mt-1 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-slate-900"
                 value={form.idNumber}
                 onChange={(e) => setForm((f) => ({ ...f, idNumber: e.target.value }))}
               />
             </label>
             <label className="block">
-              <span className="text-xs font-medium text-slate-400">ยศ</span>
+              <span className="text-xs font-medium text-slate-700">ยศ</span>
               <input
-                className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-white"
+                className="mt-1 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-slate-900"
                 value={form.rank}
                 onChange={(e) => setForm((f) => ({ ...f, rank: e.target.value }))}
                 placeholder="เช่น ร.ต.ต."
               />
             </label>
             <label className="block">
-              <span className="text-xs font-medium text-slate-400">ตำแหน่ง</span>
+              <span className="text-xs font-medium text-slate-700">ตำแหน่ง</span>
               <input
-                className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-white"
+                className="mt-1 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-slate-900"
                 value={form.position}
                 onChange={(e) => setForm((f) => ({ ...f, position: e.target.value }))}
               />
             </label>
             <label className="block">
-              <span className="text-xs font-medium text-slate-400">โทรศัพท์</span>
+              <span className="text-xs font-medium text-slate-700">โทรศัพท์</span>
               <input
-                className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-white"
+                className="mt-1 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-slate-900"
                 value={form.phone}
                 onChange={(e) => setForm((f) => ({ ...f, phone: e.target.value }))}
               />
             </label>
             <label className="block">
-              <span className="text-xs font-medium text-slate-400">ประเภท (บุคลากร)</span>
+              <span className="text-xs font-medium text-slate-700">ประเภท (บุคลากร)</span>
               <select
-                className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-white"
+                className="mt-1 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-slate-900"
                 value={form.personnelCategoryId}
                 onChange={(e) => setForm((f) => ({ ...f, personnelCategoryId: e.target.value }))}
               >
@@ -602,10 +668,10 @@ export function PersonnelPage() {
               </select>
             </label>
             <label className="block sm:col-span-2">
-              <span className="text-xs font-medium text-slate-400">ประเภทหน่วยงาน</span>
+              <span className="text-xs font-medium text-slate-700">ประเภทหน่วยงาน</span>
               <select
                 required
-                className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-white"
+                className="mt-1 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-slate-900"
                 value={form.organizationUnitTypeId}
                 onChange={(e) => setForm((f) => ({ ...f, organizationUnitTypeId: e.target.value }))}
               >
@@ -623,35 +689,35 @@ export function PersonnelPage() {
           <ModalFormSection title="กรมธรรม์ประกันภัย">
             <div className="grid gap-4 sm:grid-cols-2">
             <label className="block">
-              <span className="text-xs font-medium text-slate-400">บริษัทประกัน</span>
+              <span className="text-xs font-medium text-slate-700">บริษัทประกัน</span>
               <input
-                className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-white"
+                className="mt-1 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-slate-900"
                 value={form.insuranceCompany}
                 onChange={(e) => setForm((f) => ({ ...f, insuranceCompany: e.target.value }))}
               />
             </label>
             <label className="block">
-              <span className="text-xs font-medium text-slate-400">เลขกรมธรรม์ / เลขกรมธรรม์หลัก</span>
+              <span className="text-xs font-medium text-slate-700">เลขกรมธรรม์ / เลขกรมธรรม์หลัก</span>
               <input
-                className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-white"
+                className="mt-1 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-slate-900"
                 value={form.insurancePolicyNumber}
                 onChange={(e) => setForm((f) => ({ ...f, insurancePolicyNumber: e.target.value }))}
               />
             </label>
             <label className="block">
-              <span className="text-xs font-medium text-slate-400">วันหมดอายุ (ถ้ามี)</span>
+              <span className="text-xs font-medium text-slate-700">วันหมดอายุ (ถ้ามี)</span>
               <input
                 type="date"
-                className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-white"
+                className="mt-1 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-slate-900"
                 value={form.insuranceExpiry}
                 onChange={(e) => setForm((f) => ({ ...f, insuranceExpiry: e.target.value }))}
               />
             </label>
             <label className="block sm:col-span-2">
-              <span className="text-xs font-medium text-slate-400">รายละเอียดกรมธรรม์ / หมายเหตุ</span>
+              <span className="text-xs font-medium text-slate-700">รายละเอียดกรมธรรม์ / หมายเหตุ</span>
               <textarea
                 rows={2}
-                className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-white"
+                className="mt-1 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-slate-900"
                 value={form.insuranceNotes}
                 onChange={(e) => setForm((f) => ({ ...f, insuranceNotes: e.target.value }))}
               />
@@ -663,7 +729,7 @@ export function PersonnelPage() {
             <div className="flex justify-end">
               <button
                 type="button"
-                className="text-xs text-teal-400 hover:underline"
+                className="text-xs text-[#5b61ff] hover:underline"
                 onClick={() => setBeneficiaries((b) => [...b, emptyBeneficiary()])}
               >
                 + เพิ่มคน
@@ -673,11 +739,11 @@ export function PersonnelPage() {
               {beneficiaries.map((b, idx) => (
                 <div
                   key={idx}
-                  className="grid gap-2 rounded-xl border border-slate-800 bg-slate-950/40 p-3 sm:grid-cols-2"
+                  className="grid gap-2 rounded-xl border border-slate-200 bg-white/40 p-3 sm:grid-cols-2"
                 >
                   <input
                     placeholder="ชื่อ–สกุลผู้รับผลประโยชน์ *"
-                    className="rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-white sm:col-span-2"
+                    className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 sm:col-span-2"
                     value={b.fullName}
                     onChange={(e) => {
                       const next = [...beneficiaries];
@@ -687,7 +753,7 @@ export function PersonnelPage() {
                   />
                   <input
                     placeholder="ความสัมพันธ์"
-                    className="rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-white"
+                    className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900"
                     value={b.relationship}
                     onChange={(e) => {
                       const next = [...beneficiaries];
@@ -697,7 +763,7 @@ export function PersonnelPage() {
                   />
                   <input
                     placeholder="โทรศัพท์"
-                    className="rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-white"
+                    className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900"
                     value={b.phone}
                     onChange={(e) => {
                       const next = [...beneficiaries];
@@ -707,7 +773,7 @@ export function PersonnelPage() {
                   />
                   <input
                     placeholder="เลขประจำตัว (ถ้ามี)"
-                    className="rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-white sm:col-span-2"
+                    className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 sm:col-span-2"
                     value={b.idNumber}
                     onChange={(e) => {
                       const next = [...beneficiaries];
@@ -718,7 +784,7 @@ export function PersonnelPage() {
                   {beneficiaries.length > 1 && (
                     <button
                       type="button"
-                      className="text-left text-xs text-rose-400 sm:col-span-2"
+                      className="text-left text-xs text-rose-600 sm:col-span-2"
                       onClick={() => setBeneficiaries((rows) => rows.filter((_, i) => i !== idx))}
                     >
                       ลบแถวนี้
@@ -729,13 +795,14 @@ export function PersonnelPage() {
             </div>
           </ModalFormSection>
 
-          <ModalFormSection title="หมายเหตุ">
+          <ModalFormSection title="โน้ตสำคัญ">
             <label className="block">
-              <span className="text-xs font-medium text-slate-400">หมายเหตุทั่วไป</span>
+              <span className="text-xs font-medium text-slate-700">โน้ตสำคัญ</span>
               <input
-                className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-white"
+                className="mt-1 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-slate-900"
                 value={form.remarks}
                 onChange={(e) => setForm((f) => ({ ...f, remarks: e.target.value }))}
+                placeholder="บันทึกข้อมูลสำคัญของบุคลากร"
               />
             </label>
           </ModalFormSection>
@@ -743,13 +810,13 @@ export function PersonnelPage() {
           <ModalFormActions>
             <button
               type="submit"
-              className="rounded-lg bg-teal-600 px-4 py-2 text-sm font-semibold text-white hover:bg-teal-500"
+              className="rounded-full bg-gradient-to-r from-[#0000BF] via-[#8b5cf6] to-[#ec4899] text-sm font-bold text-white shadow-lg shadow-fuchsia-500/25 hover:from-[#0000a3] hover:via-[#7c3aed] hover:to-[#db2777] px-4 py-2"
             >
               บันทึก
             </button>
             <button
               type="button"
-              className="rounded-lg border border-slate-600 px-4 py-2 text-sm text-slate-300 hover:bg-slate-800"
+              className="rounded-lg border border-slate-200 px-4 py-2 text-sm text-slate-700 hover:bg-slate-100"
               onClick={closeAddModal}
             >
               ยกเลิก
@@ -768,104 +835,425 @@ export function PersonnelPage() {
         }}
       />
 
-      <div className="mt-8 overflow-x-auto rounded-2xl border border-slate-800">
-        <table className="w-full min-w-[960px] text-left text-sm">
-          <thead className="border-b border-slate-800 bg-slate-900/80 text-slate-400">
-            <tr>
-              <th className="p-3">รูป</th>
-              <th className="p-3">ยศ</th>
-              <th className="p-3">ชื่อ</th>
-              <th className="p-3">ตำแหน่ง</th>
-              <th className="p-3">หน่วยงาน</th>
-              <th className="p-3">ประเภท</th>
-              <th className="p-3">โทร</th>
-              <th className="min-w-[200px] p-3">เลขประจำตัว</th>
-              <th className="w-32 p-3">จัดการ</th>
-            </tr>
-          </thead>
-          <tbody>
-            {loading ? (
-              <tr>
-                <td colSpan={9} className="p-6 text-slate-500">
-                  กำลังโหลด…
-                </td>
-              </tr>
-            ) : filteredPersonnel.length === 0 ? (
-              <tr>
-                <td colSpan={9} className="p-6 text-slate-500">
-                  ไม่มีรายการที่ตรงกับการกรอง
-                </td>
-              </tr>
-            ) : (
-              filteredPersonnel.map((r) => (
-                <tr key={r.id} id={`personnel-row-${r.id}`} className="border-b border-slate-800/80">
-                  <td className="p-3">
+      <Modal
+        open={Boolean(detailPerson)}
+        onClose={() => {
+          setDetailId(null);
+          setDetailIdRevealed(false);
+        }}
+        title={
+          detailPerson
+            ? [detailPerson.rank, detailPerson.fullName].filter(Boolean).join(" ")
+            : "รายละเอียดบุคลากร"
+        }
+        size="wide"
+      >
+        {detailPerson ? (
+          <ModalFormBody className="space-y-3">
+            {(() => {
+              const p = detailPerson;
+              const btnPrimary = `inline-flex h-9 items-center justify-center rounded-xl px-3.5 text-xs font-black text-white shadow-md shadow-[#0000BF]/20 ${brandGradientFillClass}`;
+              const btnSoft =
+                "inline-flex h-9 items-center justify-center rounded-xl border border-[#e0ddf8] bg-white px-3 text-xs font-bold text-[#4d47b6] shadow-sm transition hover:border-[#0000BF]/30 hover:bg-[#f5f3ff]";
+              const btnDanger =
+                "inline-flex h-9 items-center justify-center rounded-xl border border-rose-200 bg-rose-50 px-3 text-xs font-bold text-rose-600 shadow-sm transition hover:bg-rose-100";
+              const Field = ({
+                label,
+                value,
+                mono,
+                span2,
+              }: {
+                label: string;
+                value: ReactNode;
+                mono?: boolean;
+                span2?: boolean;
+              }) => (
+                <div className={span2 ? "sm:col-span-2" : "min-w-0"}>
+                  <dt className="text-[10px] font-semibold tracking-wide text-slate-500">{label}</dt>
+                  <dd
+                    className={`mt-0.5 break-words text-[13px] font-medium text-[#1e1b4b] ${mono ? "font-mono text-xs" : ""}`}
+                  >
+                    {value}
+                  </dd>
+                </div>
+              );
+              const bens = p.beneficiaries ?? [];
+              const hasInsurance =
+                Boolean(p.insuranceCompany?.trim()) ||
+                Boolean(p.insurancePolicyNumber?.trim()) ||
+                Boolean(p.insuranceExpiry) ||
+                Boolean(p.insuranceNotes?.trim());
+              return (
+                <div className="overflow-hidden rounded-2xl bg-gradient-to-br from-white via-[#faf9ff] to-[#fdf2f8]/40">
+                  <div className="grid lg:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)]">
+                    <div className="flex flex-col gap-3 bg-[#f3f1ff]/40 p-4 sm:p-5 lg:border-r lg:border-[#ebe8f8]">
+                      <div className="flex flex-col items-center gap-3">
+                        {p.photoUrl ? (
+                          <button
+                            type="button"
+                            title="ดูรูปใหญ่"
+                            className="rounded-2xl focus:outline-none focus-visible:ring-2 focus-visible:ring-[#0000BF]"
+                            onClick={() => {
+                              setLightboxUrl(p.photoUrl);
+                              setLightboxTitle(p.fullName);
+                            }}
+                          >
+                            <img
+                              src={p.photoUrl}
+                              alt=""
+                              className="h-36 w-36 rounded-2xl object-cover shadow-sm sm:h-40 sm:w-40"
+                            />
+                          </button>
+                        ) : (
+                          <div className="flex h-36 w-36 items-center justify-center rounded-2xl bg-[#0000BF]/10 text-4xl font-black text-[#4d47b6] sm:h-40 sm:w-40">
+                            {(p.fullName.trim().charAt(0) || "?").toUpperCase()}
+                          </div>
+                        )}
+                        <div className="text-center">
+                          <p className="text-base font-black text-[#1e1b4b]">
+                            {[p.rank, p.fullName].filter(Boolean).join(" ")}
+                          </p>
+                          {p.position?.trim() ? (
+                            <p className="mt-0.5 text-sm text-slate-600">{p.position}</p>
+                          ) : null}
+                          <div className="mt-2 flex flex-wrap justify-center gap-1.5">
+                            {p.organizationUnitType?.name ? (
+                              <span className="rounded-full bg-[#0000BF]/10 px-2.5 py-0.5 text-[11px] font-bold text-[#4d47b6]">
+                                {p.organizationUnitType.name}
+                              </span>
+                            ) : null}
+                            {p.personnelCategory?.name ? (
+                              <span className="rounded-full bg-violet-500/15 px-2.5 py-0.5 text-[11px] font-bold text-violet-700">
+                                {p.personnelCategory.name}
+                              </span>
+                            ) : null}
+                          </div>
+                        </div>
+                      </div>
+
+                      <dl className="grid grid-cols-2 gap-x-3 gap-y-2">
+                        {p.phone?.trim() ? <Field label="โทรศัพท์" value={p.phone.trim()} /> : null}
+                        <div className="min-w-0">
+                          <dt className="text-[10px] font-semibold tracking-wide text-slate-500">เลขประจำตัว</dt>
+                          <dd className="mt-0.5 flex flex-wrap items-center gap-2">
+                            <span
+                              className={`font-mono text-xs font-medium tabular-nums tracking-wide text-[#1e1b4b] ${
+                                detailIdRevealed ? "" : "select-none"
+                              }`}
+                            >
+                              {detailIdRevealed ? p.idNumber : maskIdNumber(p.idNumber)}
+                            </span>
+                            <button
+                              type="button"
+                              className="rounded px-1 py-0.5 text-[10px] font-bold text-[#4d47b6] hover:bg-[#f5f3ff]"
+                              onClick={() => setDetailIdRevealed((v) => !v)}
+                            >
+                              {detailIdRevealed ? "ซ่อน" : "แสดง"}
+                            </button>
+                          </dd>
+                        </div>
+                        {hasInsurance ? (
+                          <>
+                            {p.insuranceCompany?.trim() ? (
+                              <Field label="บริษัทประกัน" value={p.insuranceCompany.trim()} span2 />
+                            ) : null}
+                            {p.insurancePolicyNumber?.trim() ? (
+                              <Field label="เลขกรมธรรม์" value={p.insurancePolicyNumber.trim()} mono />
+                            ) : null}
+                            {p.insuranceExpiry ? (
+                              <Field label="วันหมดอายุ" value={formatInsuranceExpiry(p.insuranceExpiry)} />
+                            ) : null}
+                            {p.insuranceNotes?.trim() ? (
+                              <Field label="หมายเหตุประกัน" value={p.insuranceNotes.trim()} span2 />
+                            ) : null}
+                          </>
+                        ) : null}
+                      </dl>
+
+                      {bens.length > 0 ? (
+                        <div>
+                          <p className="text-[10px] font-semibold tracking-wide text-slate-500">ผู้รับผลประโยชน์</p>
+                          <ul className="mt-1 space-y-1">
+                            {bens.map((b) => (
+                              <li key={b.id} className="text-xs text-[#1e1b4b]">
+                                <span className="font-semibold">{b.fullName}</span>
+                                {b.relationship ? (
+                                  <span className="text-slate-500"> · {b.relationship}</span>
+                                ) : null}
+                                {b.phone ? <span className="text-slate-500"> · {b.phone}</span> : null}
+                              </li>
+                            ))}
+                          </ul>
+                        </div>
+                      ) : null}
+
+                      {p.remarks?.trim() ? (
+                        <div className="rounded-lg bg-amber-50/90 px-2.5 py-2">
+                          <p className="text-[10px] font-bold tracking-wide text-amber-800">โน้ตสำคัญ</p>
+                          <p className="mt-0.5 max-h-28 overflow-y-auto whitespace-pre-wrap break-words text-xs leading-relaxed text-amber-950/90">
+                            {p.remarks.trim()}
+                          </p>
+                        </div>
+                      ) : null}
+                    </div>
+
+                    <div className="flex min-w-0 flex-col gap-3 p-4 sm:p-5">
+                      <div className="flex min-h-0 flex-1 flex-col">
+                        <div className="flex flex-wrap items-center justify-between gap-2">
+                          <p className="text-[10px] font-semibold tracking-wide text-fuchsia-700">ประวัติภารกิจ</p>
+                          {missionHistory && missionHistory.missionCount > 0 ? (
+                            <p className="text-[11px] font-bold tabular-nums text-fuchsia-800">
+                              {missionHistory.missionCount} ครั้ง · รวมค่าตอบแทน{" "}
+                              {formatBaht(missionHistory.compensationTotal)} ฿
+                            </p>
+                          ) : null}
+                        </div>
+                        {missionHistoryLoading ? (
+                          <p className="mt-2 text-xs text-slate-500">กำลังโหลดประวัติ…</p>
+                        ) : !missionHistory || missionHistory.missions.length === 0 ? (
+                          <p className="mt-2 text-xs text-slate-500">ยังไม่มีภารกิจที่ผูกกับบุคคลนี้</p>
+                        ) : (
+                          <ul className="mt-1 max-h-[min(52vh,28rem)] flex-1 divide-y divide-fuchsia-100/80 overflow-y-auto">
+                            {missionHistory.missions.map((m) => (
+                              <li key={m.assignmentId}>
+                                <Link
+                                  to={`/missions?summary=${m.missionId}`}
+                                  title={[m.code, m.title, m.roleName, m.routeLabel]
+                                    .filter(Boolean)
+                                    .join(" · ")}
+                                  className="flex items-center gap-2 px-0.5 py-1.5 transition hover:bg-fuchsia-50/70"
+                                  onClick={() => {
+                                    setDetailId(null);
+                                    setDetailIdRevealed(false);
+                                  }}
+                                >
+                                  <div className="min-w-0 flex-1">
+                                    <p className="truncate font-mono text-[10px] font-bold leading-tight text-fuchsia-600">
+                                      {m.code ?? "—"}
+                                      <span className="ml-1.5 font-sans font-semibold text-[#1e1b4b]">
+                                        {m.title ?? "ภารกิจ"}
+                                      </span>
+                                    </p>
+                                    <p className="truncate text-[10px] leading-tight text-slate-500">
+                                      {m.roleName}
+                                      {m.routeLabel ? ` · ${m.routeLabel}` : ""}
+                                    </p>
+                                  </div>
+                                  <span className="shrink-0 text-[11px] font-bold tabular-nums text-fuchsia-700">
+                                    {formatBaht(m.compensationRate)} ฿
+                                  </span>
+                                </Link>
+                              </li>
+                            ))}
+                          </ul>
+                        )}
+                      </div>
+
+                      <div className="mt-auto flex flex-wrap gap-2 border-t border-[#ebe8f8] pt-3">
+                        <button
+                          type="button"
+                          className={btnPrimary}
+                          onClick={() => {
+                            setDetailId(null);
+                            setDetailIdRevealed(false);
+                            openEditPersonnel(p);
+                          }}
+                        >
+                          แก้ไข
+                        </button>
+                        <button
+                          type="button"
+                          className={btnDanger}
+                          onClick={() =>
+                            void deletePersonnel(p).then((ok) => {
+                              if (ok) {
+                                setDetailId(null);
+                                setDetailIdRevealed(false);
+                              }
+                            })
+                          }
+                        >
+                          ลบ
+                        </button>
+                        <button
+                          type="button"
+                          className={btnSoft}
+                          onClick={() => {
+                            setDetailId(null);
+                            setDetailIdRevealed(false);
+                          }}
+                        >
+                          ปิด
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              );
+            })()}
+          </ModalFormBody>
+        ) : null}
+      </Modal>
+
+      <div className="mt-6 print:hidden">
+        {loading ? (
+          <div className="rounded-2xl border border-slate-200 bg-white/75 py-16 text-center text-slate-600">
+            กำลังโหลด…
+          </div>
+        ) : rows.length === 0 ? (
+          <div className="rounded-2xl border border-dashed border-[#dcd8f0] bg-white/70 py-16 text-center text-slate-600">
+            ยังไม่มีบุคลากร — กด «เพิ่มบุคลากร»
+          </div>
+        ) : filteredPersonnel.length === 0 ? (
+          <div className="rounded-2xl border border-slate-200 bg-white/75 py-16 text-center text-slate-600">
+            ไม่มีรายการที่ตรงกับการกรอง
+          </div>
+        ) : (
+          <ul className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+            {pagedPersonnel.map((r, idx) => (
+              <li key={r.id}>
+                <div
+                  id={`personnel-card-${r.id}`}
+                  role="button"
+                  tabIndex={0}
+                  className={`${listCardClass} cursor-pointer`}
+                  onClick={() => {
+                    setDetailIdRevealed(false);
+                    setDetailId(r.id);
+                  }}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" || e.key === " ") {
+                      e.preventDefault();
+                      setDetailIdRevealed(false);
+                      setDetailId(r.id);
+                    }
+                  }}
+                >
+                  <span className={`absolute inset-y-0 left-0 w-1 ${listCardAccentClass(idx)}`} aria-hidden />
+                  <div className="flex gap-3 pl-2">
                     {r.photoUrl ? (
                       <button
                         type="button"
                         title="ดูรูปใหญ่"
-                        className="rounded-full ring-offset-2 ring-offset-slate-900 focus:outline-none focus:ring-2 focus:ring-teal-500"
-                        onClick={() => {
+                        className="shrink-0 rounded-full ring-offset-2 ring-offset-white focus:outline-none focus:ring-2 focus:ring-[#0000BF]"
+                        onClick={(e) => {
+                          e.stopPropagation();
                           setLightboxUrl(r.photoUrl);
                           setLightboxTitle(r.fullName);
                         }}
                       >
-                        <img src={r.photoUrl} alt="" className="h-10 w-10 rounded-full object-cover hover:opacity-90" />
+                        <img
+                          src={r.photoUrl}
+                          alt=""
+                          className="h-14 w-14 rounded-full object-cover hover:opacity-90"
+                        />
                       </button>
                     ) : (
-                      <span className="text-slate-600">—</span>
+                      <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-full bg-[#0000BF]/8 text-sm font-bold text-[#4d47b6]">
+                        {(r.fullName.trim().charAt(0) || "?").toUpperCase()}
+                      </div>
                     )}
-                  </td>
-                  <td className="p-3 text-slate-400">{r.rank ?? "—"}</td>
-                  <td className="p-3 font-medium text-white">{r.fullName}</td>
-                  <td className="p-3 text-slate-400">{r.position ?? "—"}</td>
-                  <td className="p-3 text-slate-400">{r.organizationUnitType?.name ?? "—"}</td>
-                  <td className="p-3 text-slate-400">{r.personnelCategory?.name ?? "—"}</td>
-                  <td className="p-3 text-slate-400">{r.phone ?? "—"}</td>
-                  <td className="p-3">
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate text-sm font-bold text-[#1e1b4b]">
+                        {[r.rank, r.fullName].filter(Boolean).join(" ")}
+                      </p>
+                      <p className="mt-0.5 truncate text-xs text-slate-600">{r.position ?? "—"}</p>
+                      <div className="mt-1.5 flex flex-wrap gap-1">
+                        {r.organizationUnitType?.name ? (
+                          <span className="rounded bg-[#0000BF]/10 px-1.5 py-0.5 text-[10px] font-medium text-[#4d47b6]">
+                            {r.organizationUnitType.name}
+                          </span>
+                        ) : null}
+                        {r.personnelCategory?.name ? (
+                          <span className="rounded bg-violet-500/15 px-1.5 py-0.5 text-[10px] font-medium text-violet-700">
+                            {r.personnelCategory.name}
+                          </span>
+                        ) : null}
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="mt-3 space-y-1 pl-2 text-[11px] text-slate-600">
+                    <p>
+                      <span className="text-slate-500">โทร:</span> {r.phone ?? "—"}
+                    </p>
                     <div className="flex flex-wrap items-center gap-2">
+                      <span className="text-slate-500">เลขประจำตัว:</span>
                       <span
-                        className={`min-w-[6rem] font-mono text-sm tabular-nums tracking-wide ${
-                          idRevealed[r.id] ? "text-slate-200" : "text-slate-500"
-                        } ${idRevealed[r.id] ? "" : "select-none"}`}
+                        className={`font-mono tabular-nums tracking-wide ${
+                          idRevealed[r.id] ? "text-slate-800" : "select-none text-slate-700"
+                        }`}
                       >
                         {idRevealed[r.id] ? r.idNumber : maskIdNumber(r.idNumber)}
                       </span>
                       <button
                         type="button"
-                        className="shrink-0 rounded-md border border-slate-600 px-2 py-1 text-[11px] font-medium text-teal-400 hover:bg-slate-800 hover:text-teal-300"
-                        onClick={() =>
-                          setIdRevealed((prev) => ({ ...prev, [r.id]: !prev[r.id] }))
-                        }
+                        className="rounded-md border border-slate-200 px-1.5 py-0.5 text-[10px] font-medium text-[#5b61ff] hover:bg-slate-100"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setIdRevealed((prev) => ({ ...prev, [r.id]: !prev[r.id] }));
+                        }}
                       >
                         {idRevealed[r.id] ? "ซ่อน" : "แสดง"}
                       </button>
                     </div>
-                  </td>
-                  <td className="p-3">
-                    <div className="flex flex-col gap-1">
-                      <button
-                        type="button"
-                        className="text-left text-xs font-medium text-teal-400 hover:text-teal-300"
-                        onClick={() => openEditPersonnel(r)}
-                      >
-                        แก้ไข
-                      </button>
-                      <button
-                        type="button"
-                        className="text-left text-xs text-rose-400 hover:text-rose-300"
-                        onClick={() => void deletePersonnel(r)}
-                      >
-                        ลบ
-                      </button>
-                    </div>
-                  </td>
-                </tr>
-              ))
-            )}
-          </tbody>
-        </table>
+                  </div>
+
+                  <div className="mt-auto flex flex-wrap gap-2 border-t border-[#ecebff] pt-2.5 pl-2">
+                    <button
+                      type="button"
+                      className="rounded-lg border border-amber-200 bg-amber-50 px-2.5 py-1 text-xs font-medium text-amber-800 hover:bg-amber-100"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        openEditPersonnel(r);
+                      }}
+                    >
+                      แก้ไข
+                    </button>
+                    <button
+                      type="button"
+                      className="rounded-lg border border-rose-200 bg-rose-50 px-2.5 py-1 text-xs font-medium text-rose-600 hover:bg-rose-100"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        void deletePersonnel(r);
+                      }}
+                    >
+                      ลบ
+                    </button>
+                  </div>
+                </div>
+              </li>
+            ))}
+          </ul>
+        )}
+        {!loading && filteredPersonnel.length > 0 ? (
+          <ListPagination
+            page={safePage}
+            pageCount={pageCount}
+            total={filteredPersonnel.length}
+            pageSize={PAGE_SIZE}
+            onPageChange={setPage}
+            className="print:hidden"
+          />
+        ) : null}
       </div>
+
+      <PrintA4Table
+        columns={[
+          { label: "ชื่อ" },
+          { label: "ตำแหน่ง" },
+          { label: "หน่วยงาน" },
+          { label: "หมวด" },
+          { label: "โทร" },
+        ]}
+        rows={filteredPersonnel.map((r) => [
+          [r.rank, r.fullName].filter(Boolean).join(" "),
+          r.position || "—",
+          r.organizationUnitType?.name || "—",
+          r.personnelCategory?.name || "—",
+          r.phone || "—",
+        ])}
+      />
     </div>
   );
 }

@@ -3,13 +3,16 @@ import { Link, useParams, useSearchParams } from "react-router-dom";
 import { apiJson } from "../api/client";
 import { Modal, ModalFormActions, ModalFormBody } from "../components/Modal";
 import { PageFilterPrintBar } from "../components/PageFilterPrintBar";
+import { PageHeaderBar } from "../components/PageHeaderBar";
 import { PickableDateInput } from "../components/PickableDateInput";
+import { ReportsSubNav } from "../components/ReportsSubNav";
 import { useAuth } from "../context/AuthContext";
 import { currentUserLabel } from "../lib/currentUserLabel";
 import { mondayOfWeekContaining } from "../lib/inspectionWeek";
 import { rowMatchesFilter } from "../lib/searchNormalize";
 import { ARMOR_MONTHLY_TOPICS } from "../lib/armorMonthlyTopics";
 import { VEHICLE_WEEKLY_TOPICS, type VehicleWeeklyTopicKey } from "../lib/vehicleWeeklyTopics";
+import { toolbarLinkBtnClass } from "../lib/uiTokens";
 import { REPORT_TYPES } from "./reportsConfig";
 import {
   vehicleDisplayLabel,
@@ -91,16 +94,16 @@ function ModalTopicRow({
   const btn =
     "rounded-lg border px-3 py-2 text-xs font-medium transition-colors sm:text-sm";
   return (
-    <div className="flex flex-col gap-2 border-b border-slate-800 py-3 last:border-0 sm:flex-row sm:items-center sm:justify-between">
+    <div className="flex flex-col gap-2 border-b border-slate-200 py-3 last:border-0 sm:flex-row sm:items-center sm:justify-between">
       <div>
-        <p className="text-sm text-slate-200">{title}</p>
-        {subtitle ? <p className="text-[11px] text-slate-500">{subtitle}</p> : null}
+        <p className="text-sm text-slate-800">{title}</p>
+        {subtitle ? <p className="text-[11px] text-slate-600">{subtitle}</p> : null}
       </div>
       <div className="flex gap-2">
         <button
           type="button"
-          className={`${btn} border-slate-600 ${
-            value === "NORMAL" ? "border-emerald-500 bg-emerald-900/40 text-emerald-200" : "text-slate-500 hover:bg-slate-800"
+          className={`${btn} border-slate-200 ${
+            value === "NORMAL" ? "border-emerald-500 bg-emerald-900/40 text-emerald-200" : "text-slate-700 hover:bg-slate-100"
           }`}
           onClick={() => onPick(value === "NORMAL" ? null : "NORMAL")}
         >
@@ -108,8 +111,8 @@ function ModalTopicRow({
         </button>
         <button
           type="button"
-          className={`${btn} border-slate-600 ${
-            value === "ABNORMAL" ? "border-rose-500 bg-rose-900/35 text-rose-200" : "text-slate-500 hover:bg-slate-800"
+          className={`${btn} border-slate-200 ${
+            value === "ABNORMAL" ? "border-rose-500 bg-rose-900/35 text-rose-200" : "text-slate-700 hover:bg-slate-100"
           }`}
           onClick={() => onPick(value === "ABNORMAL" ? null : "ABNORMAL")}
         >
@@ -249,97 +252,102 @@ function WeeklyInspectionReportView({ reportTitle }: { reportTitle: string }) {
         onChange={setListFilter}
         printTitle={printTitle}
         placeholder="กรองทะเบียน ยี่ห้อ/รุ่น ผู้ตรวจ หมายเหตุ สรุปผล…"
+        trailing={
+          <>
+            <div className="inline-flex h-8 items-center gap-1 rounded-xl border border-[#dcd8f0] bg-white px-1.5 shadow-sm sm:h-9">
+              <PickableDateInput
+                type="date"
+                className="h-7 min-w-[8.5rem] border-0 bg-transparent px-1 text-[11px] font-bold text-[#2e2a58] sm:text-xs"
+                value={weekStart}
+                onChange={setWeek}
+              />
+            </div>
+            <button
+              type="button"
+              className={toolbarLinkBtnClass}
+              onClick={() => setWeek(mondayOfWeekContaining(new Date()))}
+            >
+              สัปดาห์นี้
+            </button>
+            <Link
+              to={`/vehicles/weekly-inspection?week=${encodeURIComponent(weekStart)}`}
+              className={toolbarLinkBtnClass}
+            >
+              ไปตารางตรวจ
+            </Link>
+          </>
+        }
       />
 
-      <div className="no-print flex flex-wrap items-end gap-4">
-        <label className="block">
-          <span className="text-xs font-medium text-slate-500">สัปดาห์อ้างอิง</span>
-          <PickableDateInput type="date" className="mt-1" value={weekStart} onChange={setWeek} />
-        </label>
-        <button
-          type="button"
-          className="rounded-lg border border-slate-600 px-3 py-2 text-sm text-slate-300 hover:bg-slate-800"
-          onClick={() => setWeek(mondayOfWeekContaining(new Date()))}
-        >
-          สัปดาห์นี้
-        </button>
-        <Link
-          to={`/vehicles/weekly-inspection?week=${encodeURIComponent(weekStart)}`}
-          className="rounded-lg border border-emerald-800/60 px-3 py-2 text-sm text-emerald-300 hover:bg-slate-800"
-        >
-          ไปตารางตรวจ
-        </Link>
-      </div>
-
-      {err ? <p className="text-sm text-rose-400 print:hidden">{err}</p> : null}
+      {err ? <p className="text-sm text-rose-600 print:hidden">{err}</p> : null}
 
       {loading ? (
-        <p className="text-slate-500 print:hidden">กำลังโหลด…</p>
+        <p className="text-slate-700 print:hidden">กำลังโหลด…</p>
       ) : data ? (
         <>
-          <div className="rounded-xl border border-slate-800 bg-slate-950/50 px-4 py-3 text-sm text-slate-300 print:border-gray-400 print:bg-white print:text-black">
+          <div className="rounded-xl border border-slate-200 bg-white/80 px-4 py-3 text-sm text-slate-700 print:border-gray-400 print:bg-white print:text-black">
             <p>
-              <span className="font-medium text-white print:text-black">สัปดาห์นี้:</span> บันทึกแล้ว{" "}
-              <span className="tabular-nums text-teal-300 print:text-black">{data.inspectedCount}</span> คัน จากทั้งหมด{" "}
+              <span className="font-medium text-[#1e1b3a] print:text-black">สัปดาห์นี้:</span> บันทึกแล้ว{" "}
+              <span className="tabular-nums text-[#4d47b6] print:text-black">{data.inspectedCount}</span> คัน จากทั้งหมด{" "}
               <span className="tabular-nums">{data.totalVehicles}</span> คัน
               {data.totalVehicles > data.inspectedCount ? (
-                <span className="text-slate-500 print:text-gray-600">
+                <span className="text-slate-700 print:text-gray-600">
                   {" "}
                   (ยังไม่บันทึก {data.totalVehicles - data.inspectedCount} คัน)
                 </span>
               ) : null}
             </p>
             {listFilter.trim() ? (
-              <p className="mt-1 text-slate-400 print:text-gray-800">
-                หลังกรองแสดง <span className="font-medium text-teal-300 print:text-black">{filteredRows.length}</span>{" "}
+              <p className="mt-1 text-slate-600 print:text-gray-800">
+                หลังกรองแสดง <span className="font-medium text-[#4d47b6] print:text-black">{filteredRows.length}</span>{" "}
                 รายการ (พิมพ์จะเห็นเฉพาะรายการที่กรอง)
               </p>
             ) : null}
           </div>
 
           {data.rows.length === 0 ? (
-            <p className="rounded-xl border border-dashed border-slate-700 bg-slate-900/30 px-4 py-8 text-center text-sm text-slate-500 print:hidden">
+            <p className="rounded-xl border border-dashed border-slate-200 bg-white/90/30 px-4 py-8 text-center text-sm text-slate-600 print:hidden">
               ยังไม่มีรายการบันทึกการตรวจในสัปดาห์นี้ — ใช้เมนู «ตารางตรวจ» เพื่อบันทึก
             </p>
           ) : filteredRows.length === 0 ? (
-            <p className="rounded-xl border border-dashed border-amber-900/40 bg-amber-950/10 px-4 py-8 text-center text-sm text-amber-200/90 print:hidden">
+            <p className="rounded-xl border border-dashed border-amber-900/40 bg-amber-950/10 px-4 py-8 text-center text-sm text-amber-800 print:hidden">
               ไม่มีรายการตรงกับการกรอง
             </p>
           ) : (
-            <div className="overflow-x-auto rounded-xl border border-slate-800 print:border-gray-400">
+            <div className="overflow-x-auto rounded-xl border border-slate-200 print:border-gray-400">
               <table className="w-full min-w-[56rem] border-collapse text-left text-sm print:text-black">
                 <thead>
-                  <tr className="border-b border-slate-700 bg-slate-800/80 print:border-gray-400 print:bg-gray-100">
-                    <th className="px-3 py-2 font-medium text-slate-200 print:text-black">#</th>
-                    <th className="px-3 py-2 font-medium text-slate-200 print:text-black">ทะเบียน</th>
-                    <th className="px-3 py-2 font-medium text-slate-200 print:text-black">ยี่ห้อ / รุ่น</th>
-                    <th className="px-3 py-2 font-medium text-slate-200 print:text-black">ผู้ตรวจ</th>
-                    <th className="px-3 py-2 font-medium text-slate-200 print:text-black">สรุปผลตรวจ</th>
-                    <th className="min-w-[8rem] px-3 py-2 font-medium text-slate-200 print:text-black">หมายเหตุ</th>
-                    <th className="no-print px-3 py-2 font-medium text-slate-200">จัดการ</th>
+                  <tr className="border-b border-slate-200 bg-slate-100/80 print:border-gray-400 print:bg-gray-100">
+                    <th className="px-3 py-2 font-medium text-slate-800 print:text-black">#</th>
+                    <th className="px-3 py-2 font-medium text-slate-800 print:text-black">ทะเบียน</th>
+                    <th className="px-3 py-2 font-medium text-slate-800 print:text-black">ยี่ห้อ / รุ่น</th>
+                    <th className="px-3 py-2 font-medium text-slate-800 print:text-black">ผู้ตรวจ</th>
+                    <th className="px-3 py-2 font-medium text-slate-800 print:text-black">สรุปผลตรวจ</th>
+                    <th className="min-w-[8rem] px-3 py-2 font-medium text-slate-800 print:text-black">หมายเหตุ</th>
+                    <th className="no-print px-3 py-2 font-medium text-slate-800">จัดการ</th>
                   </tr>
                 </thead>
                 <tbody>
                   {filteredRows.map((row, idx) => (
                     <tr
                       key={row.id}
-                      className={`border-b border-slate-800 print:border-gray-300 ${
-                        idx % 2 === 0 ? "bg-slate-900/20 print:bg-white" : "bg-emerald-950/10 print:bg-gray-50"
+                      className={`border-b border-slate-200 print:border-gray-300 ${
+                        idx % 2 === 0 ? "bg-white/90/20 print:bg-white" : "bg-emerald-950/10 print:bg-gray-50"
                       }`}
                     >
-                        <td className="px-3 py-2 tabular-nums text-slate-500 print:text-gray-700">{idx + 1}</td>
-                        <td className="px-3 py-2 font-mono text-teal-300 print:text-black">{row.vehicle.licensePlate}</td>
-                        <td className="px-3 py-2 text-slate-300 print:text-black">{vehicleDisplayLabel(row.vehicle)}</td>
-                        <td className="px-3 py-2 text-slate-300 print:text-black">{row.inspectorName?.trim() || "—"}</td>
-                        <td className="px-3 py-2 text-slate-200 print:text-black">{inspectionSummaryTh(row)}</td>
-                        <td className="px-3 py-2 whitespace-pre-wrap text-slate-400 print:text-gray-800">
+                        <td className="px-3 py-2 tabular-nums text-slate-700 print:text-gray-700">{idx + 1}</td>
+                        <td className="px-3 py-2 font-mono text-[#4d47b6] print:text-black">{row.vehicle.licensePlate}</td>
+                        <td className="px-3 py-2 text-slate-700 print:text-black">{vehicleDisplayLabel(row.vehicle)}</td>
+                        <td className="px-3 py-2 text-slate-700 print:text-black">{row.inspectorName?.trim() || "—"}</td>
+                        <td className="px-3 py-2 text-slate-800 print:text-black">{inspectionSummaryTh(row)}</td>
+                        <td className="px-3 py-2 whitespace-pre-wrap text-slate-700 print:text-gray-800">
                           {row.remarks?.trim() || "—"}
                         </td>
                         <td className="no-print px-2 py-2">
                           <div className="flex flex-wrap gap-1">
                             <button
                               type="button"
-                              className="rounded border border-slate-600 px-2 py-1 text-[11px] text-teal-400 hover:bg-slate-800"
+                              className="rounded border border-slate-200 px-2 py-1 text-[11px] text-[#5b61ff] hover:bg-slate-100"
                               onClick={() => openEdit(row)}
                             >
                               แก้ไข
@@ -347,7 +355,7 @@ function WeeklyInspectionReportView({ reportTitle }: { reportTitle: string }) {
                             <button
                               type="button"
                               disabled={deletingId === row.id}
-                              className="rounded border border-slate-600 px-2 py-1 text-[11px] text-rose-400 hover:bg-slate-800 disabled:opacity-50"
+                              className="rounded border border-slate-200 px-2 py-1 text-[11px] text-rose-600 hover:bg-slate-100 disabled:opacity-50"
                               onClick={() => void deleteRow(row)}
                             >
                               {deletingId === row.id ? "…" : "ลบ"}
@@ -367,18 +375,18 @@ function WeeklyInspectionReportView({ reportTitle }: { reportTitle: string }) {
         {editing && editDraft ? (
           <>
             <ModalFormBody className="!space-y-1">
-              <p className="text-sm text-slate-400">
+              <p className="text-sm text-slate-600">
                 ทะเบียน{" "}
-                <span className="font-mono text-teal-300">{editing.vehicle.licensePlate}</span>
+                <span className="font-mono text-[#4d47b6]">{editing.vehicle.licensePlate}</span>
                 {" · "}
                 {vehicleDisplayLabel(editing.vehicle)}
               </p>
               <p className="text-xs text-slate-600">สัปดาห์อ้างอิง {weekStart}</p>
 
               <label className="mt-4 block">
-                <span className="text-xs font-medium text-slate-500">ผู้ตรวจ</span>
+                <span className="text-xs font-medium text-slate-700">ผู้ตรวจ</span>
                 <input
-                  className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-white"
+                  className="mt-1 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900"
                   value={editDraft.inspectorName}
                   onChange={(e) => setEditField("inspectorName", e.target.value)}
                   placeholder={defaultInspector || "ชื่อ-นามสกุล"}
@@ -386,7 +394,7 @@ function WeeklyInspectionReportView({ reportTitle }: { reportTitle: string }) {
                 {defaultInspector ? (
                   <button
                     type="button"
-                    className="mt-1 text-xs text-teal-500 hover:underline"
+                    className="mt-1 text-xs text-[#0000BF] hover:underline"
                     onClick={() => setEditField("inspectorName", defaultInspector)}
                   >
                     ใช้ชื่อผู้ใช้ปัจจุบัน ({defaultInspector})
@@ -394,7 +402,7 @@ function WeeklyInspectionReportView({ reportTitle }: { reportTitle: string }) {
                 ) : null}
               </label>
 
-              <div className="mt-2 rounded-xl border border-slate-800 bg-slate-950/50 px-3">
+              <div className="mt-2 rounded-xl border border-slate-200 bg-white/80 px-3">
                 {VEHICLE_WEEKLY_TOPICS.map((t) => (
                   <ModalTopicRow
                     key={t.key}
@@ -407,10 +415,10 @@ function WeeklyInspectionReportView({ reportTitle }: { reportTitle: string }) {
               </div>
 
               <label className="mt-4 block">
-                <span className="text-xs font-medium text-slate-500">หมายเหตุ</span>
+                <span className="text-xs font-medium text-slate-700">หมายเหตุ</span>
                 <textarea
                   rows={3}
-                  className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-white"
+                  className="mt-1 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900"
                   value={editDraft.remarks}
                   onChange={(e) => setEditField("remarks", e.target.value)}
                 />
@@ -420,14 +428,14 @@ function WeeklyInspectionReportView({ reportTitle }: { reportTitle: string }) {
               <button
                 type="button"
                 disabled={saving}
-                className="rounded-lg bg-teal-600 px-4 py-2 text-sm font-semibold text-white hover:bg-teal-500 disabled:opacity-50"
+                className="rounded-full bg-gradient-to-r from-[#0000BF] via-[#8b5cf6] to-[#ec4899] text-sm font-bold text-white shadow-lg shadow-fuchsia-500/25 hover:from-[#0000a3] hover:via-[#7c3aed] hover:to-[#db2777] px-4 py-2 disabled:opacity-50"
                 onClick={() => void saveEdit()}
               >
                 {saving ? "กำลังบันทึก…" : "บันทึก"}
               </button>
               <button
                 type="button"
-                className="rounded-lg border border-slate-600 px-4 py-2 text-sm text-slate-300 hover:bg-slate-800"
+                className="rounded-lg border border-slate-200 px-4 py-2 text-sm text-slate-700 hover:bg-slate-100"
                 onClick={closeEdit}
               >
                 ยกเลิก
@@ -534,81 +542,82 @@ function ArmorMonthlyReportView({ reportTitle }: { reportTitle: string }) {
         onChange={setListFilter}
         printTitle={printTitle}
         placeholder="กรองเลขครุภัณฑ์ ชื่อ ที่ตั้ง ผู้ตรวจ หมายเหตุ สรุปผล…"
+        trailing={
+          <>
+            <div className="inline-flex h-8 items-center gap-1 rounded-xl border border-[#dcd8f0] bg-white px-1.5 shadow-sm sm:h-9">
+              <PickableDateInput
+                type="month"
+                className="h-7 min-w-[8rem] border-0 bg-transparent px-1 text-[11px] font-bold text-[#2e2a58] sm:text-xs"
+                value={monthYm}
+                onChange={setMonth}
+              />
+            </div>
+            <button type="button" className={toolbarLinkBtnClass} onClick={() => setMonth(currentMonthYm())}>
+              เดือนนี้
+            </button>
+            <Link
+              to={`/assets/armor-monthly?month=${encodeURIComponent(monthYm)}`}
+              className={toolbarLinkBtnClass}
+            >
+              ไปตารางตรวจ
+            </Link>
+          </>
+        }
       />
 
-      <div className="no-print flex flex-wrap items-end gap-4">
-        <label className="block">
-          <span className="text-xs font-medium text-slate-500">เดือนอ้างอิง</span>
-          <PickableDateInput type="month" className="mt-1" value={monthYm} onChange={setMonth} />
-        </label>
-        <button
-          type="button"
-          className="rounded-lg border border-slate-600 px-3 py-2 text-sm text-slate-300 hover:bg-slate-800"
-          onClick={() => setMonth(currentMonthYm())}
-        >
-          เดือนนี้
-        </button>
-        <Link
-          to={`/assets/armor-monthly?month=${encodeURIComponent(monthYm)}`}
-          className="rounded-lg border border-violet-800/60 px-3 py-2 text-sm text-violet-300 hover:bg-slate-800"
-        >
-          ไปตารางตรวจ / บันทึก
-        </Link>
-      </div>
-
-      {err ? <p className="text-sm text-rose-400 print:hidden">{err}</p> : null}
+      {err ? <p className="text-sm text-rose-600 print:hidden">{err}</p> : null}
 
       {loading ? (
-        <p className="text-slate-500 print:hidden">กำลังโหลด…</p>
+        <p className="text-slate-700 print:hidden">กำลังโหลด…</p>
       ) : data ? (
         <>
-          <div className="rounded-xl border border-slate-800 bg-slate-950/50 px-4 py-3 text-sm text-slate-300 print:border-gray-400 print:bg-white print:text-black">
+          <div className="rounded-xl border border-slate-200 bg-white/80 px-4 py-3 text-sm text-slate-700 print:border-gray-400 print:bg-white print:text-black">
             <p>
-              <span className="font-medium text-white print:text-black">เดือน {data.monthYm}:</span> ตรวจแล้ว{" "}
-              <span className="tabular-nums text-violet-300 print:text-black">{data.inspectedCount}</span> รายการ จากทั้งหมด{" "}
+              <span className="font-medium text-[#1e1b3a] print:text-black">เดือน {data.monthYm}:</span> ตรวจแล้ว{" "}
+              <span className="tabular-nums text-violet-700 print:text-black">{data.inspectedCount}</span> รายการ จากทั้งหมด{" "}
               <span className="tabular-nums">{data.totalAssets}</span> รายการ
               {data.totalAssets > data.inspectedCount ? (
-                <span className="text-slate-500 print:text-gray-600">
+                <span className="text-slate-700 print:text-gray-600">
                   {" "}
                   (ยังไม่บันทึก {data.totalAssets - data.inspectedCount} รายการ)
                 </span>
               ) : null}
             </p>
             <p className="mt-1">
-              <span className="text-slate-400 print:text-gray-800">แถวที่มีหัวข้อ «ผิดปกติ» อย่างน้อยหนึ่งข้อ:</span>{" "}
-              <span className="font-medium text-rose-300 print:text-black">{data.abnormalRowsCount}</span> รายการ
+              <span className="text-slate-700 print:text-gray-800">แถวที่มีหัวข้อ «ผิดปกติ» อย่างน้อยหนึ่งข้อ:</span>{" "}
+              <span className="font-medium text-rose-700 print:text-black">{data.abnormalRowsCount}</span> รายการ
             </p>
             {listFilter.trim() ? (
-              <p className="mt-1 text-slate-400 print:text-gray-800">
-                หลังกรองแสดง <span className="font-medium text-violet-300 print:text-black">{filteredRows.length}</span> รายการ
+              <p className="mt-1 text-slate-600 print:text-gray-800">
+                หลังกรองแสดง <span className="font-medium text-violet-700 print:text-black">{filteredRows.length}</span> รายการ
               </p>
             ) : null}
           </div>
 
           {data.rows.length === 0 ? (
-            <p className="rounded-xl border border-dashed border-slate-700 bg-slate-900/30 px-4 py-8 text-center text-sm text-slate-500 print:hidden">
+            <p className="rounded-xl border border-dashed border-slate-200 bg-white/90/30 px-4 py-8 text-center text-sm text-slate-600 print:hidden">
               ยังไม่มีรายการเสื้อเกราะในระบบ
             </p>
           ) : filteredRows.length === 0 ? (
-            <p className="rounded-xl border border-dashed border-amber-900/40 bg-amber-950/10 px-4 py-8 text-center text-sm text-amber-200/90 print:hidden">
+            <p className="rounded-xl border border-dashed border-amber-900/40 bg-amber-950/10 px-4 py-8 text-center text-sm text-amber-800 print:hidden">
               ไม่มีรายการตรงกับการกรอง
             </p>
           ) : (
-            <div className="overflow-x-auto rounded-xl border border-slate-800 print:border-gray-400">
+            <div className="overflow-x-auto rounded-xl border border-slate-200 print:border-gray-400">
               <table className="w-full min-w-[48rem] border-collapse text-left text-xs print:text-black sm:text-sm">
                 <thead>
-                  <tr className="border-b border-slate-700 bg-slate-800/80 print:border-gray-400 print:bg-gray-100">
-                    <th className="px-2 py-2 font-medium text-slate-200 print:text-black">#</th>
-                    <th className="px-2 py-2 font-medium text-slate-200 print:text-black">เลขครุภัณฑ์</th>
-                    <th className="px-2 py-2 font-medium text-slate-200 print:text-black">ชื่อ</th>
+                  <tr className="border-b border-slate-200 bg-slate-100/80 print:border-gray-400 print:bg-gray-100">
+                    <th className="px-2 py-2 font-medium text-slate-800 print:text-black">#</th>
+                    <th className="px-2 py-2 font-medium text-slate-800 print:text-black">เลขครุภัณฑ์</th>
+                    <th className="px-2 py-2 font-medium text-slate-800 print:text-black">ชื่อ</th>
                     {ARMOR_MONTHLY_TOPICS.map((t) => (
-                      <th key={t.key} className="max-w-[4.5rem] px-1 py-2 text-center text-[10px] font-medium leading-tight text-slate-200 print:text-black sm:text-xs">
+                      <th key={t.key} className="max-w-[4.5rem] px-1 py-2 text-center text-[10px] font-medium leading-tight text-slate-800 print:text-black sm:text-xs">
                         {t.title}
                       </th>
                     ))}
-                    <th className="px-2 py-2 font-medium text-slate-200 print:text-black">ผู้ตรวจ</th>
-                    <th className="px-2 py-2 font-medium text-slate-200 print:text-black">สรุป</th>
-                    <th className="min-w-[6rem] px-2 py-2 font-medium text-slate-200 print:text-black">หมายเหตุ</th>
+                    <th className="px-2 py-2 font-medium text-slate-800 print:text-black">ผู้ตรวจ</th>
+                    <th className="px-2 py-2 font-medium text-slate-800 print:text-black">สรุป</th>
+                    <th className="min-w-[6rem] px-2 py-2 font-medium text-slate-800 print:text-black">หมายเหตุ</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -617,21 +626,21 @@ function ArmorMonthlyReportView({ reportTitle }: { reportTitle: string }) {
                     return (
                       <tr
                         key={row.asset.id}
-                        className={`border-b border-slate-800 print:border-gray-300 ${
-                          idx % 2 === 0 ? "bg-slate-900/20 print:bg-white" : "bg-violet-950/10 print:bg-gray-50"
+                        className={`border-b border-slate-200 print:border-gray-300 ${
+                          idx % 2 === 0 ? "bg-white/90/20 print:bg-white" : "bg-violet-950/10 print:bg-gray-50"
                         }`}
                       >
-                        <td className="px-2 py-2 tabular-nums text-slate-500 print:text-gray-700">{idx + 1}</td>
-                        <td className="px-2 py-2 font-mono text-teal-300 print:text-black">{row.asset.serialNumber}</td>
-                        <td className="px-2 py-2 text-slate-300 print:text-black">{row.asset.itemName}</td>
+                        <td className="px-2 py-2 tabular-nums text-slate-700 print:text-gray-700">{idx + 1}</td>
+                        <td className="px-2 py-2 font-mono text-[#4d47b6] print:text-black">{row.asset.serialNumber}</td>
+                        <td className="px-2 py-2 text-slate-700 print:text-black">{row.asset.itemName}</td>
                         {ARMOR_MONTHLY_TOPICS.map((t) => (
-                          <td key={t.key} className="px-1 py-2 text-center tabular-nums text-slate-300 print:text-black">
+                          <td key={t.key} className="px-1 py-2 text-center tabular-nums text-slate-700 print:text-black">
                             {armorCheckSymbol(i ? i[t.key] : null)}
                           </td>
                         ))}
-                        <td className="px-2 py-2 text-slate-300 print:text-black">{i?.inspectorName?.trim() || "—"}</td>
-                        <td className="px-2 py-2 text-slate-200 print:text-black">{armorInspectionSummaryTh(i)}</td>
-                        <td className="px-2 py-2 whitespace-pre-wrap text-slate-400 print:text-gray-800">
+                        <td className="px-2 py-2 text-slate-700 print:text-black">{i?.inspectorName?.trim() || "—"}</td>
+                        <td className="px-2 py-2 text-slate-800 print:text-black">{armorInspectionSummaryTh(i)}</td>
+                        <td className="px-2 py-2 whitespace-pre-wrap text-slate-700 print:text-gray-800">
                           {i?.remarks?.trim() || "—"}
                         </td>
                       </tr>
@@ -666,22 +675,25 @@ export function ReportPage() {
 
   return (
     <div>
-      <p className="text-sm text-slate-500">
-        <Link to="/reports" className="text-teal-500/90 hover:text-teal-400">
-          ← รายงาน
-        </Link>
-      </p>
-      <h1 className="mt-2 text-2xl font-bold text-white print:text-black">{title}</h1>
-      {isWeeklyVehicleInspection ? (
-        <p className="mt-1 text-sm text-slate-400 print:text-gray-700">
-          กรองรายการได้จากช่องค้นหา — ปุ่มพิมพ์จะพิมพ์เฉพาะแถวที่ผ่านการกรอง แก้ไข/ลบบันทึกได้จากคอลัมน์จัดการ
-        </p>
-      ) : null}
-      {isArmorMonthlyReport ? (
-        <p className="mt-1 text-sm text-slate-400 print:text-gray-700">
-          สรุปผลตรวจสภาพเสื้อเกราะรายเดือน — ป = ปกติ ผ = ผิดปกติ แก้ไขรายละเอียดได้ที่ «ไปตารางตรวจ / บันทึก»
-        </p>
-      ) : null}
+      <PageHeaderBar
+        title={title}
+        filter={
+          !isWeeklyVehicleInspection && !isArmorMonthlyReport
+            ? {
+                value: listFilter,
+                onChange: setListFilter,
+                printTitle: title,
+                placeholder: "กรองตามชื่อหรือรหัสรายงาน…",
+              }
+            : {
+                value: "",
+                onChange: () => {},
+                printTitle: title,
+                showSearch: false,
+              }
+        }
+        extras={<ReportsSubNav />}
+      />
 
       {isWeeklyVehicleInspection ? (
         <div className="mt-4">
@@ -692,21 +704,13 @@ export function ReportPage() {
           <ArmorMonthlyReportView reportTitle={title} />
         </div>
       ) : (
-        <>
-          <PageFilterPrintBar
-            value={listFilter}
-            onChange={setListFilter}
-            printTitle={title}
-            placeholder="กรองตามชื่อหรือรหัสรายงาน…"
-          />
-          <div className="mt-6 rounded-2xl border border-slate-800 bg-slate-900/50 p-6 shadow-lg shadow-black/20">
+        <div className="mt-5 rounded-[1.5rem] border border-[#e8e6fc]/90 bg-gradient-to-br from-white/85 via-[#f5f3ff]/60 to-[#fdf2f8]/50 p-5 shadow-[0_16px_40px_-28px_rgba(30,27,75,0.28)] sm:p-6">
             {contentVisible ? (
-              <p className="text-slate-400">หน้านี้พร้อมสำหรับเชื่อมข้อมูลหรือไฟล์รายงานในลำดับถัดไป</p>
+              <p className="text-sm text-slate-600">หน้านี้พร้อมเชื่อมข้อมูลรายงานในลำดับถัดไป</p>
             ) : (
-              <p className="text-slate-500">ไม่มีเนื้อหาที่ตรงกับการกรองในหน้านี้</p>
+              <p className="text-sm text-slate-500">ไม่มีเนื้อหาที่ตรงกับการกรอง</p>
             )}
           </div>
-        </>
       )}
     </div>
   );

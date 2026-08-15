@@ -10,9 +10,18 @@ import { Modal, ModalFormActions, ModalFormBody, ModalFormSection } from "../com
 import { SearchableSelect, personnelSelectLabel } from "../components/SearchableSelect";
 import type { Asset, AssetDetail, NameMasterRow, Personnel } from "../types";
 import { getScanUrlForToken } from "../lib/scanUrl";
-import { PageFilterPrintBar } from "../components/PageFilterPrintBar";
+import { PageHeaderBar } from "../components/PageHeaderBar";
+import { PrintA4Table } from "../components/PrintA4Table";
 import { parsePermitExpiryIsoFromNotes, stripPermitExpiryPhraseFromNotes } from "../lib/parsePermitNote";
 import { rowMatchesFilter } from "../lib/searchNormalize";
+import { isRadioAsset } from "../lib/radioAsset";
+import { isArmorAsset } from "../lib/armorAsset";
+import {
+  toolbarLinkBtnClass,
+  toolbarMasterBtnClass,
+  toolbarMasterGroupClass,
+  toolbarPrimaryBtnClass,
+} from "../lib/uiTokens";
 import { useAuth } from "../context/AuthContext";
 
 function isoToDateInput(iso: string | null | undefined): string {
@@ -41,19 +50,6 @@ function displayNotes(a: Asset): string {
 
 function assetPhotos(a: Asset) {
   return (a.documents ?? []).filter((d) => d.kind === "PHOTO");
-}
-
-function hasArmorDetails(a: Asset): boolean {
-  return Boolean(
-    a.registryLineNo != null ||
-    (a.armorLevel && a.armorLevel.trim()) ||
-    (a.armorWearStyle && a.armorWearStyle.trim()) ||
-    (a.armorModel && a.armorModel.trim()) ||
-    (a.armorUnitNumber && a.armorUnitNumber.trim()) ||
-    (a.permitDocumentNo && a.permitDocumentNo.trim()) ||
-    a.purchasedAt ||
-    a.armorExpiresAt,
-  );
 }
 
 function emptyForm() {
@@ -127,9 +123,11 @@ export function AssetsPage() {
     [statuses, form.assetItemStatusId],
   );
 
+  const materialRows = useMemo(() => rows.filter((a) => !isRadioAsset(a) && !isArmorAsset(a)), [rows]);
+
   const filteredRows = useMemo(
     () =>
-      rows.filter((a) =>
+      materialRows.filter((a) =>
         rowMatchesFilter(listFilter, [
           a.serialNumber,
           a.itemName,
@@ -155,7 +153,7 @@ export function AssetsPage() {
           a.auditor?.fullName,
         ]),
       ),
-    [rows, listFilter],
+    [materialRows, listFilter],
   );
 
   const detailAsset = useMemo(
@@ -371,7 +369,7 @@ export function AssetsPage() {
   }
 
   async function deleteAsset(a: Asset): Promise<boolean> {
-    if (!confirm(`ลบครุภัณฑ์ «${a.itemName}» (${a.serialNumber}) ? รูปและ QR เดิมจะถูกลบ`)) return false;
+    if (!confirm(`ลบวัสดุ «${a.itemName}» (${a.serialNumber}) ? รูปและ QR เดิมจะถูกลบ`)) return false;
     try {
       await apiJson(`/api/assets/${a.id}`, { method: "DELETE" });
       await load();
@@ -392,74 +390,54 @@ export function AssetsPage() {
 
   return (
     <div>
-      <div className="flex flex-wrap items-start justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-bold text-white">ครุภัณฑ์ &amp; QR</h1>
-          <p className="mt-1 text-slate-400">
-            เลขครุภัณฑ์ รูปถ่าย ประเภท ประจำ สังกัด สถานะ ใบอนุญาต — กดปุ่ม QR ในตารางเพื่อดาวน์โหลด/พิมพ์สติกเกอร์ สแกนที่หน้า &quot;สแกน QR&quot;
-            รายการนี้ไม่รวมครุภัณฑ์ที่สถานะจำหน่าย/ส่งคืน/เลิกใช้ (นับเฉพาะที่ต้องตรวจและดูแล)
-          </p>
-        </div>
-        <div className="flex flex-wrap gap-2">
-          <button
-            type="button"
-            onClick={() => setCatModal(true)}
-            className="shrink-0 rounded-lg border border-slate-600 px-3 py-2.5 text-sm font-medium text-slate-200 hover:bg-slate-800"
-          >
-            ประเภท
+      <PageHeaderBar
+        title="วัสดุทั่วไป"
+        filter={{
+          value: listFilter,
+          onChange: setListFilter,
+          printTitle: "วัสดุทั่วไป",
+          placeholder: "กรองเลขวัสดุ / ชื่อ / ที่ตั้ง / ประเภท / สังกัด / สถานะ…",
+        }}
+        masters={
+          <div className={toolbarMasterGroupClass}>
+            <button type="button" onClick={() => setCatModal(true)} className={toolbarMasterBtnClass}>
+              ประเภท
+            </button>
+            <button type="button" onClick={() => setRoutineModal(true)} className={toolbarMasterBtnClass}>
+              ประจำ
+            </button>
+            <button type="button" onClick={() => setAffModal(true)} className={toolbarMasterBtnClass}>
+              สังกัด
+            </button>
+            <button type="button" onClick={() => setStatusModal(true)} className={toolbarMasterBtnClass}>
+              สถานะ
+            </button>
+          </div>
+        }
+        extras={
+          <>
+            <Link to="/vehicles?view=disposed" className={toolbarLinkBtnClass}>
+              จำหน่าย (รถ)
+            </Link>
+            {user?.role === "ADMIN" ? (
+              <Link to="/audit-trail?entityType=Asset" className={toolbarLinkBtnClass}>
+                ความเคลื่อนไหว
+              </Link>
+            ) : null}
+            <Link to="/reports" className={toolbarLinkBtnClass}>
+              รายงาน
+            </Link>
+          </>
+        }
+        primary={
+          <button type="button" onClick={openAdd} className={toolbarPrimaryBtnClass}>
+            เพิ่มวัสดุ
           </button>
-          <button
-            type="button"
-            onClick={() => setRoutineModal(true)}
-            className="shrink-0 rounded-lg border border-slate-600 px-3 py-2.5 text-sm font-medium text-slate-200 hover:bg-slate-800"
-          >
-            ประจำ
-          </button>
-          <button
-            type="button"
-            onClick={() => setAffModal(true)}
-            className="shrink-0 rounded-lg border border-slate-600 px-3 py-2.5 text-sm font-medium text-slate-200 hover:bg-slate-800"
-          >
-            สังกัด
-          </button>
-          <button
-            type="button"
-            onClick={() => setStatusModal(true)}
-            className="shrink-0 rounded-lg border border-slate-600 px-3 py-2.5 text-sm font-medium text-slate-200 hover:bg-slate-800"
-          >
-            สถานะ
-          </button>
-          <Link
-            to="/disposition-registry"
-            className="inline-flex shrink-0 items-center rounded-lg border border-amber-900/50 px-3 py-2.5 text-sm font-medium text-amber-200/90 hover:bg-slate-800"
-          >
-            ทะเบียนจำหน่าย/ส่งคืน
-          </Link>
-          <Link
-            to="/assets/armor-monthly"
-            className="inline-flex shrink-0 items-center rounded-lg border border-violet-800/50 px-3 py-2.5 text-sm font-medium text-violet-200/90 hover:bg-slate-800"
-          >
-            ตรวจเสื้อเกราะรายเดือน
-          </Link>
-          <button
-            type="button"
-            onClick={openAdd}
-            className="shrink-0 rounded-lg bg-teal-600 px-4 py-2.5 text-sm font-semibold text-white shadow-lg shadow-teal-900/25 hover:bg-teal-500"
-          >
-            เพิ่มครุภัณฑ์
-          </button>
-        </div>
-      </div>
-
-      <PageFilterPrintBar
-        value={listFilter}
-        onChange={setListFilter}
-        printTitle="ครุภัณฑ์ & QR"
-        placeholder="กรองเลขครุภัณฑ์ / ชื่อ / ที่ตั้ง / ประเภท / สังกัด / สถานะ…"
+        }
       />
 
       <CrudNameMasterModal
-        title="ประเภทครุภัณฑ์ (เพิ่ม / แก้ไข / ลบ)"
+        title="ประเภทวัสดุ (เพิ่ม / แก้ไข / ลบ)"
         apiPath="/api/asset-categories"
         open={catModal}
         onClose={() => setCatModal(false)}
@@ -480,7 +458,7 @@ export function AssetsPage() {
         onChanged={load}
       />
       <CrudNameMasterModal
-        title="สถานะครุภัณฑ์ (เพิ่ม / แก้ไข / ลบ)"
+        title="สถานะวัสดุ (เพิ่ม / แก้ไข / ลบ)"
         apiPath="/api/asset-item-statuses"
         open={statusModal}
         onClose={() => setStatusModal(false)}
@@ -533,16 +511,16 @@ export function AssetsPage() {
       <Modal
         open={Boolean(detailAsset)}
         onClose={() => setDetailAssetId(null)}
-        title={detailAsset ? detailAsset.itemName : "รายละเอียดครุภัณฑ์"}
+        title={detailAsset ? detailAsset.itemName : "รายละเอียดวัสดุ"}
         size="wide"
       >
         {detailAsset ? (
           <>
             <ModalFormBody>
-              <div className="flex flex-wrap gap-3 border-b border-slate-800 pb-4">
+              <div className="flex flex-wrap gap-3 border-b border-slate-200 pb-4">
                 <button
                   type="button"
-                  className="rounded-lg border border-slate-600 px-3 py-1.5 text-xs font-medium text-teal-400 hover:bg-slate-800"
+                  className="rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-medium text-[#5b61ff] hover:bg-slate-100"
                   onClick={() => {
                     const a = detailAsset;
                     setDetailAssetId(null);
@@ -554,7 +532,7 @@ export function AssetsPage() {
                 {user?.role === "ADMIN" ? (
                   <button
                     type="button"
-                    className="rounded-lg border border-slate-600 px-3 py-1.5 text-xs font-medium text-rose-400 hover:bg-slate-800"
+                    className="rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-medium text-rose-600 hover:bg-slate-100"
                     onClick={() =>
                       void deleteAsset(detailAsset).then((ok) => {
                         if (ok) setDetailAssetId(null);
@@ -566,7 +544,7 @@ export function AssetsPage() {
                 ) : null}
                 <button
                   type="button"
-                  className="rounded-lg border border-slate-600 px-3 py-1.5 text-xs font-medium text-violet-400 hover:bg-slate-800"
+                  className="rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-medium text-violet-400 hover:bg-slate-100"
                   onClick={() => {
                     setQrCtx({
                       token: detailAsset.qrToken,
@@ -580,7 +558,7 @@ export function AssetsPage() {
                 </button>
                 <button
                   type="button"
-                  className="rounded-lg border border-slate-600 px-3 py-1.5 text-xs text-slate-300 hover:bg-slate-800"
+                  className="rounded-lg border border-slate-200 px-3 py-1.5 text-xs text-slate-700 hover:bg-slate-100"
                   onClick={() => {
                     setPhotoAssetId(detailAsset.id);
                     setPhotoLabel(detailAsset.itemName);
@@ -591,7 +569,7 @@ export function AssetsPage() {
                 </button>
                 <button
                   type="button"
-                  className="rounded-lg border border-slate-600 px-3 py-1.5 text-xs text-slate-300 hover:bg-slate-800"
+                  className="rounded-lg border border-slate-200 px-3 py-1.5 text-xs text-slate-700 hover:bg-slate-100"
                   onClick={() => {
                     setPermitAssetId(detailAsset.id);
                     setPermitLabel(detailAsset.itemName);
@@ -606,15 +584,15 @@ export function AssetsPage() {
                 return (
                   <div className="mt-4 flex flex-col gap-5 lg:flex-row lg:items-start lg:gap-6">
                     <div className="min-w-0 flex-1 space-y-4">
-                      <p className="font-mono text-sm text-teal-400/90">{detailAsset.serialNumber}</p>
+                      <p className="font-mono text-sm text-[#5b61ff]">{detailAsset.serialNumber}</p>
                       <div className="flex flex-wrap gap-1.5">
                         {detailAsset.assetCategory?.name ? (
-                          <span className="rounded-md bg-violet-500/15 px-2 py-0.5 text-[11px] font-medium text-violet-300">
+                          <span className="rounded-md bg-violet-500/15 px-2 py-0.5 text-[11px] font-medium text-violet-700">
                             {detailAsset.assetCategory.name}
                           </span>
                         ) : null}
                         {detailAsset.assetItemStatus?.name ? (
-                          <span className="rounded-md bg-slate-700/60 px-2 py-0.5 text-[11px] text-slate-300">
+                          <span className="rounded-md bg-slate-700/60 px-2 py-0.5 text-[11px] text-slate-700">
                             {detailAsset.assetItemStatus.name}
                           </span>
                         ) : null}
@@ -626,46 +604,46 @@ export function AssetsPage() {
                       ) : null}
                       <dl className="grid gap-x-3 gap-y-2.5 text-sm sm:grid-cols-2">
                 <div className="sm:col-span-2">
-                  <dt className="text-xs font-medium text-slate-500">ที่ตั้ง</dt>
-                  <dd className="mt-0.5 text-slate-200">{detailAsset.location}</dd>
+                  <dt className="text-xs font-medium text-slate-700">ที่ตั้ง</dt>
+                  <dd className="mt-0.5 text-slate-800">{detailAsset.location}</dd>
                 </div>
                 <div>
-                  <dt className="text-xs font-medium text-slate-500">ศูนย์ต้นทุน</dt>
-                  <dd className="mt-0.5 font-mono text-slate-300">{detailAsset.costCenter?.trim() || "—"}</dd>
+                  <dt className="text-xs font-medium text-slate-700">ศูนย์ต้นทุน</dt>
+                  <dd className="mt-0.5 font-mono text-slate-700">{detailAsset.costCenter?.trim() || "—"}</dd>
                 </div>
                 <div>
-                  <dt className="text-xs font-medium text-slate-500">ยี่ห้อ (อุปกรณ์)</dt>
-                  <dd className="mt-0.5 text-slate-200">{detailAsset.deviceBrand?.trim() || "—"}</dd>
+                  <dt className="text-xs font-medium text-slate-700">ยี่ห้อ (อุปกรณ์)</dt>
+                  <dd className="mt-0.5 text-slate-800">{detailAsset.deviceBrand?.trim() || "—"}</dd>
                 </div>
                 <div className="sm:col-span-2">
-                  <dt className="text-xs font-medium text-slate-500">รุ่น (อุปกรณ์)</dt>
-                  <dd className="mt-0.5 text-slate-200">{detailAsset.deviceModel?.trim() || "—"}</dd>
+                  <dt className="text-xs font-medium text-slate-700">รุ่น (อุปกรณ์)</dt>
+                  <dd className="mt-0.5 text-slate-800">{detailAsset.deviceModel?.trim() || "—"}</dd>
                 </div>
                 <div>
-                  <dt className="text-xs font-medium text-slate-500">เลขเครื่อง</dt>
-                  <dd className="mt-0.5 font-mono text-slate-300">
+                  <dt className="text-xs font-medium text-slate-700">เลขเครื่อง</dt>
+                  <dd className="mt-0.5 font-mono text-slate-700">
                     {detailAsset.machineSerialNumber?.trim() || "—"}
                   </dd>
                 </div>
                 <div>
-                  <dt className="text-xs font-medium text-slate-500">ประจำ</dt>
-                  <dd className="mt-0.5 text-slate-300">{detailAsset.assetRoutine?.name ?? "—"}</dd>
+                  <dt className="text-xs font-medium text-slate-700">ประจำ</dt>
+                  <dd className="mt-0.5 text-slate-700">{detailAsset.assetRoutine?.name ?? "—"}</dd>
                 </div>
                 <div>
-                  <dt className="text-xs font-medium text-slate-500">สังกัด</dt>
-                  <dd className="mt-0.5 text-slate-300">{detailAsset.assetAffiliation?.name ?? "—"}</dd>
+                  <dt className="text-xs font-medium text-slate-700">สังกัด</dt>
+                  <dd className="mt-0.5 text-slate-700">{detailAsset.assetAffiliation?.name ?? "—"}</dd>
                 </div>
                 <div>
-                  <dt className="text-xs font-medium text-slate-500">ผู้ตรวจ</dt>
-                  <dd className="mt-0.5 text-slate-300">{detailAsset.auditor?.fullName ?? "—"}</dd>
+                  <dt className="text-xs font-medium text-slate-700">ผู้ตรวจ</dt>
+                  <dd className="mt-0.5 text-slate-700">{detailAsset.auditor?.fullName ?? "—"}</dd>
                 </div>
                 <div className="sm:col-span-2">
-                  <dt className="text-xs font-medium text-slate-500">ไฟล์ใบอนุญาต</dt>
+                  <dt className="text-xs font-medium text-slate-700">ไฟล์ใบอนุญาต</dt>
                   <dd className="mt-0.5">
                     {permitDoc(detailAsset) ? (
                       <button
                         type="button"
-                        className="text-left text-sm text-teal-400 underline-offset-2 hover:text-teal-300 hover:underline"
+                        className="text-left text-sm text-[#5b61ff] underline-offset-2 hover:text-[#4d47b6] hover:underline"
                         onClick={() =>
                           window.open(permitDoc(detailAsset)!.fileUrl, "_blank", "noopener,noreferrer")
                         }
@@ -678,70 +656,29 @@ export function AssetsPage() {
                   </dd>
                 </div>
                 <div>
-                  <dt className="text-xs font-medium text-slate-500">หมดอายุใบอนุญาต</dt>
-                  <dd className="mt-0.5 text-slate-200">
+                  <dt className="text-xs font-medium text-slate-700">หมดอายุใบอนุญาต</dt>
+                  <dd className="mt-0.5 text-slate-800">
                     {formatThShortDate(effectivePermitExpiresIso(detailAsset))}
                   </dd>
                 </div>
                 <div className="sm:col-span-2">
-                  <dt className="text-xs font-medium text-slate-500">หมายเหตุ</dt>
-                  <dd className="mt-0.5 whitespace-pre-wrap break-words text-slate-400">
+                  <dt className="text-xs font-medium text-slate-700">หมายเหตุ</dt>
+                  <dd className="mt-0.5 whitespace-pre-wrap break-words text-slate-700">
                     {displayNotes(detailAsset)}
                   </dd>
                 </div>
               </dl>
-                      {hasArmorDetails(detailAsset) ? (
-                        <div className="rounded-xl border border-teal-900/35 bg-slate-950/50 px-3 py-3">
-                          <p className="text-[11px] font-semibold uppercase tracking-wide text-teal-600/90">
-                            ทะเบียนเสื้อเกราะ / ยุทธภัณฑ์ป้องกัน
-                          </p>
-                          <dl className="mt-2 grid gap-x-3 gap-y-2 text-sm sm:grid-cols-2">
-                            <div>
-                              <dt className="text-xs text-slate-500">ลำดับ</dt>
-                              <dd className="tabular-nums text-slate-200">{detailAsset.registryLineNo ?? "—"}</dd>
-                            </div>
-                            <div>
-                              <dt className="text-xs text-slate-500">ระดับ</dt>
-                              <dd className="text-slate-200">{detailAsset.armorLevel ?? "—"}</dd>
-                            </div>
-                            <div>
-                              <dt className="text-xs text-slate-500">แบบ</dt>
-                              <dd className="text-slate-200">{detailAsset.armorWearStyle ?? "—"}</dd>
-                            </div>
-                            <div>
-                              <dt className="text-xs text-slate-500">รุ่น</dt>
-                              <dd className="text-slate-200">{detailAsset.armorModel ?? "—"}</dd>
-                            </div>
-                            <div>
-                              <dt className="text-xs text-slate-500">เลขชิ้น</dt>
-                              <dd className="font-mono text-slate-200">{detailAsset.armorUnitNumber ?? "—"}</dd>
-                            </div>
-                            <div>
-                              <dt className="text-xs text-slate-500">เลขหนังสืออนุญาต</dt>
-                              <dd className="font-mono text-slate-200">{detailAsset.permitDocumentNo ?? "—"}</dd>
-                            </div>
-                            <div>
-                              <dt className="text-xs text-slate-500">วันจัดซื้อ</dt>
-                              <dd className="text-slate-200">{formatThShortDate(detailAsset.purchasedAt)}</dd>
-                            </div>
-                            <div>
-                              <dt className="text-xs text-slate-500">วันหมดอายุ</dt>
-                              <dd className="text-slate-200">{formatThShortDate(detailAsset.armorExpiresAt)}</dd>
-                            </div>
-                          </dl>
-                        </div>
-                      ) : null}
                     </div>
                     {photos.length > 0 ? (
                       <aside className="w-full shrink-0 lg:sticky lg:top-0 lg:w-64 xl:w-72">
-                        <p className="mb-2 text-xs font-medium text-slate-500 lg:text-right">รูปถ่าย</p>
+                        <p className="mb-2 text-xs font-medium text-slate-700 lg:text-right">รูปถ่าย</p>
                         <div className="flex flex-col gap-3 lg:max-h-[min(36rem,calc(85dvh-10rem))] lg:overflow-y-auto lg:pr-1 [scrollbar-gutter:stable]">
                           {photos.map((d) => (
                             <button
                               key={d.id}
                               type="button"
                               title="ดูแกลเลอรี่"
-                              className="aspect-square w-full max-w-[20rem] overflow-hidden rounded-xl border border-slate-700 bg-slate-950/50 focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-500 sm:mx-auto lg:mx-0 lg:max-w-none"
+                              className="aspect-square w-full max-w-[20rem] overflow-hidden rounded-xl border border-slate-200 bg-white/80 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#0000BF] sm:mx-auto lg:mx-0 lg:max-w-none"
                               onClick={() => {
                                 setGalleryAssetId(detailAsset.id);
                                 setGalleryLabel(detailAsset.itemName);
@@ -762,77 +699,77 @@ export function AssetsPage() {
         ) : null}
       </Modal>
 
-      <Modal open={modalOpen} onClose={closeModal} title={editingId ? "แก้ไขครุภัณฑ์" : "เพิ่มครุภัณฑ์"} size="wide">
+      <Modal open={modalOpen} onClose={closeModal} title={editingId ? "แก้ไขวัสดุ" : "เพิ่มวัสดุ"} size="wide">
         <form onSubmit={submit}>
           <ModalFormBody>
             <ModalFormSection title="ข้อมูลหลัก">
               <div className="grid gap-4 sm:grid-cols-2">
                 <label>
-                  <span className="text-xs font-medium text-slate-400">เลขครุภัณฑ์</span>
+                  <span className="text-xs font-medium text-slate-700">เลขครุภัณฑ์</span>
                   <input
                     required
-                    className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-white"
+                    className="mt-1 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-slate-900"
                     value={form.serialNumber}
                     onChange={(e) => setForm((f) => ({ ...f, serialNumber: e.target.value }))}
                   />
                 </label>
                 <label>
-                  <span className="text-xs font-medium text-slate-400">ชื่อรายการ</span>
+                  <span className="text-xs font-medium text-slate-700">ชื่อรายการ</span>
                   <input
                     required
-                    className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-white"
+                    className="mt-1 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-slate-900"
                     value={form.itemName}
                     onChange={(e) => setForm((f) => ({ ...f, itemName: e.target.value }))}
                   />
                 </label>
                 <label className="sm:col-span-2">
-                  <span className="text-xs font-medium text-slate-400">ที่ตั้ง</span>
+                  <span className="text-xs font-medium text-slate-700">ที่ตั้ง</span>
                   <input
                     required
-                    className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-white"
+                    className="mt-1 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-slate-900"
                     value={form.location}
                     onChange={(e) => setForm((f) => ({ ...f, location: e.target.value }))}
                   />
                 </label>
                 <label className="sm:col-span-2">
-                  <span className="text-xs font-medium text-slate-400">เลขประจำตัวเครื่อง</span>
+                  <span className="text-xs font-medium text-slate-700">เลขประจำตัวเครื่อง</span>
                   <input
-                    className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-white"
+                    className="mt-1 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-slate-900"
                     value={form.machineSerialNumber}
                     onChange={(e) => setForm((f) => ({ ...f, machineSerialNumber: e.target.value }))}
                   />
                 </label>
                 <label>
-                  <span className="text-xs font-medium text-slate-400">ศูนย์ต้นทุน (Cost center)</span>
+                  <span className="text-xs font-medium text-slate-700">ศูนย์ต้นทุน (Cost center)</span>
                   <input
-                    className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-white"
+                    className="mt-1 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-slate-900"
                     placeholder="เช่น 103801"
                     value={form.costCenter}
                     onChange={(e) => setForm((f) => ({ ...f, costCenter: e.target.value }))}
                   />
                 </label>
                 <label>
-                  <span className="text-xs font-medium text-slate-400">ยี่ห้อ (วิทยุ/อุปกรณ์)</span>
+                  <span className="text-xs font-medium text-slate-700">ยี่ห้อ (วิทยุ/อุปกรณ์)</span>
                   <input
-                    className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-white"
+                    className="mt-1 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-slate-900"
                     placeholder="เช่น Icom, Hytera"
                     value={form.deviceBrand}
                     onChange={(e) => setForm((f) => ({ ...f, deviceBrand: e.target.value }))}
                   />
                 </label>
                 <label className="sm:col-span-2">
-                  <span className="text-xs font-medium text-slate-400">รุ่น (วิทยุ/อุปกรณ์)</span>
+                  <span className="text-xs font-medium text-slate-700">รุ่น (วิทยุ/อุปกรณ์)</span>
                   <input
-                    className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-white"
+                    className="mt-1 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-slate-900"
                     placeholder="ไม่บังคับ"
                     value={form.deviceModel}
                     onChange={(e) => setForm((f) => ({ ...f, deviceModel: e.target.value }))}
                   />
                 </label>
                 <label>
-                  <span className="text-xs font-medium text-slate-400">ประเภท</span>
+                  <span className="text-xs font-medium text-slate-700">ประเภท</span>
                   <select
-                    className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-white"
+                    className="mt-1 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-slate-900"
                     value={form.assetCategoryId}
                     onChange={(e) => setForm((f) => ({ ...f, assetCategoryId: e.target.value }))}
                   >
@@ -845,9 +782,9 @@ export function AssetsPage() {
                   </select>
                 </label>
                 <label>
-                  <span className="text-xs font-medium text-slate-400">ประจำ</span>
+                  <span className="text-xs font-medium text-slate-700">ประจำ</span>
                   <select
-                    className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-white"
+                    className="mt-1 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-slate-900"
                     value={form.assetRoutineId}
                     onChange={(e) => setForm((f) => ({ ...f, assetRoutineId: e.target.value }))}
                   >
@@ -860,9 +797,9 @@ export function AssetsPage() {
                   </select>
                 </label>
                 <label>
-                  <span className="text-xs font-medium text-slate-400">สังกัด</span>
+                  <span className="text-xs font-medium text-slate-700">สังกัด</span>
                   <select
-                    className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-white"
+                    className="mt-1 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-slate-900"
                     value={form.assetAffiliationId}
                     onChange={(e) => setForm((f) => ({ ...f, assetAffiliationId: e.target.value }))}
                   >
@@ -875,9 +812,9 @@ export function AssetsPage() {
                   </select>
                 </label>
                 <label>
-                  <span className="text-xs font-medium text-slate-400">สถานะ</span>
+                  <span className="text-xs font-medium text-slate-700">สถานะ</span>
                   <select
-                    className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-white"
+                    className="mt-1 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-slate-900"
                     value={form.assetItemStatusId}
                     onChange={(e) => setForm((f) => ({ ...f, assetItemStatusId: e.target.value }))}
                   >
@@ -892,12 +829,12 @@ export function AssetsPage() {
                 </label>
                 {selectedAssetItemStatus?.excludesFromFleetCare ? (
                   <label className="sm:col-span-2">
-                    <span className="text-xs font-medium text-slate-400">
+                    <span className="text-xs font-medium text-slate-700">
                       หมายเหตุการจำหน่าย/ส่งคืน (บันทึกในประวัติทะเบียน)
                     </span>
                     <textarea
                       rows={2}
-                      className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-white"
+                      className="mt-1 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-slate-900"
                       placeholder="ไม่บังคับ"
                       value={form.dispositionNote}
                       onChange={(e) => setForm((f) => ({ ...f, dispositionNote: e.target.value }))}
@@ -905,7 +842,7 @@ export function AssetsPage() {
                   </label>
                 ) : null}
                 <label className="sm:col-span-2">
-                  <span className="text-xs font-medium text-slate-400">ผู้ตรวจสอบ</span>
+                  <span className="text-xs font-medium text-slate-700">ผู้ตรวจสอบ</span>
                   <SearchableSelect
                     value={form.auditorId}
                     onChange={(v) => setForm((f) => ({ ...f, auditorId: v }))}
@@ -915,10 +852,10 @@ export function AssetsPage() {
                   />
                 </label>
                 <label className="sm:col-span-2">
-                  <span className="text-xs font-medium text-slate-400">หมายเหตุ</span>
+                  <span className="text-xs font-medium text-slate-700">หมายเหตุ</span>
                   <textarea
                     rows={2}
-                    className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-white"
+                    className="mt-1 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-slate-900"
                     value={form.notes}
                     onChange={(e) => setForm((f) => ({ ...f, notes: e.target.value }))}
                   />
@@ -926,111 +863,19 @@ export function AssetsPage() {
               </div>
             </ModalFormSection>
 
-            <ModalFormSection title="ทะเบียนเสื้อเกราะ / ยุทธภัณฑ์ป้องกัน (ไม่บังคับ)">
-              <p className="mb-3 text-xs leading-relaxed text-slate-500">
-                กรอกเมื่อรายการเป็นประเภทเสื้อเกราะหรืออุปกรณ์ป้องกันตามแบบทะเบียนควบคุม — สอดคล้องคอลัมน์: ลำดับ, ระดับ, แบบ, รุ่น, หมายเลขชิ้น,
-                เลขหนังสืออนุญาต, วันจัดซื้อ, วันหมดอายุ
-              </p>
-              <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-                <label>
-                  <span className="text-xs font-medium text-slate-400">ลำดับในทะเบียน</span>
-                  <input
-                    type="number"
-                    min={1}
-                    className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-white"
-                    value={form.registryLineNo}
-                    onChange={(e) => setForm((f) => ({ ...f, registryLineNo: e.target.value }))}
-                    placeholder="เช่น 1"
-                  />
-                </label>
-                <label>
-                  <span className="text-xs font-medium text-slate-400">ระดับ</span>
-                  <input
-                    className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-white"
-                    value={form.armorLevel}
-                    onChange={(e) => setForm((f) => ({ ...f, armorLevel: e.target.value }))}
-                    placeholder="เช่น 2"
-                  />
-                </label>
-                <label>
-                  <span className="text-xs font-medium text-slate-400">แบบ</span>
-                  <input
-                    className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-white"
-                    value={form.armorWearStyle}
-                    onChange={(e) => setForm((f) => ({ ...f, armorWearStyle: e.target.value }))}
-                    placeholder="เช่น สวมทับใน"
-                  />
-                </label>
-                <label>
-                  <span className="text-xs font-medium text-slate-400">รุ่น</span>
-                  <input
-                    className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-white"
-                    value={form.armorModel}
-                    onChange={(e) => setForm((f) => ({ ...f, armorModel: e.target.value }))}
-                    placeholder="เช่น CONCEAL"
-                  />
-                </label>
-                <label>
-                  <span className="text-xs font-medium text-slate-400">หมายเลขชิ้น</span>
-                  <input
-                    className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-white"
-                    value={form.armorUnitNumber}
-                    onChange={(e) => setForm((f) => ({ ...f, armorUnitNumber: e.target.value }))}
-                    placeholder="เช่น 001"
-                  />
-                </label>
-                <label>
-                  <span className="text-xs font-medium text-slate-400">เลขที่หนังสืออนุญาต</span>
-                  <input
-                    className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-white"
-                    value={form.permitDocumentNo}
-                    onChange={(e) => setForm((f) => ({ ...f, permitDocumentNo: e.target.value }))}
-                    placeholder="เช่น 650507300"
-                  />
-                </label>
-                <label>
-                  <span className="text-xs font-medium text-slate-400">วันหมดอายุใบอนุญาต</span>
-                  <input
-                    type="date"
-                    className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-white"
-                    value={form.permitExpiresAt}
-                    onChange={(e) => setForm((f) => ({ ...f, permitExpiresAt: e.target.value }))}
-                  />
-                </label>
-                <label>
-                  <span className="text-xs font-medium text-slate-400">วันจัดซื้อ</span>
-                  <input
-                    type="date"
-                    className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-white"
-                    value={form.purchasedAt}
-                    onChange={(e) => setForm((f) => ({ ...f, purchasedAt: e.target.value }))}
-                  />
-                </label>
-                <label>
-                  <span className="text-xs font-medium text-slate-400">วันหมดอายุ (ตามทะเบียน)</span>
-                  <input
-                    type="date"
-                    className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-white"
-                    value={form.armorExpiresAt}
-                    onChange={(e) => setForm((f) => ({ ...f, armorExpiresAt: e.target.value }))}
-                  />
-                </label>
-              </div>
-            </ModalFormSection>
-
             {!editingId && (
-              <p className="text-xs text-slate-500">
+              <p className="text-xs text-slate-600">
                 หลังบันทึกจะเปิดหน้าต่างอัปโหลดรูป (หลายไฟล์ได้) เช่นเดียวกับยานพาหนะ — ใบอนุญาตจัดการจากตารางด้านล่าง
               </p>
             )}
           </ModalFormBody>
           <ModalFormActions>
-            <button type="submit" className="rounded-lg bg-teal-600 px-4 py-2 text-sm font-semibold text-white hover:bg-teal-500">
+            <button type="submit" className="rounded-full bg-gradient-to-r from-[#0000BF] via-[#8b5cf6] to-[#ec4899] text-sm font-bold text-white shadow-lg shadow-fuchsia-500/25 hover:from-[#0000a3] hover:via-[#7c3aed] hover:to-[#db2777] px-4 py-2">
               บันทึก
             </button>
             <button
               type="button"
-              className="rounded-lg border border-slate-600 px-4 py-2 text-sm text-slate-300 hover:bg-slate-800"
+              className="rounded-lg border border-slate-200 px-4 py-2 text-sm text-slate-700 hover:bg-slate-100"
               onClick={closeModal}
             >
               ยกเลิก
@@ -1039,21 +884,21 @@ export function AssetsPage() {
         </form>
       </Modal>
 
-      <div className="mt-6">
+      <div className="mt-6 print:hidden">
         {loading ? (
-          <div className="rounded-2xl border border-slate-800 bg-slate-900/40 py-16 text-center text-slate-500">
+          <div className="rounded-2xl border border-slate-200 bg-white/75 py-16 text-center text-slate-600">
             กำลังโหลด…
           </div>
-        ) : rows.length === 0 ? (
-          <div className="rounded-2xl border border-dashed border-slate-700 bg-slate-900/30 py-16 text-center text-slate-500">
-            ยังไม่มีครุภัณฑ์ — กด «เพิ่มครุภัณฑ์»
+        ) : materialRows.length === 0 ? (
+          <div className="rounded-2xl border border-dashed border-slate-200 bg-white/90/30 py-16 text-center text-slate-600">
+            ยังไม่มีวัสดุทั่วไป — กด «เพิ่มวัสดุ»
           </div>
         ) : filteredRows.length === 0 ? (
-          <div className="rounded-2xl border border-slate-800 bg-slate-900/40 py-16 text-center text-slate-500">
+          <div className="rounded-2xl border border-slate-200 bg-white/75 py-16 text-center text-slate-600">
             ไม่มีรายการที่ตรงกับการกรอง
           </div>
         ) : (
-          <div className="rounded-2xl border border-slate-800 bg-slate-950/50 p-3 shadow-inner">
+          <div className="rounded-2xl border border-slate-200 bg-white/80 p-3 shadow-inner">
             <div className="max-h-[calc(100vh-16rem)] min-h-[200px] overflow-y-auto overscroll-contain rounded-xl pr-1 [scrollbar-gutter:stable]">
               <ul className="grid gap-2.5 sm:grid-cols-2 xl:grid-cols-3">
                 {filteredRows.map((a) => {
@@ -1062,17 +907,17 @@ export function AssetsPage() {
                   const permitIso = effectivePermitExpiresIso(a);
                   return (
                     <li key={a.id}>
-                      <div className="flex overflow-hidden rounded-xl border border-slate-800 bg-slate-900/50 shadow-sm transition hover:border-teal-800/45 hover:bg-slate-900/80">
+                      <div className="flex overflow-hidden rounded-xl border border-slate-200 bg-white/85 shadow-sm transition hover:border-[#0000BF]/35 hover:bg-white/90">
                         <button
                           type="button"
-                          className="min-w-0 flex-1 px-3 py-2.5 text-left focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-500"
+                          className="min-w-0 flex-1 px-3 py-2.5 text-left focus:outline-none focus-visible:ring-2 focus-visible:ring-[#0000BF]"
                           onClick={() => setDetailAssetId(a.id)}
                         >
-                          <p className="truncate text-sm font-semibold leading-snug text-white">{a.itemName}</p>
-                          <p className="mt-0.5 font-mono text-[11px] text-teal-400/90">{a.serialNumber}</p>
-                          <p className="mt-1 truncate text-[11px] text-slate-500">{a.location}</p>
+                          <p className="truncate text-sm font-semibold leading-snug text-[#1e1b3a]">{a.itemName}</p>
+                          <p className="mt-0.5 font-mono text-[11px] text-[#5b61ff]">{a.serialNumber}</p>
+                          <p className="mt-1 truncate text-[11px] text-slate-600">{a.location}</p>
                           {a.costCenter?.trim() || a.deviceBrand?.trim() || a.deviceModel?.trim() ? (
-                            <p className="mt-0.5 truncate text-[10px] text-slate-500">
+                            <p className="mt-0.5 truncate text-[10px] text-slate-600">
                               {[
                                 a.costCenter?.trim() ? `Cctr ${a.costCenter.trim()}` : null,
                                 [a.deviceBrand?.trim(), a.deviceModel?.trim()].filter(Boolean).join(" ") || null,
@@ -1082,29 +927,29 @@ export function AssetsPage() {
                             </p>
                           ) : null}
                           {permitIso ? (
-                            <p className="mt-1 text-[10px] text-amber-300/90">
+                            <p className="mt-1 text-[10px] text-amber-700/90">
                               ใบอนุญาตหมด {formatThShortDate(permitIso)}
                             </p>
                           ) : null}
                           <div className="mt-1.5 flex flex-wrap gap-1">
                             {a.assetCategory?.name ? (
-                              <span className="rounded bg-violet-500/15 px-1.5 py-0.5 text-[10px] font-medium text-violet-300">
+                              <span className="rounded bg-violet-500/15 px-1.5 py-0.5 text-[10px] font-medium text-violet-700">
                                 {a.assetCategory.name}
                               </span>
                             ) : null}
                             {a.assetItemStatus?.name ? (
-                              <span className="rounded bg-slate-700/50 px-1.5 py-0.5 text-[10px] text-slate-300">
+                              <span className="rounded bg-slate-700/50 px-1.5 py-0.5 text-[10px] text-slate-700">
                                 {a.assetItemStatus.name}
                               </span>
                             ) : null}
                           </div>
                         </button>
-                        <div className="flex shrink-0 flex-col border-l border-slate-800/80">
+                        <div className="flex shrink-0 flex-col border-l border-slate-200">
                           {firstPhoto ? (
                             <button
                               type="button"
                               title="ดูรูปทั้งหมด"
-                              className="h-full min-h-[4.5rem] w-14 overflow-hidden border-0 bg-slate-950/40 p-0 focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-teal-500"
+                              className="h-full min-h-[4.5rem] w-14 overflow-hidden border-0 bg-white/40 p-0 focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#0000BF]"
                               onClick={() => {
                                 setGalleryAssetId(a.id);
                                 setGalleryLabel(a.itemName);
@@ -1117,7 +962,7 @@ export function AssetsPage() {
                             <button
                               type="button"
                               title="เพิ่ม/ดูรูป"
-                              className="flex min-h-[4.5rem] w-14 items-center justify-center bg-slate-950/30 px-1 text-center text-[9px] leading-tight text-slate-500 hover:bg-slate-800/50 hover:text-teal-400"
+                              className="flex min-h-[4.5rem] w-14 items-center justify-center bg-white/30 px-1 text-center text-[9px] leading-tight text-slate-700 hover:bg-slate-100/50 hover:text-[#0000BF]"
                               onClick={() => {
                                 setGalleryAssetId(a.id);
                                 setGalleryLabel(a.itemName);
@@ -1137,6 +982,25 @@ export function AssetsPage() {
           </div>
         )}
       </div>
+
+      <PrintA4Table
+        columns={[
+          { label: "เลขวัสดุ" },
+          { label: "ชื่อ" },
+          { label: "ที่ตั้ง" },
+          { label: "ประเภท" },
+          { label: "สถานะ" },
+          { label: "ยี่ห้อ" },
+        ]}
+        rows={filteredRows.map((a) => [
+          a.serialNumber,
+          a.itemName,
+          a.location || "—",
+          a.assetCategory?.name || "—",
+          a.assetItemStatus?.name || "—",
+          [a.deviceBrand, a.deviceModel].filter(Boolean).join(" ") || "—",
+        ])}
+      />
     </div>
   );
 }

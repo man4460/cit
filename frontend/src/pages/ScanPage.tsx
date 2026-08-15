@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { PageFilterPrintBar } from "../components/PageFilterPrintBar";
+import { PageHeaderBar } from "../components/PageHeaderBar";
 import { rowMatchesFilter } from "../lib/searchNormalize";
 import { useSearchParams } from "react-router-dom";
 import { Html5Qrcode, Html5QrcodeScanner } from "html5-qrcode";
@@ -156,43 +156,39 @@ export function ScanPage() {
 
   return (
     <div>
-      <h1 className="text-2xl font-bold text-white">สแกน QR / ตรวจครุภัณฑ์</h1>
-      <p className="mt-1 text-slate-400">
-        เปิดกล้องเมื่อกดปุ่ม (มือถือหรือคอมจะขอสิทธิ์กล้อง) — หรือเลือกรูปที่มี QR / วางโทเคนด้วยตนเอง
-      </p>
-
-      <PageFilterPrintBar
-        value={listFilter}
-        onChange={setListFilter}
-        printTitle="สแกน QR / ตรวจครุภัณฑ์"
-        placeholder="กรองชื่อ / เลขครุภัณฑ์ / ที่ตั้ง (เมื่อโหลดครุภัณฑ์แล้ว)…"
+      <PageHeaderBar
+        title="สแกน QR"
+        filter={{
+          value: listFilter,
+          onChange: setListFilter,
+          printTitle: "สแกน QR / ตรวจครุภัณฑ์",
+          placeholder: "กรองชื่อ / เลขครุภัณฑ์ / ที่ตั้ง (เมื่อโหลดครุภัณฑ์แล้ว)…",
+        }}
       />
 
       {/* element สำหรับ scanFile (ซ่อน) */}
       <div id="qr-file-reader" className="pointer-events-none fixed left-0 top-0 -z-10 h-px w-px overflow-hidden opacity-0" aria-hidden />
 
-      <div className="mt-8 grid gap-8 lg:grid-cols-2">
+      <div className="mt-5 grid gap-5 lg:grid-cols-2">
         <div className="space-y-4">
-          <p className="text-sm font-medium text-slate-400">กล้องสแกน QR</p>
+          <p className="text-xs font-black uppercase tracking-[0.14em] text-[#66638c]">กล้องสแกน QR</p>
           {!cameraOn ? (
-            <div className="rounded-xl border border-slate-800 bg-slate-900/50 p-4">
-              <p className="text-sm leading-relaxed text-slate-500">
-                กดปุ่มด้านล่างเพื่อเชื่อมต่อกล้องของอุปกรณ์นี้ (มือถือ: กล้องหลัง/หน้า — คอม: เว็บแคม) ระบบจะขออนุญาตจากเบราว์เซอร์
-              </p>
+            <div className="rounded-[1.25rem] border border-[#e8e6fc]/90 bg-gradient-to-br from-white/90 via-[#f5f3ff]/70 to-[#fdf2f8]/55 p-4 shadow-[0_12px_36px_-24px_rgba(30,27,75,0.28)]">
+              <p className="text-sm text-slate-600">เปิดกล้องเพื่อสแกน QR บนอุปกรณ์นี้</p>
               <button
                 type="button"
-                className="mt-4 w-full rounded-lg bg-teal-600 px-4 py-3 text-sm font-semibold text-white hover:bg-teal-500 sm:w-auto"
+                className="mt-4 w-full rounded-full bg-gradient-to-r from-[#0000BF] via-[#8b5cf6] to-[#ec4899] px-4 py-2.5 text-sm font-black text-white shadow-lg shadow-fuchsia-500/25 hover:from-[#0000a3] hover:via-[#7c3aed] hover:to-[#db2777] sm:w-auto"
                 onClick={() => setCameraOn(true)}
               >
-                เปิดกล้องสแกน QR
+                เปิดกล้อง
               </button>
             </div>
           ) : (
             <div className="space-y-3">
-              <div id="qr-reader-region" className="rounded-xl border border-slate-800 bg-slate-900/50 p-2" />
+              <div id="qr-reader-region" className="rounded-[1.25rem] border border-[#e8e6fc] bg-white/85 p-2 shadow-sm" />
               <button
                 type="button"
-                className="rounded-lg border border-slate-600 px-4 py-2 text-sm text-slate-300 hover:bg-slate-800"
+                className="inline-flex h-9 items-center rounded-xl border border-[#dcd8f0] bg-white px-3 text-xs font-bold text-[#2e2a58] shadow-sm hover:bg-[#0000BF]/5"
                 onClick={() => setCameraOn(false)}
               >
                 ปิดกล้อง
@@ -200,51 +196,48 @@ export function ScanPage() {
             </div>
           )}
 
-          <div className="rounded-xl border border-slate-800 bg-slate-900/40 p-4">
-            <p className="text-sm font-medium text-slate-400">หรือเลือกรูปที่มี QR</p>
-            <p className="mt-1 text-xs text-slate-600">มือถือมักเปิดให้ถ่ายหรือเลือกจากแกลเลอรี — คอมเลือกไฟล์รูป</p>
+          <div className="rounded-[1.25rem] border border-[#e8e6fc]/90 bg-white/80 p-4 shadow-sm">
+            <p className="text-sm font-bold text-[#1e1b4b]">เลือกรูปที่มี QR</p>
             <label className="mt-3 block">
               <input
                 type="file"
                 accept="image/*"
                 capture="environment"
-                className="block w-full text-sm text-slate-300 file:mr-3 file:rounded-lg file:border-0 file:bg-slate-700 file:px-3 file:py-2 file:text-sm file:font-medium file:text-white hover:file:bg-slate-600"
+                className="block w-full text-sm text-slate-700 file:mr-3 file:rounded-lg file:border-0 file:bg-[#0000BF]/10 file:px-3 file:py-2 file:text-sm file:font-medium file:text-[#2e2a58] hover:file:bg-[#0000BF]/15"
                 onChange={(e) => void onQrImageFile(e)}
               />
             </label>
           </div>
         </div>
 
-        <div>
+        <div className="rounded-[1.25rem] border border-[#e8e6fc]/90 bg-white/80 p-4 shadow-[0_12px_36px_-24px_rgba(30,27,75,0.28)]">
           <label className="block">
-            <span className="text-xs font-medium text-slate-400">โทเคน (หรือสแกนให้กรอกอัตโนมัติ)</span>
+            <span className="text-[10px] font-black uppercase tracking-wide text-[#66638c]">โทเคน</span>
             <input
-              className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 font-mono text-sm text-white"
+              className="mt-1 w-full rounded-xl border border-[#dcd8f0] bg-white px-3 py-2 font-mono text-sm text-slate-900 outline-none focus:ring-2 focus:ring-[#0000BF]/20"
               value={manualToken}
               onChange={(e) => setManualToken(e.target.value)}
               placeholder="uuid จาก QR"
             />
           </label>
 
-          {err && <p className="mt-4 text-amber-400">{err}</p>}
+          {err && <p className="mt-4 text-sm text-amber-700">{err}</p>}
 
           {asset && !assetMatchesFilter && listFilter.trim() ? (
-            <p className="mt-6 text-sm text-slate-500">
-              ครุภัณฑ์ที่เปิดอยู่ไม่ตรงกับการกรอง — ล้างช่องกรองหรือค้นหาใหม่
-            </p>
+            <p className="mt-4 text-sm text-slate-500">ครุภัณฑ์ที่เปิดอยู่ไม่ตรงกับการกรอง</p>
           ) : null}
 
           {asset && assetMatchesFilter && (
-            <div className="mt-6 rounded-xl border border-slate-800 bg-slate-900/60 p-4">
-              <h2 className="font-semibold text-teal-300">{asset.itemName}</h2>
-              <p className="text-sm text-slate-400">
+            <div className="mt-4 rounded-[1rem] border border-[#e8e6fc] bg-gradient-to-br from-[#f5f3ff]/80 to-white p-4">
+              <h2 className="font-black text-[#1e1b4b]">{asset.itemName}</h2>
+              <p className="text-sm text-slate-600">
                 {asset.serialNumber} · {asset.location}
               </p>
               <form onSubmit={(e) => void submitInspection(e)} className="mt-4 space-y-3">
                 <label className="block">
-                  <span className="text-xs font-medium text-slate-400">สถานะการตรวจ</span>
+                  <span className="text-xs font-medium text-slate-700">สถานะการตรวจ</span>
                   <select
-                    className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-white"
+                    className="mt-1 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-slate-900"
                     value={inspectionChoice}
                     onChange={(e) => setInspectionChoice(e.target.value as InspectionChoice)}
                   >
@@ -255,10 +248,10 @@ export function ScanPage() {
                 </label>
                 {inspectionChoice === "other" && (
                   <label className="block">
-                    <span className="text-xs font-medium text-slate-400">ระบุสถานะ (จำเป็น)</span>
+                    <span className="text-xs font-medium text-slate-700">ระบุสถานะ (จำเป็น)</span>
                     <input
                       required
-                      className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-white"
+                      className="mt-1 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-slate-900"
                       value={otherStatusText}
                       onChange={(e) => setOtherStatusText(e.target.value)}
                       placeholder="เช่น รอซ่อม, ส่งซ่อมภายนอก"
@@ -266,17 +259,17 @@ export function ScanPage() {
                   </label>
                 )}
                 <label className="block">
-                  <span className="text-xs font-medium text-slate-400">หมายเหตุเพิ่มเติม (ไม่บังคับ)</span>
+                  <span className="text-xs font-medium text-slate-700">หมายเหตุเพิ่มเติม (ไม่บังคับ)</span>
                   <input
-                    className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-white"
+                    className="mt-1 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-slate-900"
                     value={notes}
                     onChange={(e) => setNotes(e.target.value)}
                   />
                 </label>
                 <label className="block">
-                  <span className="text-xs font-medium text-slate-400">รหัสบุคลากร (ไม่บังคับ)</span>
+                  <span className="text-xs font-medium text-slate-700">รหัสบุคลากร (ไม่บังคับ)</span>
                   <input
-                    className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 font-mono text-sm text-white"
+                    className="mt-1 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 font-mono text-sm text-slate-900"
                     value={personnelId}
                     onChange={(e) => setPersonnelId(e.target.value)}
                     placeholder="UUID จากระบบบุคลากร"
@@ -284,11 +277,11 @@ export function ScanPage() {
                 </label>
                 <button
                   type="submit"
-                  className="rounded-lg bg-teal-600 px-4 py-2 text-sm font-semibold text-white hover:bg-teal-500"
+                  className="rounded-full bg-gradient-to-r from-[#0000BF] via-[#8b5cf6] to-[#ec4899] text-sm font-bold text-white shadow-lg shadow-fuchsia-500/25 hover:from-[#0000a3] hover:via-[#7c3aed] hover:to-[#db2777] px-4 py-2"
                 >
                   บันทึกการตรวจ
                 </button>
-                {doneMsg && <p className="text-sm text-teal-400">{doneMsg}</p>}
+                {doneMsg && <p className="text-sm text-[#5b61ff]">{doneMsg}</p>}
               </form>
             </div>
           )}

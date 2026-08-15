@@ -1,4 +1,5 @@
 import { useEffect } from "react";
+import { createPortal } from "react-dom";
 
 type ImageLightboxProps = {
   open: boolean;
@@ -46,7 +47,7 @@ export function ImageLightbox({
 
   if (!open || !current) return null;
 
-  return (
+  return createPortal(
     <div className="print:hidden fixed inset-0 z-[70] flex items-center justify-center p-4 sm:p-8">
       <button
         type="button"
@@ -55,21 +56,21 @@ export function ImageLightbox({
         onClick={onClose}
       />
       <div
-        className="relative z-10 flex max-h-[90vh] w-full max-w-4xl flex-col items-center"
+        className="relative z-10 mx-auto flex max-h-[90vh] w-[min(100%,56rem)] shrink-0 flex-col items-center"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="mb-3 flex w-full items-center justify-between gap-3 px-1">
           <p className="truncate text-sm font-medium text-white">
             {title}
             {canNav ? (
-              <span className="ml-2 text-slate-400 tabular-nums">
+              <span className="ml-2 text-slate-300 tabular-nums">
                 {idx + 1}/{list.length}
               </span>
             ) : null}
           </p>
           <button
             type="button"
-            className="shrink-0 rounded-lg bg-slate-800/90 px-3 py-1.5 text-sm text-slate-200 hover:bg-slate-700"
+            className="shrink-0 rounded-lg bg-slate-100/90 px-3 py-1.5 text-sm text-slate-800 hover:bg-slate-50"
             onClick={onClose}
           >
             ปิด
@@ -80,7 +81,7 @@ export function ImageLightbox({
             <button
               type="button"
               aria-label="ก่อนหน้า"
-              className="absolute left-0 z-20 rounded-lg bg-slate-800/90 px-2 py-4 text-lg text-white hover:bg-slate-700 sm:static sm:px-3"
+              className="absolute left-0 z-20 rounded-lg bg-white/95 px-2 py-4 text-lg text-[#1e1b3a] hover:bg-slate-50 sm:static sm:px-3"
               onClick={() => onIndexChange(idx > 0 ? idx - 1 : list.length - 1)}
             >
               ‹
@@ -89,13 +90,13 @@ export function ImageLightbox({
           <img
             src={current}
             alt=""
-            className="max-h-[min(80vh,48rem)] w-auto max-w-full rounded-lg border border-slate-700 object-contain shadow-2xl"
+            className="max-h-[min(80vh,48rem)] w-auto max-w-full rounded-lg border border-slate-200 object-contain shadow-2xl"
           />
           {canNav && onIndexChange ? (
             <button
               type="button"
               aria-label="ถัดไป"
-              className="absolute right-0 z-20 rounded-lg bg-slate-800/90 px-2 py-4 text-lg text-white hover:bg-slate-700 sm:static sm:px-3"
+              className="absolute right-0 z-20 rounded-lg bg-white/95 px-2 py-4 text-lg text-[#1e1b3a] hover:bg-slate-50 sm:static sm:px-3"
               onClick={() => onIndexChange(idx < list.length - 1 ? idx + 1 : 0)}
             >
               ›
@@ -103,6 +104,7 @@ export function ImageLightbox({
           ) : null}
         </div>
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }

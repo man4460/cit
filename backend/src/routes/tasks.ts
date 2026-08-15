@@ -2,7 +2,7 @@ import { Router } from "express";
 import { WorkTaskStatus } from "@prisma/client";
 import { prisma } from "../lib/prisma.js";
 import { routeParam } from "../lib/routeParam.js";
-import { publicFileUrl, upload } from "../lib/upload.js";
+import { persistUpload, upload } from "../lib/upload.js";
 
 export const tasksRouter = Router();
 
@@ -167,18 +167,26 @@ tasksRouter.post("/:id/photos", upload.array("photos", 24), async (req, res, nex
     let order = (maxSort._max.sortOrder ?? -1) + 1;
     const created: Awaited<ReturnType<typeof prisma.workTaskPhoto.create>>[] = [];
     for (const f of files) {
-      const mime = f.mimetype ?? "";
-      if (!mime.startsWith("image/")) continue;
-      const row = await prisma.workTaskPhoto.create({
-        data: {
-          workTaskId: taskId,
-          fileUrl: publicFileUrl(f.filename),
-          mimeType: mime,
-          originalName: f.originalname,
-          sortOrder: order++,
-        },
-      });
-      created.push(row);
+      try {
+        const saved = await persistUpload(f, {
+          module: "activities",
+          userId: req.auth?.userId,
+          kind: "photo",
+          forceImage: true,
+        });
+        const row = await prisma.workTaskPhoto.create({
+          data: {
+            workTaskId: taskId,
+            fileUrl: saved.fileUrl,
+            mimeType: saved.mimeType,
+            originalName: saved.displayName,
+            sortOrder: order++,
+          },
+        });
+        created.push(row);
+      } catch {
+        /* skip */
+      }
     }
     if (!created.length) return res.status(400).json({ error: "อัปโหลดเฉพาะไฟล์รูปภาพ (image/*)" });
     res.status(201).json(created);

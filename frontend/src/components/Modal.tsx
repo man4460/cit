@@ -1,4 +1,5 @@
 import { useEffect } from "react";
+import { createPortal } from "react-dom";
 
 export type ModalFrameSize = "sm" | "form" | "wide" | "viewer";
 
@@ -7,23 +8,16 @@ type ModalProps = {
   onClose: () => void;
   title: string;
   children: React.ReactNode;
-  /**
-   * sm — แคบ (ยืนยันสั้นๆ)
-   * form — ฟอร์มเพิ่มข้อมูลมาตรฐาน (ความกว้างเดียวกันทุกหน้า)
-   * wide — ฟอร์มยาว (บุคลากร / ภารกิจ)
-   * viewer — ดูเอกสาร (PDF/รูป ใน popup)
-   */
   size?: ModalFrameSize;
-  /** z-index ชั้น overlay (ค่าเริ่มต้น z-[60]) — ใช้ z-[100] เมื่อต้องทับ modal อื่น */
   overlayZClass?: string;
 };
 
-/** ความกว้างคงที่ต่อ preset — popup เพิ่มข้อมูลทั่วไปใช้ form เดียวกันทุกหน้า */
+/** ใช้ w-[min(...)] แทน w-full+max-w เพื่อให้ flex จัดกึ่งกลางได้จริง */
 const FRAME: Record<ModalFrameSize, string> = {
-  sm: "w-full max-w-md",
-  form: "w-full max-w-2xl",
-  wide: "w-full max-w-5xl",
-  viewer: "w-full max-w-[min(96vw,80rem)]",
+  sm: "w-[min(100%,28rem)]",
+  form: "w-[min(100%,42rem)]",
+  wide: "w-[min(100%,64rem)]",
+  viewer: "w-[min(100%,min(96vw,80rem))]",
 };
 
 const PANEL_MAX_H: Record<ModalFrameSize, string> = {
@@ -50,13 +44,13 @@ export function Modal({ open, onClose, title, children, size = "form", overlayZC
 
   if (!open) return null;
 
-  return (
+  return createPortal(
     <div
       className={`print:hidden fixed inset-0 ${overlayZClass} flex items-center justify-center p-3 sm:p-6`}
     >
       <button
         type="button"
-        className="absolute inset-0 bg-black/65 backdrop-blur-[2px]"
+        className="absolute inset-0 bg-[#1e1b3a]/40 backdrop-blur-[2px]"
         aria-label="ปิดหน้าต่าง"
         onClick={onClose}
       />
@@ -64,16 +58,19 @@ export function Modal({ open, onClose, title, children, size = "form", overlayZC
         role="dialog"
         aria-modal="true"
         aria-labelledby="modal-title"
-        className={`relative flex ${PANEL_MAX_H[size]} ${FRAME[size]} flex-col overflow-hidden rounded-2xl border border-slate-700 bg-slate-900 shadow-2xl shadow-black/50`}
+        className={`relative mx-auto flex ${PANEL_MAX_H[size]} ${FRAME[size]} shrink-0 flex-col overflow-hidden rounded-3xl border border-white/80 bg-white/95 shadow-[0_24px_60px_-20px_rgba(68,49,127,0.35)] backdrop-blur-xl`}
         onClick={(e) => e.stopPropagation()}
       >
-        <header className="flex shrink-0 items-center justify-between gap-3 border-b border-slate-800 px-4 py-3 sm:px-6 sm:py-4">
-          <h2 id="modal-title" className="min-w-0 flex-1 text-base font-semibold tracking-tight text-white sm:text-lg">
+        <header className="flex shrink-0 items-center justify-between gap-3 border-b border-[#d8d9ff]/80 px-4 py-3 sm:px-6 sm:py-4">
+          <h2
+            id="modal-title"
+            className="min-w-0 flex-1 text-base font-black tracking-tight text-[#1e1b3a] sm:text-lg"
+          >
             {title}
           </h2>
           <button
             type="button"
-            className="rounded-lg p-2 text-slate-400 transition-colors hover:bg-slate-800 hover:text-white"
+            className="rounded-xl p-2 text-slate-700 transition-colors hover:bg-slate-100 hover:text-[#2e2a58]"
             aria-label="ปิด"
             onClick={onClose}
           >
@@ -84,7 +81,8 @@ export function Modal({ open, onClose, title, children, size = "form", overlayZC
         </header>
         <div className="min-h-0 flex-1 overflow-y-auto px-4 py-4 sm:px-6 sm:py-5">{children}</div>
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }
 

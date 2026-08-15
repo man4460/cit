@@ -1,11 +1,10 @@
 import { useId, useRef } from "react";
 
 const inputBase =
-  "block w-full min-w-0 rounded-lg border border-slate-700 bg-slate-950 py-2 pl-3 pr-11 text-sm text-white [color-scheme:dark] focus:border-teal-600 focus:outline-none focus:ring-1 focus:ring-teal-600";
+  "block w-full min-w-0 rounded-xl border border-slate-200 bg-white py-2 pl-3 pr-11 text-sm text-slate-900 shadow-sm [color-scheme:light] outline-none focus:border-[#0000BF] focus:ring-2 focus:ring-[#0000BF]/20";
 
 /**
- * ช่อง date/month บนธีมเข้ม — ไอคอน native ของ Chrome/Edge มักเป็นสีดำมองไม่เห็น
- * จึงซ่อน pseudo แล้วใช้ปุ่ม SVG + HTMLInputElement.showPicker()
+ * ช่อง date/month — ซ่อนไอคอน native แล้วใช้ปุ่ม SVG แบรนด์ + showPicker()
  */
 export function PickableDateInput({
   type,
@@ -37,7 +36,7 @@ export function PickableDateInput({
         return;
       }
     } catch {
-      /* showPicker อาจ throw ในบางสถานะ */
+      /* ignore */
     }
     el.focus();
   }
@@ -58,7 +57,7 @@ export function PickableDateInput({
         type="button"
         disabled={disabled}
         onClick={openPicker}
-        className="absolute right-1.5 top-1/2 z-10 -translate-y-1/2 rounded-md p-1 text-teal-400 shadow-sm hover:bg-slate-800 hover:text-teal-300 focus:outline-none focus:ring-2 focus:ring-teal-500 disabled:opacity-40"
+        className="absolute right-1.5 top-1/2 z-10 -translate-y-1/2 rounded-lg p-1 text-[#0000BF] hover:bg-[#0000BF]/10 focus:outline-none focus:ring-2 focus:ring-[#0000BF]/30 disabled:opacity-40"
         aria-label={type === "month" ? "เปิดตัวเลือกเดือน" : "เปิดปฏิทิน"}
       >
         <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2} aria-hidden>

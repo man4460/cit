@@ -251,19 +251,29 @@ function buildNotes(r: Row): string {
   return lines.join("\n");
 }
 
-function statusNameForRow(r: Row): string {
-  if (r.remark.includes("เตรียมส่งคืน")) return "เตรียมส่งคืน";
-  return "ใช้งานปกติ";
+function statusNameForRow(r: Row): "ใช้งาน" | "จำหน่าย" {
+  // เตรียมส่งคืน / ส่งคืน / จำหน่าย → แท็บจำหน่าย (excludesFromFleetCare)
+  if (/เตรียมส่งคืน|ส่งคืน|จำหน่าย|คัดจำหน่าย/.test(r.remark)) return "จำหน่าย";
+  return "ใช้งาน";
 }
 
-async function ensureVehicleStatus(name: string): Promise<string> {
+async function ensureVehicleStatus(name: string, excludesFromFleetCare = false): Promise<string> {
   let row = await prisma.vehicleStatus.findUnique({ where: { name } });
   if (!row) {
     const max = await prisma.vehicleStatus.aggregate({ _max: { sortOrder: true } });
     row = await prisma.vehicleStatus.create({
-      data: { name, sortOrder: (max._max.sortOrder ?? 0) + 1 },
+      data: {
+        name,
+        sortOrder: (max._max.sortOrder ?? 0) + 1,
+        excludesFromFleetCare,
+      },
     });
     console.log(`สร้างสถานะรถ: ${name}`);
+  } else if (excludesFromFleetCare && !row.excludesFromFleetCare) {
+    row = await prisma.vehicleStatus.update({
+      where: { id: row.id },
+      data: { excludesFromFleetCare: true },
+    });
   }
   return row.id;
 }
@@ -281,8 +291,10 @@ async function ensureWorkCategoryGroup(name: string): Promise<string> {
 }
 
 async function main() {
-  const statusNormalId = await ensureVehicleStatus("ใช้งานปกติ");
-  const statusReturnId = await ensureVehicleStatus("เตรียมส่งคืน");
+  const statusActiveId = await ensureVehicleStatus("ใช้งาน", false);
+  const statusDisposedId = await ensureVehicleStatus("จำหน่าย", true);
+  // sync ชื่อเก่าให้ excludes flag ถูกต้องถ้ายังมี
+  await ensureVehicleStatus("จำหน่าย / คัดจำหน่าย", true);
   const workGroupId = await ensureWorkCategoryGroup("ประจำฐาน / สาขา");
 
   let created = 0;
@@ -291,7 +303,8 @@ async function main() {
   for (const r of FLEET_ROWS) {
     const typeName = vehicleTypeNameForModel(r.model);
     const vt = await prisma.vehicleType.findUnique({ where: { name: typeName } });
-    const statusId = statusNameForRow(r) === "เตรียมส่งคืน" ? statusReturnId : statusNormalId;
+    const statusName = statusNameForRow(r);
+    const statusId = statusName === "จำหน่าย" ? statusDisposedId : statusActiveId;
     const bm = `${r.brand} ${r.model}`.trim();
     const notes = buildNotes(r);
     const purchasedAt = parseDdMmYyyy(r.purchase);
@@ -326,11 +339,11 @@ async function main() {
         },
       });
       updated++;
-      console.log(`อัปเดต ${r.licensePlate} (${r.assetCode})`);
+      console.log(`อัปเดต ${r.licensePlate} → ${statusName}`);
     } else {
       await prisma.vehicle.create({ data: payload });
       created++;
-      console.log(`เพิ่ม ${r.licensePlate} (${r.assetCode})`);
+      console.log(`เพิ่ม ${r.licensePlate} → ${statusName}`);
     }
   }
 

@@ -1,12 +1,45 @@
 import { Router } from "express";
+import { diffSummary, resolveActorLabel, writeAuditLog } from "../lib/auditLog.js";
 import { logAssetDispositionIfNeeded } from "../lib/dispositionLog.js";
 import { assetFleetCareActiveWhere, assetRetiredFromFleetCareWhere } from "../lib/fleetCareWhere.js";
 import { prisma } from "../lib/prisma.js";
 import { routeParam } from "../lib/routeParam.js";
 import { requireAdmin } from "../middleware/auth.js";
-import { publicFileUrl, upload } from "../lib/upload.js";
+import { persistUpload, upload } from "../lib/upload.js";
 
 export const assetsRouter = Router();
+
+function assetAuditSnapshot(a: {
+  id: string;
+  serialNumber: string;
+  itemName: string;
+  location: string;
+  assetItemStatusId: string | null;
+  assetCategoryId: string | null;
+  notes: string | null;
+  assetItemStatus?: { name: string } | null;
+}) {
+  return {
+    id: a.id,
+    serialNumber: a.serialNumber,
+    itemName: a.itemName,
+    location: a.location,
+    assetItemStatusId: a.assetItemStatusId,
+    assetItemStatusName: a.assetItemStatus?.name ?? null,
+    assetCategoryId: a.assetCategoryId,
+    notes: a.notes,
+  };
+}
+
+const ASSET_AUDIT_KEYS = [
+  "serialNumber",
+  "itemName",
+  "location",
+  "assetItemStatusId",
+  "assetItemStatusName",
+  "assetCategoryId",
+  "notes",
+];
 
 function parseOptionalDate(v: unknown): Date | null {
   if (v == null || v === "") return null;
@@ -112,19 +145,27 @@ assetsRouter.post("/:id/photos", upload.array("photos", 24), async (req, res, ne
     let order = (maxSort._max.sortOrder ?? -1) + 1;
     const created: Awaited<ReturnType<typeof prisma.assetDocument.create>>[] = [];
     for (const f of files) {
-      const mime = f.mimetype ?? "";
-      if (!mime.startsWith("image/")) continue;
-      const row = await prisma.assetDocument.create({
-        data: {
-          assetId,
-          fileUrl: publicFileUrl(f.filename),
-          mimeType: mime,
-          originalName: f.originalname,
-          kind: "PHOTO",
-          sortOrder: order++,
-        },
-      });
-      created.push(row);
+      try {
+        const saved = await persistUpload(f, {
+          module: "assets",
+          userId: req.auth?.userId,
+          kind: "photo",
+          forceImage: true,
+        });
+        const row = await prisma.assetDocument.create({
+          data: {
+            assetId,
+            fileUrl: saved.fileUrl,
+            mimeType: saved.mimeType,
+            originalName: saved.displayName,
+            kind: "PHOTO",
+            sortOrder: order++,
+          },
+        });
+        created.push(row);
+      } catch {
+        /* skip */
+      }
     }
     if (!created.length) return res.status(400).json({ error: "อัปโหลดเฉพาะไฟล์รูปภาพ (image/*)" });
     res.status(201).json(created);
@@ -142,18 +183,25 @@ assetsRouter.post("/:id/permit", upload.single("file"), async (req, res, next) =
     if (!exists) return res.status(404).json({ error: "ไม่พบครุภัณฑ์" });
 
     await prisma.assetDocument.deleteMany({ where: { assetId, kind: "PERMIT" } });
+    const saved = await persistUpload(req.file, {
+      module: "assets",
+      userId: req.auth?.userId,
+      kind: "permit",
+      allowPdf: true,
+    });
     const row = await prisma.assetDocument.create({
       data: {
         assetId,
-        fileUrl: publicFileUrl(req.file.filename),
-        mimeType: req.file.mimetype,
-        originalName: req.file.originalname,
+        fileUrl: saved.fileUrl,
+        mimeType: saved.mimeType,
+        originalName: saved.displayName,
         kind: "PERMIT",
         sortOrder: 0,
       },
     });
     res.status(201).json(row);
   } catch (e) {
+    if (e instanceof Error) return res.status(400).json({ error: e.message });
     next(e);
   }
 });
@@ -249,6 +297,17 @@ assetsRouter.post("/", async (req, res, next) => {
       include: assetListInclude,
     });
 
+    const actor = await resolveActorLabel(prisma, req.auth?.userId);
+    await writeAuditLog(prisma, {
+      entityType: "Asset",
+      entityId: row.id,
+      action: "CREATE",
+      summary: `วัสดุ ${row.serialNumber}: สร้างใหม่`,
+      after: assetAuditSnapshot(row),
+      actor,
+      req,
+    });
+
     const dn = (req.body as { dispositionNote?: unknown })?.dispositionNote;
     await logAssetDispositionIfNeeded(prisma, {
       wasExcluded: false,
@@ -257,6 +316,7 @@ assetsRouter.post("/", async (req, res, next) => {
       itemName: row.itemName,
       nextStatus: row.assetItemStatus,
       note: dn != null ? String(dn) : undefined,
+      actor: { actorUserId: actor.userId, actorUsername: actor.username },
     });
 
     res.status(201).json(row);
@@ -336,6 +396,20 @@ assetsRouter.put("/:id", async (req, res, next) => {
       include: assetListInclude,
     });
 
+    const actor = await resolveActorLabel(prisma, req.auth?.userId);
+    const beforeSnap = assetAuditSnapshot(existing);
+    const afterSnap = assetAuditSnapshot(row);
+    await writeAuditLog(prisma, {
+      entityType: "Asset",
+      entityId: row.id,
+      action: "UPDATE",
+      summary: diffSummary(`วัสดุ ${row.serialNumber}`, beforeSnap, afterSnap, ASSET_AUDIT_KEYS),
+      before: beforeSnap,
+      after: afterSnap,
+      actor,
+      req,
+    });
+
     const wasExcluded = existing.assetItemStatus?.excludesFromFleetCare === true;
     await logAssetDispositionIfNeeded(prisma, {
       wasExcluded,
@@ -344,6 +418,7 @@ assetsRouter.put("/:id", async (req, res, next) => {
       itemName: row.itemName,
       nextStatus: row.assetItemStatus,
       note: dispositionNote != null ? String(dispositionNote) : undefined,
+      actor: { actorUserId: actor.userId, actorUsername: actor.username },
     });
 
     res.json(row);
@@ -358,7 +433,22 @@ assetsRouter.put("/:id", async (req, res, next) => {
 
 assetsRouter.delete("/:id", requireAdmin, async (req, res, next) => {
   try {
-    await prisma.asset.delete({ where: { id: routeParam(req.params.id) } });
+    const existing = await prisma.asset.findUnique({
+      where: { id: routeParam(req.params.id) },
+      include: { assetItemStatus: true },
+    });
+    if (!existing) return res.status(404).json({ error: "Not found" });
+    await prisma.asset.delete({ where: { id: existing.id } });
+    const actor = await resolveActorLabel(prisma, req.auth?.userId);
+    await writeAuditLog(prisma, {
+      entityType: "Asset",
+      entityId: existing.id,
+      action: "DELETE",
+      summary: `วัสดุ ${existing.serialNumber}: ลบ`,
+      before: assetAuditSnapshot(existing),
+      actor,
+      req,
+    });
     res.status(204).send();
   } catch (e: unknown) {
     if (e && typeof e === "object" && "code" in e && (e as { code: string }).code === "P2025")

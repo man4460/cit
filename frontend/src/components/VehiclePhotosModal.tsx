@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useState } from "react";
 import { apiFormJson, apiJson } from "../api/client";
+import { prepareFilesForUpload } from "../lib/prepareImageFileForUpload";
 import { Modal, ModalFormActions, ModalFormBody } from "./Modal";
-import type { VehicleDetail } from "../types";
+import type { VehicleDetail, VehicleDocument } from "../types";
 
 export function VehiclePhotosModal({
   vehicleId,
@@ -18,6 +19,7 @@ export function VehiclePhotosModal({
 }) {
   const [detail, setDetail] = useState<VehicleDetail | null>(null);
   const [loading, setLoading] = useState(false);
+  const [busyId, setBusyId] = useState<string | null>(null);
   const inputId = vehicleId ? `vehicle-photos-${vehicleId}` : "vehicle-photos-none";
 
   const load = useCallback(async () => {
@@ -41,7 +43,11 @@ export function VehiclePhotosModal({
     void load();
   }, [load]);
 
-  const photos = (detail?.documents ?? []).filter((d) => d.kind === "PHOTO");
+  const photos = (detail?.documents ?? [])
+    .filter((d) => d.kind === "PHOTO")
+    .slice()
+    .sort((a, b) => a.sortOrder - b.sortOrder || a.createdAt.localeCompare(b.createdAt));
+  const cardFrontId = photos[0]?.id ?? null;
 
   async function onUpload(e: React.FormEvent) {
     e.preventDefault();
@@ -53,8 +59,9 @@ export function VehiclePhotosModal({
       return;
     }
     try {
+      const prepared = await prepareFilesForUpload(files);
       const fd = new FormData();
-      for (let i = 0; i < files.length; i++) fd.append("photos", files[i]);
+      for (const f of prepared) fd.append("photos", f);
       await apiFormJson<unknown[]>(`/api/vehicles/${vehicleId}/photos`, fd);
       if (el) el.value = "";
       await load();
@@ -75,6 +82,20 @@ export function VehiclePhotosModal({
     }
   }
 
+  async function setCardFront(doc: VehicleDocument) {
+    if (!vehicleId || doc.id === cardFrontId) return;
+    setBusyId(doc.id);
+    try {
+      await apiJson(`/api/vehicles/${vehicleId}/documents/${doc.id}/card-front`, { method: "POST" });
+      await load();
+      onUpdated();
+    } catch (err) {
+      alert(err instanceof Error ? err.message : "ตั้งรูปหน้าการ์ดไม่สำเร็จ");
+    } finally {
+      setBusyId(null);
+    }
+  }
+
   if (!vehicleId) return null;
 
   return (
@@ -86,47 +107,69 @@ export function VehiclePhotosModal({
       overlayZClass="z-[100]"
     >
       {loading && !detail ? (
-        <p className="text-slate-500">กำลังโหลด…</p>
+        <p className="text-slate-700">กำลังโหลด…</p>
       ) : (
         <>
           <ModalFormBody>
-            <p className="text-xs text-slate-500">อัปโหลดได้หลายไฟล์พร้อมกัน (เฉพาะรูปภาพ สูงสุด 24 ไฟล์ต่อครั้ง)</p>
+            <p className="text-xs text-slate-600">
+              อัปโหลดได้หลายไฟล์พร้อมกัน · กด «ตั้งเป็นรูปหน้าการ์ด» เพื่อเลือกรูปที่แสดงบนการ์ดรายการ
+            </p>
             <form onSubmit={onUpload} className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-end">
               <label className="block min-w-[200px] flex-1">
-                <span className="text-xs text-slate-400">เลือกรูป</span>
+                <span className="text-xs text-slate-600">เลือกรูป</span>
                 <input
                   id={inputId}
                   type="file"
                   accept="image/*"
                   multiple
-                  className="mt-1 block w-full text-sm text-slate-300 file:mr-3 file:rounded-lg file:border-0 file:bg-teal-600 file:px-3 file:py-2 file:text-sm file:font-medium file:text-white"
+                  className="mt-1 block w-full text-sm text-slate-700 file:mr-3 file:rounded-lg file:border-0 file:bg-[#0000BF] file:px-3 file:py-2 file:text-sm file:font-medium file:text-[#2e2a58]"
                 />
               </label>
               <button
                 type="submit"
-                className="rounded-lg bg-teal-600 px-4 py-2 text-sm font-semibold text-white hover:bg-teal-500"
+                className="rounded-full bg-gradient-to-r from-[#0000BF] via-[#8b5cf6] to-[#ec4899] text-sm font-bold text-white shadow-lg shadow-fuchsia-500/25 hover:from-[#0000a3] hover:via-[#7c3aed] hover:to-[#db2777] px-4 py-2"
               >
                 อัปโหลด
               </button>
             </form>
             <div className="mt-6">
-              <p className="text-xs font-medium uppercase tracking-wider text-slate-500">รูปที่มีอยู่ ({photos.length})</p>
+              <p className="text-xs font-medium uppercase tracking-wider text-slate-700">รูปที่มีอยู่ ({photos.length})</p>
               {photos.length === 0 ? (
-                <p className="mt-3 text-sm text-slate-500">ยังไม่มีรูป</p>
+                <p className="mt-3 text-sm text-slate-600">ยังไม่มีรูป</p>
               ) : (
                 <ul className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4">
-                  {photos.map((p) => (
-                    <li key={p.id} className="group relative overflow-hidden rounded-xl border border-slate-700 bg-slate-950">
-                      <img src={p.fileUrl} alt="" className="aspect-square w-full object-cover" />
-                      <button
-                        type="button"
-                        className="absolute right-2 top-2 rounded-lg bg-rose-600/90 px-2 py-1 text-xs font-medium text-white opacity-90 hover:bg-rose-500"
-                        onClick={() => void removePhoto(p.id)}
-                      >
-                        ลบ
-                      </button>
-                    </li>
-                  ))}
+                  {photos.map((p) => {
+                    const isFront = p.id === cardFrontId;
+                    return (
+                      <li key={p.id} className="group relative overflow-hidden rounded-xl border border-slate-200 bg-white">
+                        <img src={p.fileUrl} alt="" className="aspect-square w-full object-cover" />
+                        {isFront ? (
+                          <span className="absolute left-2 top-2 rounded-md bg-[#0000BF] px-2 py-0.5 text-[10px] font-black text-white shadow">
+                            รูปหน้าการ์ด
+                          </span>
+                        ) : null}
+                        <div className="absolute inset-x-0 bottom-0 flex flex-col gap-1 bg-gradient-to-t from-black/70 to-transparent p-2 pt-8">
+                          {!isFront ? (
+                            <button
+                              type="button"
+                              disabled={busyId === p.id}
+                              className="rounded-lg bg-white/95 px-2 py-1 text-[11px] font-bold text-[#4d47b6] hover:bg-white disabled:opacity-60"
+                              onClick={() => void setCardFront(p)}
+                            >
+                              {busyId === p.id ? "กำลังตั้ง…" : "ตั้งเป็นรูปหน้าการ์ด"}
+                            </button>
+                          ) : null}
+                          <button
+                            type="button"
+                            className="rounded-lg bg-rose-600/90 px-2 py-1 text-[11px] font-medium text-white hover:bg-rose-500"
+                            onClick={() => void removePhoto(p.id)}
+                          >
+                            ลบ
+                          </button>
+                        </div>
+                      </li>
+                    );
+                  })}
                 </ul>
               )}
             </div>
@@ -134,7 +177,7 @@ export function VehiclePhotosModal({
           <ModalFormActions>
             <button
               type="button"
-              className="rounded-lg border border-slate-600 px-4 py-2 text-sm text-slate-300 hover:bg-slate-800"
+              className="rounded-lg border border-slate-200 px-4 py-2 text-sm text-slate-700 hover:bg-slate-100"
               onClick={onClose}
             >
               ปิด

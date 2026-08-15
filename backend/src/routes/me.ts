@@ -2,10 +2,23 @@ import bcrypt from "bcrypt";
 import type { NextFunction, Request, Response } from "express";
 import { Router } from "express";
 import { prisma } from "../lib/prisma.js";
+import { persistUpload, unlinkUploadFile, upload } from "../lib/upload.js";
+import { uploadRelativePathFromFileUrl } from "../lib/libraryDocumentExtract.js";
 
 export const meRouter = Router();
 
-const meSelect = { id: true, username: true, role: true, fullName: true, active: true } as const;
+const meSelect = {
+  id: true,
+  username: true,
+  role: true,
+  fullName: true,
+  avatarUrl: true,
+  active: true,
+} as const;
+
+function storedUploadRelPath(avatarUrl: string | null | undefined): string | null {
+  return uploadRelativePathFromFileUrl(avatarUrl ?? "");
+}
 
 meRouter.get("/me", async (req: Request, res: Response, next: NextFunction) => {
   try {
@@ -42,9 +55,7 @@ meRouter.patch("/me", async (req: Request, res: Response, next: NextFunction) =>
     }
 
     const wantsPw =
-      newPassword !== undefined &&
-      newPassword !== null &&
-      String(newPassword).length > 0;
+      newPassword !== undefined && newPassword !== null && String(newPassword).length > 0;
 
     if (wantsPw) {
       const np = String(newPassword);
@@ -69,6 +80,58 @@ meRouter.patch("/me", async (req: Request, res: Response, next: NextFunction) =>
       data,
       select: meSelect,
     });
+    res.json(user);
+  } catch (e) {
+    next(e);
+  }
+});
+
+meRouter.post("/me/avatar", upload.single("photo"), async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    if (!req.file) return res.status(400).json({ error: "เลือกไฟล์รูป" });
+
+    const id = req.auth!.userId;
+    const existing = await prisma.user.findUnique({ where: { id }, select: { id: true, active: true, avatarUrl: true } });
+    if (!existing || !existing.active) return res.status(401).json({ error: "บัญชีถูกปิดการใช้งาน" });
+
+    let saved;
+    try {
+      saved = await persistUpload(req.file, {
+        module: "profile",
+        userId: id,
+        kind: "avatar",
+        forceImage: true,
+      });
+    } catch (e) {
+      return res.status(400).json({ error: e instanceof Error ? e.message : "อัปโหลดรูปไม่สำเร็จ" });
+    }
+
+    const old = storedUploadRelPath(existing.avatarUrl);
+    const avatarUrl = saved.publicPath;
+    const user = await prisma.user.update({
+      where: { id },
+      data: { avatarUrl },
+      select: meSelect,
+    });
+    if (old && old !== saved.relativePath) unlinkUploadFile(old);
+    res.json(user);
+  } catch (e) {
+    next(e);
+  }
+});
+
+meRouter.delete("/me/avatar", async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const id = req.auth!.userId;
+    const existing = await prisma.user.findUnique({ where: { id }, select: { id: true, active: true, avatarUrl: true } });
+    if (!existing || !existing.active) return res.status(401).json({ error: "บัญชีถูกปิดการใช้งาน" });
+    const old = storedUploadRelPath(existing.avatarUrl);
+    const user = await prisma.user.update({
+      where: { id },
+      data: { avatarUrl: null },
+      select: meSelect,
+    });
+    if (old) unlinkUploadFile(old);
     res.json(user);
   } catch (e) {
     next(e);

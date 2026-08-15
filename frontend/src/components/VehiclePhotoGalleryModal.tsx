@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
+import { createPortal } from "react-dom";
 import { apiJson } from "../api/client";
 import type { VehicleDetail } from "../types";
 
@@ -82,7 +83,7 @@ export function VehiclePhotoGalleryModal({
 
   if (!open || !vehicleId) return null;
 
-  return (
+  return createPortal(
     <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 sm:p-6">
       <button
         type="button"
@@ -94,21 +95,21 @@ export function VehiclePhotoGalleryModal({
         role="dialog"
         aria-modal="true"
         aria-label={`ดูรูป ${licensePlate}`}
-        className="relative flex max-h-[min(92vh,52rem)] w-full max-w-4xl flex-col overflow-hidden rounded-2xl border border-slate-700 bg-slate-900 shadow-2xl"
+        className="relative mx-auto flex max-h-[min(92vh,52rem)] w-[min(100%,56rem)] shrink-0 flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white/90 shadow-2xl"
         onClick={(e) => e.stopPropagation()}
       >
-        <header className="flex shrink-0 items-center justify-between gap-3 border-b border-slate-800 px-4 py-3 sm:px-5">
+        <header className="flex shrink-0 items-center justify-between gap-3 border-b border-slate-200 px-4 py-3 sm:px-5">
           <div className="min-w-0">
-            <h2 className="truncate text-base font-semibold text-white">ดูรูป — {licensePlate}</h2>
+            <h2 className="truncate text-base font-semibold text-[#1e1b3a]">ดูรูป — {licensePlate}</h2>
             {total > 0 && (
-              <p className="text-xs text-slate-500">
+              <p className="text-xs text-slate-600">
                 {clampedIdx + 1} / {total} · ลูกศร ← → เปลี่ยนรูป
               </p>
             )}
           </div>
           <button
             type="button"
-            className="shrink-0 rounded-lg p-2 text-slate-400 hover:bg-slate-800 hover:text-white"
+            className="shrink-0 rounded-lg p-2 text-slate-700 hover:bg-slate-100 hover:text-[#2e2a58]"
             aria-label="ปิด"
             onClick={onClose}
           >
@@ -120,16 +121,16 @@ export function VehiclePhotoGalleryModal({
 
         <div className="relative flex min-h-[200px] flex-1 items-center justify-center gap-2 bg-black/40 px-2 py-4 sm:gap-4 sm:px-4">
           {loading ? (
-            <p className="text-slate-500">กำลังโหลด…</p>
+            <p className="text-slate-700">กำลังโหลด…</p>
           ) : total === 0 ? (
-            <p className="text-center text-slate-500">ยังไม่มีรูป — ใช้ปุ่ม &quot;รูป (0)&quot; เพื่ออัปโหลด</p>
+            <p className="text-center text-slate-600">ยังไม่มีรูป — ใช้ปุ่ม &quot;รูป (0)&quot; เพื่ออัปโหลด</p>
           ) : (
             <>
               <button
                 type="button"
                 disabled={!canPrev}
                 onClick={goPrev}
-                className="shrink-0 rounded-full border border-slate-600 bg-slate-800/90 p-2.5 text-white shadow-lg enabled:hover:bg-slate-700 disabled:cursor-not-allowed disabled:opacity-35 sm:p-3"
+                className="shrink-0 rounded-full border border-slate-200 bg-white/95 p-2.5 text-[#1e1b3a] shadow-lg enabled:hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-35 sm:p-3"
                 aria-label="รูปก่อนหน้า"
               >
                 <svg className="h-5 w-5 sm:h-6 sm:w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
@@ -147,7 +148,7 @@ export function VehiclePhotoGalleryModal({
                 type="button"
                 disabled={!canNext}
                 onClick={goNext}
-                className="shrink-0 rounded-full border border-slate-600 bg-slate-800/90 p-2.5 text-white shadow-lg enabled:hover:bg-slate-700 disabled:cursor-not-allowed disabled:opacity-35 sm:p-3"
+                className="shrink-0 rounded-full border border-slate-200 bg-white/95 p-2.5 text-[#1e1b3a] shadow-lg enabled:hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-35 sm:p-3"
                 aria-label="รูปถัดไป"
               >
                 <svg className="h-5 w-5 sm:h-6 sm:w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
@@ -159,12 +160,12 @@ export function VehiclePhotoGalleryModal({
         </div>
 
         {total > 0 && (
-          <footer className="shrink-0 border-t border-slate-800 px-4 py-3 text-center sm:px-5">
+          <footer className="shrink-0 border-t border-slate-200 px-4 py-3 text-center sm:px-5">
             <div className="flex flex-wrap items-center justify-center gap-2">
               <button
                 type="button"
                 disabled={!canPrev}
-                className="rounded-lg border border-slate-600 px-3 py-1.5 text-sm text-slate-300 hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-40"
+                className="rounded-lg border border-slate-200 px-3 py-1.5 text-sm text-slate-700 hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-40"
                 onClick={goPrev}
               >
                 ← ก่อนหน้า
@@ -172,7 +173,7 @@ export function VehiclePhotoGalleryModal({
               <button
                 type="button"
                 disabled={!canNext}
-                className="rounded-lg border border-slate-600 px-3 py-1.5 text-sm text-slate-300 hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-40"
+                className="rounded-lg border border-slate-200 px-3 py-1.5 text-sm text-slate-700 hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-40"
                 onClick={goNext}
               >
                 ถัดไป →
@@ -181,6 +182,7 @@ export function VehiclePhotoGalleryModal({
           </footer>
         )}
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }

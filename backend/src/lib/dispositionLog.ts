@@ -6,6 +6,8 @@ export function dispositionKindFromStatusName(statusName: string): DispositionKi
   return /ส่งคืน/i.test(statusName) ? "RETURNED" : "DISPOSED";
 }
 
+type ActorFields = { actorUserId?: string | null; actorUsername?: string | null };
+
 export async function logVehicleDispositionIfNeeded(
   prisma: PrismaClient,
   params: {
@@ -15,9 +17,10 @@ export async function logVehicleDispositionIfNeeded(
     brandModel: string;
     nextStatus: { name: string; excludesFromFleetCare: boolean } | null;
     note?: string | null;
+    actor?: ActorFields | null;
   },
 ) {
-  const { wasExcluded, vehicleId, licensePlate, brandModel, nextStatus, note } = params;
+  const { wasExcluded, vehicleId, licensePlate, brandModel, nextStatus, note, actor } = params;
   if (wasExcluded || !nextStatus?.excludesFromFleetCare) return;
   await prisma.vehicleDispositionLog.create({
     data: {
@@ -27,6 +30,8 @@ export async function logVehicleDispositionIfNeeded(
       licensePlate,
       brandModel,
       note: note?.trim() ? note.trim() : null,
+      actorUserId: actor?.actorUserId ?? null,
+      actorUsername: actor?.actorUsername ?? null,
     },
   });
 }
@@ -40,9 +45,10 @@ export async function logAssetDispositionIfNeeded(
     itemName: string;
     nextStatus: { name: string; excludesFromFleetCare: boolean } | null;
     note?: string | null;
+    actor?: ActorFields | null;
   },
 ) {
-  const { wasExcluded, assetId, serialNumber, itemName, nextStatus, note } = params;
+  const { wasExcluded, assetId, serialNumber, itemName, nextStatus, note, actor } = params;
   if (wasExcluded || !nextStatus?.excludesFromFleetCare) return;
   await prisma.assetDispositionLog.create({
     data: {
@@ -52,6 +58,8 @@ export async function logAssetDispositionIfNeeded(
       serialNumber,
       itemName,
       note: note?.trim() ? note.trim() : null,
+      actorUserId: actor?.actorUserId ?? null,
+      actorUsername: actor?.actorUsername ?? null,
     },
   });
 }
