@@ -299,6 +299,9 @@ model LibraryDocument {
   originalName   String?
   createdAt      DateTime      @default(now())
   updatedAt      DateTime      @updatedAt
+
+  osAcceptanceLinks OsAcceptanceDocument[]
+  osContractLinks   OsContractDocument[]
 }
 
 // --- อัคคีภัย / ถังดับเพลิง ---
@@ -843,8 +846,9 @@ model BudgetAccount {
   createdAt  DateTime          @default(now())
   updatedAt  DateTime          @updatedAt
 
-  yearLines BudgetYearLine[]
-  requests  BudgetRequest[]
+  yearLines    BudgetYearLine[]
+  requests     BudgetRequest[]
+  osAreaGroups OsAreaGroup[]
 
   @@index([ciCode])
   @@index([parentId])
@@ -904,6 +908,8 @@ model BudgetTransaction {
   refNo       String?
   createdAt   DateTime       @default(now())
   updatedAt   DateTime       @updatedAt
+
+  osMonthlyAcceptance OsMonthlyAcceptance?
 
   @@index([yearLineId, occurredAt])
 }
@@ -1316,4 +1322,94 @@ model MailOutbox {
 
   @@index([status, createdAt])
   @@index([relatedType, relatedId])
+}
+
+// --- งานจ้าง OS (outsourcing security) ---
+
+model OsAreaGroup {
+  id              String         @id @default(uuid())
+  code            String         @unique
+  name            String
+  sortOrder       Int            @default(0)
+  active          Boolean        @default(true)
+  /// ลิงก์บัญชีย่อยงบประมาณ (กลุ่ม N ใต้ CI 5031116000)
+  budgetAccountId String?
+  budgetAccount   BudgetAccount? @relation(fields: [budgetAccountId], references: [id], onDelete: SetNull)
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
+
+  contracts OsContract[]
+
+  @@index([budgetAccountId])
+  @@index([sortOrder])
+}
+
+model OsContract {
+  id            String      @id @default(uuid())
+  areaGroupId   String
+  areaGroup     OsAreaGroup @relation(fields: [areaGroupId], references: [id], onDelete: Cascade)
+  vendorName    String
+  contractNo    String?
+  title         String?
+  startDate     DateTime
+  endDate       DateTime
+  monthlyAmount Decimal?
+  notes         String?     @db.Text
+  active        Boolean     @default(true)
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
+
+  acceptances OsMonthlyAcceptance[]
+  documents   OsContractDocument[]
+
+  @@index([areaGroupId, startDate, endDate])
+  @@index([active])
+}
+
+model OsMonthlyAcceptance {
+  id                  String             @id @default(uuid())
+  contractId          String
+  contract            OsContract         @relation(fields: [contractId], references: [id], onDelete: Cascade)
+  /// YYYY-MM
+  monthYm             String
+  acceptedAmount      Decimal
+  acceptedAt          DateTime           @default(now())
+  remarks             String?            @db.Text
+  budgetTransactionId String?            @unique
+  budgetTransaction   BudgetTransaction? @relation(fields: [budgetTransactionId], references: [id], onDelete: SetNull)
+  createdAt           DateTime           @default(now())
+  updatedAt           DateTime           @updatedAt
+
+  documents OsAcceptanceDocument[]
+
+  @@unique([contractId, monthYm])
+  @@index([monthYm])
+}
+
+/// เอกสารตรวจรับรายเดือน — ลิงก์ไปคลังเอกสารหมวด «งานจ้าง OS»
+model OsAcceptanceDocument {
+  id                String              @id @default(uuid())
+  acceptanceId      String
+  acceptance        OsMonthlyAcceptance @relation(fields: [acceptanceId], references: [id], onDelete: Cascade)
+  libraryDocumentId String
+  libraryDocument   LibraryDocument     @relation(fields: [libraryDocumentId], references: [id], onDelete: Cascade)
+  sortOrder         Int                 @default(0)
+  createdAt         DateTime            @default(now())
+
+  @@unique([acceptanceId, libraryDocumentId])
+  @@index([libraryDocumentId])
+}
+
+/// เอกสารสัญญา — ลิงก์ไปคลังเอกสารหมวด «งานจ้าง OS»
+model OsContractDocument {
+  id                String          @id @default(uuid())
+  contractId        String
+  contract          OsContract      @relation(fields: [contractId], references: [id], onDelete: Cascade)
+  libraryDocumentId String
+  libraryDocument   LibraryDocument @relation(fields: [libraryDocumentId], references: [id], onDelete: Cascade)
+  sortOrder         Int             @default(0)
+  createdAt         DateTime        @default(now())
+
+  @@unique([contractId, libraryDocumentId])
+  @@index([libraryDocumentId])
 }

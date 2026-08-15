@@ -53,6 +53,7 @@ export const navGroups: NavGroup[] = [
         ],
       },
       { to: "/security-incidents", label: "เหตุการณ์ไม่ปกติ" },
+      { to: "/os-outsourcing", label: "งานจ้าง OS" },
     ],
   },
   {

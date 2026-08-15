@@ -37,6 +37,7 @@ import { InvestigationCaseReportPage } from "./pages/investigation/Investigation
 import { InvestigationApprovalsPage } from "./pages/investigation/InvestigationApprovalsPage";
 import { InvestigationTeamsPage } from "./pages/investigation/InvestigationTeamsPage";
 import { ApprovalLinkPage } from "./pages/ApprovalLinkPage";
+import { OsOutsourcingPage } from "./pages/os-outsourcing/OsOutsourcingPage";
 
 export default function App() {
   return (
@@ -67,6 +68,7 @@ export default function App() {
               <Route path="activities" element={<ActivitiesPage />} />
               <Route path="security-incidents/dashboard" element={<SecurityIncidentsDashboard />} />
               <Route path="security-incidents" element={<SecurityIncidentsPage />} />
+              <Route path="os-outsourcing" element={<OsOutsourcingPage />} />
               <Route path="investigation" element={<InvestigationDashboardPage />} />
               <Route path="investigation/cases" element={<InvestigationCasesPage />} />
               <Route path="investigation/cases/:caseId" element={<InvestigationCaseDetailPage />} />

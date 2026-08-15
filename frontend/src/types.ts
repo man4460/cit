@@ -895,3 +895,62 @@ export interface SecurityIncident {
   createdAt: string;
   updatedAt: string;
 }
+
+/** งานจ้าง OS — กลุ่มพื้นที่ */
+export interface OsAreaGroup {
+  id: string;
+  code: string;
+  name: string;
+  sortOrder: number;
+  active: boolean;
+  budgetAccountId: string | null;
+  budgetAccount?: { id: string; name: string; ciCode: string | null } | null;
+  contracts?: OsContract[];
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface OsContractDocumentLink {
+  id: string;
+  libraryDocumentId: string;
+  sortOrder: number;
+  createdAt: string;
+  title: string;
+  fileUrl: string | null;
+  mimeType: string | null;
+  originalName: string | null;
+}
+
+export interface OsContract {
+  id: string;
+  areaGroupId: string;
+  areaGroup?: { id: string; code: string; name: string } | null;
+  vendorName: string;
+  contractNo: string | null;
+  title: string | null;
+  startDate: string;
+  endDate: string;
+  monthlyAmount: number | null;
+  notes: string | null;
+  active: boolean;
+  documents?: OsContractDocumentLink[];
+  _count?: { acceptances: number };
+  createdAt: string;
+  updatedAt: string;
+}
+
+export type OsAcceptanceDocumentLink = OsContractDocumentLink;
+
+export interface OsMonthlyAcceptance {
+  id: string;
+  contractId: string;
+  monthYm: string;
+  acceptedAmount: number;
+  acceptedAt: string;
+  remarks: string | null;
+  budgetTransactionId: string | null;
+  documents?: OsAcceptanceDocumentLink[];
+  createdAt: string;
+  updatedAt: string;
+}
+

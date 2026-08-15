@@ -9,6 +9,7 @@ const DOCUMENT_CATEGORY_SLUGS: Record<string, string> = {
   อาวุธปืน: "weapons",
   อัคคีภัย: "fire",
   ขนส่งธนบัตร: "missions",
+  "งานจ้าง OS": "os-outsourcing",
   หนังสือ: "letters",
   คำสั่ง: "orders",
   ระเบียบ: "regulations",

@@ -49,12 +49,14 @@ import { securityIncidentsRouter } from "./routes/securityIncidents.js";
 import { budgetRouter } from "./routes/budget.js";
 import { investigationRouter } from "./routes/investigation.js";
 import { investigationApprovalRouter } from "./routes/investigationApproval.js";
+import { osOutsourcingRouter } from "./routes/osOutsourcing.js";
 import { seedDocumentMasterData } from "./lib/seedDocumentMasters.js";
 import { seedFireExtinguisherData } from "./lib/seedFireExtinguishers.js";
 import { seedWeaponData } from "./lib/seedWeapons.js";
 import { seedBulletproofVestData } from "./lib/seedBulletproofVests.js";
 import { seedInvestigationCategories } from "./lib/seedInvestigationCategories.js";
 import { seedInvestigationTeams } from "./lib/seedInvestigationTeams.js";
+import { seedOsAreaGroups } from "./lib/seedOsAreaGroups.js";
 
 const app = express();
 const port = Number(process.env.PORT) || 4000;
@@ -112,8 +114,9 @@ secured.use("/tasks", tasksRouter);
 secured.use("/admin/users", adminUsersRouter);
 secured.use("/audit-logs", auditLogsRouter);
 secured.use("/security-incidents", securityIncidentsRouter);
-secured.use("/budget", budgetRouter);
-secured.use("/investigation", investigationRouter);
+  secured.use("/budget", budgetRouter);
+  secured.use("/investigation", investigationRouter);
+  secured.use("/os-outsourcing", osOutsourcingRouter);
 
 app.use("/api", secured);
 
@@ -168,6 +171,7 @@ void ensureBootstrapAdmin()
   .then(() => seedBulletproofVestData())
   .then(() => seedInvestigationTeams())
   .then(() => seedInvestigationCategories())
+  .then(() => seedOsAreaGroups())
   .then(() => {
     app.listen(port, host, () => {
       const hint = host === "0.0.0.0" ? "ทุก interface (LAN ใช้ http://<IP-เครื่องนี้>:" + port + ")" : host;

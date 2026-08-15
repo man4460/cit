@@ -7,6 +7,7 @@ export const MODULE_DOCUMENT_CATEGORIES = {
   weapons: "อาวุธปืน",
   fire: "อัคคีภัย",
   missions: "ขนส่งธนบัตร",
+  osOutsourcing: "งานจ้าง OS",
 } as const;
 
 export type ModuleDocumentCategoryKey = keyof typeof MODULE_DOCUMENT_CATEGORIES;

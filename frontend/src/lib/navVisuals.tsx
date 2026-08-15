@@ -275,6 +275,12 @@ const ITEM_VISUALS: ({ match: RegExp } & ItemVisual)[] = [
   { match: /armor-monthly/, icon: "shield", tone: "text-teal-600", chip: "bg-teal-500/12 text-teal-600 ring-teal-500/25" },
   { match: /^\/security-incidents/, icon: "alert", tone: "text-rose-600", chip: "bg-rose-500/12 text-rose-600 ring-rose-500/25" },
   {
+    match: /^\/os-outsourcing/,
+    icon: "link",
+    tone: "text-cyan-700",
+    chip: "bg-cyan-500/12 text-cyan-700 ring-cyan-500/25",
+  },
+  {
     match: /budget\/year\/\d+/,
     icon: "year",
     tone: "text-emerald-600",

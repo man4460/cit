@@ -9,6 +9,7 @@ export const MODULE_DOCUMENT_TYPE_NAMES = [
   "อาวุธปืน",
   "อัคคีภัย",
   "ขนส่งธนบัตร",
+  "งานจ้าง OS",
 ] as const;
 
 const LEGACY_TYPES = ["หนังสือ", "คำสั่ง", "ระเบียบ"] as const;
