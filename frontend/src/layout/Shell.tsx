@@ -190,7 +190,7 @@ export function Shell() {
   );
 
   return (
-    <div className="flex min-h-screen min-h-[100dvh] flex-col">
+    <div className="app-shell flex min-h-screen min-h-[100dvh] flex-col">
       {mobileOpen && (
         <button
           type="button"
@@ -202,7 +202,7 @@ export function Shell() {
 
       <header
         className="no-print app-glass-panel sticky top-0 z-30 flex w-full shrink-0 items-center justify-between gap-3 border-b border-white/60 px-3 py-2.5 lg:px-6 lg:py-3"
-        style={{ paddingTop: "max(0.625rem, env(safe-area-inset-top))" }}
+        style={{ paddingTop: "max(0.625rem, env(safe-area-inset-top, 0px))" }}
       >
         <div className="flex min-w-0 flex-1 items-center gap-2 sm:gap-3">
           <button
@@ -313,12 +313,12 @@ export function Shell() {
           className={`min-w-0 flex-1 px-3 pb-4 print:max-w-none print:p-0 sm:px-5 sm:pb-6 lg:px-6 lg:pb-8 ${
             moduleHeaderCollapsed ? "pt-2 sm:pt-2 lg:pt-2" : "pt-4 sm:pt-6 lg:pt-8"
           }`}
-          style={{ paddingBottom: "max(1rem, env(safe-area-inset-bottom))" }}
+          style={{ paddingBottom: "max(1rem, env(safe-area-inset-bottom, 0px))" }}
         >
-          <div className="w-full min-w-0 print:max-w-none">
+          <div className="w-full min-w-0 max-w-none print:max-w-none">
             <ModuleSectionChrome role={user?.role} />
             <div
-              className={`app-card-surface rounded-[1.5rem] border border-white/70 px-4 pb-4 sm:px-6 sm:pb-6 ${
+              className={`app-card-surface w-full rounded-[1.5rem] border border-white/70 px-4 pb-4 sm:px-6 sm:pb-6 ${
                 moduleHeaderCollapsed ? "pt-3 sm:pt-4" : "pt-4 sm:pt-6"
               }`}
             >

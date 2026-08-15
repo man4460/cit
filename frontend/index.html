@@ -1,10 +1,19 @@
 <!doctype html>
-<html lang="th">
+<html lang="th" class="h-full antialiased">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1.0, viewport-fit=cover"
+    />
     <title>ALL FOR ONE</title>
     <meta name="theme-color" content="#0000BF" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="ALL FOR ONE" />
+    <meta name="application-name" content="ALL FOR ONE" />
+    <link rel="manifest" href="/manifest.webmanifest" />
     <!-- cache-bust favicon — โลโก้สี่เหลี่ยมสีน้ำเงิน -->
     <link rel="icon" href="/favicon.ico?v=3" sizes="any" />
     <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32.png?v=3" />
@@ -18,8 +27,8 @@
       rel="stylesheet"
     />
   </head>
-  <body class="antialiased">
-    <div id="root"></div>
+  <body class="app-shell h-full min-h-dvh antialiased">
+    <div id="root" class="app-shell min-h-dvh"></div>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>

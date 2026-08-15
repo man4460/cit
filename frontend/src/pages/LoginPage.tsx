@@ -33,7 +33,13 @@ export function LoginPage() {
   }
 
   return (
-    <div className="flex min-h-screen min-h-[100dvh] flex-col items-center justify-center px-4 py-8">
+    <div
+      className="app-shell flex min-h-screen min-h-[100dvh] flex-col items-center justify-center px-4 py-8"
+      style={{
+        paddingTop: "max(2rem, env(safe-area-inset-top, 0px))",
+        paddingBottom: "max(2rem, env(safe-area-inset-bottom, 0px))",
+      }}
+    >
       <div className="app-card-surface w-full max-w-md rounded-3xl border border-white/80 p-6 sm:p-8">
         <div className="flex justify-center">
           <img
