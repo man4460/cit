@@ -12,6 +12,18 @@ import { MissionsSubNav } from "../components/MissionsSubNav";
 import { PrintA4Table } from "../components/PrintA4Table";
 import { SearchableSelect, personnelSelectLabel } from "../components/SearchableSelect";
 import { parseLooseNumber } from "../lib/formatNumber";
+import {
+  calcBotMissionCompensation,
+  botPerDiemDailyRate,
+  isBotPersonnelCategory,
+  missionInclusiveDays,
+} from "../lib/botAllowancePrint";
+import {
+  MISSION_PERSONNEL_TABS,
+  defaultMissionRoleIdForTab,
+  missionPersonnelTabByCategory,
+  type MissionPersonnelTabKey,
+} from "../lib/missionPersonnelTabs";
 import { MODULE_DOCUMENT_CATEGORIES } from "../lib/moduleDocumentCategories";
 import { listCardAccentClass, listCardClass, brandGradientFillClass, toolbarLinkBtnClass, toolbarMasterBtnClass, toolbarMasterGroupClass, toolbarPrimaryBtnClass } from "../lib/uiTokens";
 import { rowMatchesFilter } from "../lib/searchNormalize";
@@ -27,7 +39,39 @@ import type {
 } from "../types";
 import { vehicleDisplayLabel } from "../types";
 
-type PRow = { personnelId: string; personnelRoleId: string; compensationRate: string };
+type PRow = {
+  personnelId: string;
+  personnelRoleId: string;
+  compensationRate: string;
+  tabKey: MissionPersonnelTabKey;
+};
+
+function botAutoCompensationRate(
+  person: Personnel | undefined,
+  plannedStart: string,
+  plannedEnd: string,
+  daysOverride?: number | null,
+): string | null {
+  if (!person || !isBotPersonnelCategory(person.personnelCategory?.name)) return null;
+  const days =
+    daysOverride != null && daysOverride > 0
+      ? daysOverride
+      : missionInclusiveDays(plannedStart || null, plannedEnd || null);
+  const perDiem =
+    person.perDiemRate != null && person.perDiemRate !== "" && Number(person.perDiemRate) > 0
+      ? person.perDiemRate
+      : botPerDiemDailyRate(person.gradeLevel);
+  return String(calcBotMissionCompensation(perDiem, days, person.vehicleTravelAllowance, person.gradeLevel));
+}
+
+function addInclusiveDaysToLocalDatetime(startLocal: string, days: number): string {
+  if (!startLocal || days < 1) return startLocal;
+  const d = new Date(startLocal);
+  if (Number.isNaN(d.getTime())) return startLocal;
+  d.setDate(d.getDate() + (days - 1));
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
 type MissionVehicleFuelTypeUi = "" | "GASOLINE" | "DIESEL";
 
 type VRow = {
@@ -38,6 +82,7 @@ type VRow = {
 };
 type DRow = { address: string; cargoValue: string; containerCount: number };
 type ERow = { expenseTypeId: string; amount: string };
+type PsRow = { policeStationId: string; amount: string };
 
 /** รวมแถวค่าตอบแทนเป็นหนึ่งแถว อัปเดตยอดจาก sum */
 function mergeCompensationExpenseRows(rows: ERow[], compensationTypeId: string, sum: number): ERow[] {
@@ -115,13 +160,16 @@ export function MissionsPage() {
   const [personnelRoleMasters, setPersonnelRoleMasters] = useState<NameMasterRow[]>([]);
   const [vehicleRoleMasters, setVehicleRoleMasters] = useState<NameMasterRow[]>([]);
   const [expenseTypeMasters, setExpenseTypeMasters] = useState<NameMasterRow[]>([]);
+  const [policeStationMasters, setPoliceStationMasters] = useState<NameMasterRow[]>([]);
 
   const [step, setStep] = useState(0);
+  const [personnelTab, setPersonnelTab] = useState<MissionPersonnelTabKey>("bot");
   const [createModalOpen, setCreateModalOpen] = useState(false);
   const [docsOpen, setDocsOpen] = useState(false);
   const [crudPersonnelRoleOpen, setCrudPersonnelRoleOpen] = useState(false);
   const [crudVehicleRoleOpen, setCrudVehicleRoleOpen] = useState(false);
   const [crudExpenseTypeOpen, setCrudExpenseTypeOpen] = useState(false);
+  const [crudPoliceStationOpen, setCrudPoliceStationOpen] = useState(false);
   const [summaryId, setSummaryId] = useState<string | null>(null);
   const [summary, setSummary] = useState<MissionSummary | null>(null);
   const [editingMissionId, setEditingMissionId] = useState<string | null>(null);
@@ -132,12 +180,15 @@ export function MissionsPage() {
   const [plannedStart, setPlannedStart] = useState("");
   const [plannedEnd, setPlannedEnd] = useState("");
 
-  const [pRows, setPRows] = useState<PRow[]>([{ personnelId: "", personnelRoleId: "", compensationRate: "0" }]);
+  const [pRows, setPRows] = useState<PRow[]>([
+    { personnelId: "", personnelRoleId: "", compensationRate: "0", tabKey: "bot" },
+  ]);
   const [vRows, setVRows] = useState<VRow[]>([
     { vehicleId: "", vehicleRoleId: "", fuelLiters: "", fuelType: "" },
   ]);
   const [dRows, setDRows] = useState<DRow[]>([{ address: "", cargoValue: "0", containerCount: 1 }]);
   const [eRows, setERows] = useState<ERow[]>([{ expenseTypeId: "", amount: "0" }]);
+  const [psRows, setPsRows] = useState<PsRow[]>([{ policeStationId: "", amount: "0" }]);
   const [listFilter, setListFilter] = useState("");
   /** ค่าเริ่มต้น = ปี พ.ศ. ปัจจุบัน (ไม่ใช่ทุกปี) */
   const [yearFilter, setYearFilter] = useState<number | null>(() => new Date().getFullYear() + 543);
@@ -148,7 +199,7 @@ export function MissionsPage() {
   const summaryMissionIdRef = useRef<string | null>(null);
 
   const load = useCallback(async () => {
-    const [m, p, v, r, pr, vr, et] = await Promise.all([
+    const [m, p, v, r, pr, vr, et, ps] = await Promise.all([
       apiJson<MissionListItem[]>("/api/missions"),
       apiJson<Personnel[]>("/api/personnel"),
       apiJson<Vehicle[]>("/api/vehicles"),
@@ -156,6 +207,7 @@ export function MissionsPage() {
       apiJson<NameMasterRow[]>("/api/mission-personnel-roles"),
       apiJson<NameMasterRow[]>("/api/mission-vehicle-roles"),
       apiJson<NameMasterRow[]>("/api/mission-expense-types"),
+      apiJson<NameMasterRow[]>("/api/police-stations"),
     ]);
     setMissions(m);
     setPersonnel(p);
@@ -164,45 +216,127 @@ export function MissionsPage() {
     setPersonnelRoleMasters(pr);
     setVehicleRoleMasters(vr);
     setExpenseTypeMasters(et);
+    setPoliceStationMasters(ps);
   }, []);
 
   useEffect(() => {
     load();
   }, [load]);
 
-  /** ประเภทค่าใช้จ่ายที่ชื่อมี "ค่าตอบแทน" — ยอดรวมจากอัตราบุคลากร */
-  const compensationExpenseTypeId = useMemo(
-    () => expenseTypeMasters.find((m) => m.name.includes("ค่าตอบแทน"))?.id,
+  const selectedRoute = useMemo(
+    () => routes.find((r) => r.id === routeId) ?? null,
+    [routes, routeId],
+  );
+
+  const routeMissionDays = useMemo(() => {
+    const d = selectedRoute?.missionDays;
+    return d != null && d > 0 ? d : null;
+  }, [selectedRoute]);
+
+  /** ค่าตอบแทน (ธปท.) — รวมจากแถบ ธปท. เท่านั้น */
+  const botCompensationExpenseTypeId = useMemo(
+    () =>
+      expenseTypeMasters.find((m) => m.name.trim() === "ค่าตอบแทน")?.id ??
+      expenseTypeMasters.find((m) => {
+        const n = m.name.trim();
+        return n.includes("ค่าตอบแทน") && !n.includes("บุคคลภายนอก");
+      })?.id,
     [expenseTypeMasters],
   );
 
-  const compensationSumFromPersonnel = useMemo(
+  /** ค่าตอบแทนบุคคลภายนอก — ทางหลวง / กองปราบ / ปฏิบัติการพิเศษ + สถานีตำรวจ (ไม่รวม ธปท. และขับรถสินค้า) */
+  const externalCompensationExpenseTypeId = useMemo(
+    () =>
+      expenseTypeMasters.find((m) => {
+        const n = m.name.trim();
+        return n.includes("บุคคลภายนอก") || n.includes("ค่าตอบแทนตำรวจ");
+      })?.id,
+    [expenseTypeMasters],
+  );
+
+  const botCompensationSum = useMemo(
     () =>
       pRows
-        .filter((r) => r.personnelId)
+        .filter((r) => r.personnelId && r.tabKey === "bot")
         .reduce((s, r) => s + (parseLooseNumber(r.compensationRate) || 0), 0),
     [pRows],
   );
 
+  const externalCompensationSum = useMemo(() => {
+    const fromRoute = Number(selectedRoute?.externalPersonnelCompensation);
+    if (Number.isFinite(fromRoute) && fromRoute > 0) return fromRoute;
+    const fromPeople = pRows
+      .filter(
+        (r) =>
+          r.personnelId &&
+          (r.tabKey === "crime" || r.tabKey === "highway" || r.tabKey === "special"),
+      )
+      .reduce((s, r) => s + (parseLooseNumber(r.compensationRate) || 0), 0);
+    const fromStations = psRows
+      .filter((r) => r.policeStationId)
+      .reduce((s, r) => s + (parseLooseNumber(r.amount) || 0), 0);
+    return fromPeople + fromStations;
+  }, [pRows, psRows, selectedRoute]);
+
+  const autoCompensationTypeIds = useMemo(() => {
+    const ids = new Set<string>();
+    if (botCompensationExpenseTypeId) ids.add(botCompensationExpenseTypeId);
+    if (externalCompensationExpenseTypeId) ids.add(externalCompensationExpenseTypeId);
+    return ids;
+  }, [botCompensationExpenseTypeId, externalCompensationExpenseTypeId]);
+
   const routeSearchOptions = useMemo(
     () =>
-      routes.map((r) => ({
-        value: r.id,
-        label: `${r.name ?? `${r.startLocation} → ${r.endLocation}`} (${String(r.distanceKm)} km)`,
-        keywords: `${r.startLocation ?? ""} ${r.endLocation ?? ""} ${r.name ?? ""}`,
-      })),
-    [routes],
+      routes
+        .filter((r) => r.status !== "INACTIVE" || r.id === routeId)
+        .map((r) => {
+          const bits = [
+            `${String(r.distanceKm)} km`,
+            r.missionDays != null && r.missionDays > 0 ? `${r.missionDays} วัน` : null,
+            r.externalPersonnelCompensation != null && Number(r.externalPersonnelCompensation) > 0
+              ? `${Number(r.externalPersonnelCompensation).toLocaleString("th-TH")} ฿`
+              : null,
+            r.status === "INACTIVE" ? "เลิกใช้" : null,
+          ].filter(Boolean);
+          return {
+            value: r.id,
+            label: `${r.name ?? `${r.startLocation} → ${r.endLocation}`} (${bits.join(" · ")})`,
+            keywords: `${r.startLocation ?? ""} ${r.endLocation ?? ""} ${r.name ?? ""}`,
+          };
+        }),
+    [routes, routeId],
   );
 
-  const personnelSearchOptions = useMemo(
-    () =>
-      personnel.map((p) => ({
-        value: p.id,
-        label: personnelSelectLabel(p),
-        keywords: `${p.position ?? ""} ${p.phone ?? ""} ${p.idNumber ?? ""}`,
-      })),
-    [personnel],
+  const personnelOptionsByTab = useMemo(() => {
+    const map = {} as Record<
+      MissionPersonnelTabKey,
+      Array<{ value: string; label: string; keywords: string }>
+    >;
+    for (const tab of MISSION_PERSONNEL_TABS) {
+      map[tab.key] = personnel
+        .filter((p) => tab.categories.includes(p.personnelCategory?.name ?? ""))
+        .map((p) => ({
+          value: p.id,
+          label: personnelSelectLabel(p),
+          keywords: `${p.position ?? ""} ${p.phone ?? ""} ${p.idNumber ?? ""}`,
+        }));
+    }
+    return map;
+  }, [personnel]);
+
+  const pRowsInActiveTab = useMemo(
+    () => pRows.map((row, index) => ({ row, index })).filter(({ row }) => row.tabKey === personnelTab),
+    [pRows, personnelTab],
   );
+
+  const personnelTabCounts = useMemo(() => {
+    const counts = {} as Record<MissionPersonnelTabKey, number>;
+    for (const tab of MISSION_PERSONNEL_TABS) counts[tab.key] = 0;
+    for (const row of pRows) {
+      if (row.personnelId) counts[row.tabKey] = (counts[row.tabKey] ?? 0) + 1;
+    }
+    return counts;
+  }, [pRows]);
 
   const vehicleSearchOptions = useMemo(
     () =>
@@ -215,9 +349,42 @@ export function MissionsPage() {
   );
 
   useEffect(() => {
-    if (!createModalOpen || !compensationExpenseTypeId) return;
-    setERows((prev) => mergeCompensationExpenseRows(prev, compensationExpenseTypeId, compensationSumFromPersonnel));
-  }, [createModalOpen, compensationExpenseTypeId, compensationSumFromPersonnel]);
+    if (!createModalOpen) return;
+    if (!botCompensationExpenseTypeId && !externalCompensationExpenseTypeId) return;
+    setERows((prev) => {
+      let next = prev;
+      if (botCompensationExpenseTypeId) {
+        next = mergeCompensationExpenseRows(next, botCompensationExpenseTypeId, botCompensationSum);
+      }
+      if (externalCompensationExpenseTypeId) {
+        next = mergeCompensationExpenseRows(
+          next,
+          externalCompensationExpenseTypeId,
+          externalCompensationSum,
+        );
+      }
+      return next;
+    });
+  }, [
+    createModalOpen,
+    botCompensationExpenseTypeId,
+    externalCompensationExpenseTypeId,
+    botCompensationSum,
+    externalCompensationSum,
+  ]);
+
+  useEffect(() => {
+    if (!createModalOpen) return;
+    setPRows((prev) =>
+      prev.map((row) => {
+        const person = personnel.find((p) => p.id === row.personnelId);
+        const auto = botAutoCompensationRate(person, plannedStart, plannedEnd, routeMissionDays);
+        if (auto == null) return row;
+        if (row.compensationRate === auto) return row;
+        return { ...row, compensationRate: auto };
+      }),
+    );
+  }, [createModalOpen, plannedStart, plannedEnd, personnel, routeMissionDays]);
 
   async function openSummary(id: string) {
     summaryMissionIdRef.current = id;
@@ -292,12 +459,21 @@ export function MissionsPage() {
     setMissionStatus("PLANNED");
     setEditingMissionId(null);
     setSaveFlash(null);
-    setPRows([{ personnelId: "", personnelRoleId: personnelRoleMasters[0]?.id ?? "", compensationRate: "0" }]);
+    setPRows([
+      {
+        personnelId: "",
+        personnelRoleId: defaultMissionRoleIdForTab("bot", personnelRoleMasters),
+        compensationRate: "0",
+        tabKey: "bot",
+      },
+    ]);
+    setPersonnelTab("bot");
     setVRows([
       { vehicleId: "", vehicleRoleId: vehicleRoleMasters[0]?.id ?? "", fuelLiters: "", fuelType: "" },
     ]);
     setDRows([{ address: "", cargoValue: "0", containerCount: 1 }]);
     setERows([{ expenseTypeId: expenseTypeMasters[0]?.id ?? "", amount: "0" }]);
+    setPsRows([{ policeStationId: "", amount: "0" }]);
   }, [personnelRoleMasters, vehicleRoleMasters, expenseTypeMasters]);
 
   const closeCreateModal = useCallback(() => {
@@ -343,13 +519,27 @@ export function MissionsPage() {
       });
       setPRows(
         personRows.length
-          ? personRows.map((p) => ({
-              personnelId: p.personnelId,
-              personnelRoleId: p.personnelRoleId,
-              compensationRate: String(p.compensationRate ?? "0"),
-            }))
-          : [{ personnelId: "", personnelRoleId: personnelRoleMasters[0]?.id ?? "", compensationRate: "0" }],
+          ? personRows.map((p) => {
+              const person = personnel.find((x) => x.id === p.personnelId);
+              const tabKey =
+                missionPersonnelTabByCategory(person?.personnelCategory?.name) ?? "bot";
+              return {
+                personnelId: p.personnelId,
+                personnelRoleId: p.personnelRoleId,
+                compensationRate: String(p.compensationRate ?? "0"),
+                tabKey,
+              };
+            })
+          : [
+              {
+                personnelId: "",
+                personnelRoleId: defaultMissionRoleIdForTab("bot", personnelRoleMasters),
+                compensationRate: "0",
+                tabKey: "bot" as const,
+              },
+            ],
       );
+      setPersonnelTab("bot");
       setVRows(
         vehicleRows.length
           ? vehicleRows.map((v) => ({
@@ -384,8 +574,17 @@ export function MissionsPage() {
             }))
           : [{ expenseTypeId: expenseTypeMasters[0]?.id ?? "", amount: "0" }],
       );
+      const stationRows = (mission.policeStations ?? []).filter((s) => s.policeStationId);
+      setPsRows(
+        stationRows.length
+          ? stationRows.map((s) => ({
+              policeStationId: s.policeStationId,
+              amount: String(s.amount ?? "0"),
+            }))
+          : [{ policeStationId: "", amount: "0" }],
+      );
     },
-    [expenseTypeMasters, personnelRoleMasters, vehicleRoleMasters],
+    [expenseTypeMasters, personnel, personnelRoleMasters, vehicleRoleMasters],
   );
 
   const openEditMission = useCallback(
@@ -437,6 +636,7 @@ export function MissionsPage() {
     const vehiclesPayload = vRows.filter((r) => r.vehicleId && r.vehicleRoleId);
     const destPayload = dRows.filter((r) => r.address.trim());
     const expPayload = eRows.filter((r) => r.expenseTypeId && r.amount !== "" && Number(r.amount) >= 0);
+    const policeStationPayload = psRows.filter((r) => r.policeStationId);
 
     if (!personnelRoleMasters.length || !vehicleRoleMasters.length || !expenseTypeMasters.length) {
       alert("กำลังโหลดรายการบทบาท/ประเภทค่าใช้จ่าย — รอสักครู่แล้วลองอีกครั้ง");
@@ -489,6 +689,11 @@ export function MissionsPage() {
         sortOrder: i,
       })),
       expenses: expPayload,
+      policeStations: policeStationPayload.map((s, i) => ({
+        policeStationId: s.policeStationId,
+        amount: s.amount === "" ? 0 : Number(s.amount) || 0,
+        sortOrder: i,
+      })),
     };
 
     setSavingMission(true);
@@ -523,7 +728,7 @@ export function MissionsPage() {
     }
   }
 
-  const steps = ["ข้อมูลทั่วไป", "บุคลากร", "ยานพาหนะ", "จุดส่ง & สินค้า", "ค่าใช้จ่าย"];
+  const steps = ["ข้อมูลทั่วไป", "บุคลากร", "สถานีตำรวจ", "ยานพาหนะ", "จุดส่งสินค้า", "ค่าใช้จ่าย"];
 
   const missionYears = useMemo(() => {
     const set = new Set<number>();
@@ -656,11 +861,33 @@ export function MissionsPage() {
                   <span className="text-xs font-medium text-slate-700">เส้นทางจาก Master</span>
                   <SearchableSelect
                     value={routeId}
-                    onChange={setRouteId}
+                    onChange={(id) => {
+                      setRouteId(id);
+                      const route = routes.find((r) => r.id === id);
+                      const days = route?.missionDays;
+                      if (days != null && days > 0 && plannedStart) {
+                        setPlannedEnd(addInclusiveDaysToLocalDatetime(plannedStart, days));
+                      }
+                    }}
                     options={routeSearchOptions}
                     emptyLabel="— ไม่ระบุเส้นทาง —"
                     allowEmpty
                   />
+                  {selectedRoute &&
+                  ((selectedRoute.missionDays != null && selectedRoute.missionDays > 0) ||
+                    (selectedRoute.externalPersonnelCompensation != null &&
+                      Number(selectedRoute.externalPersonnelCompensation) > 0)) ? (
+                    <p className="mt-1 text-[11px] text-slate-600">
+                      จากเส้นทาง:
+                      {selectedRoute.missionDays != null && selectedRoute.missionDays > 0
+                        ? ` ${selectedRoute.missionDays} วัน`
+                        : ""}
+                      {selectedRoute.externalPersonnelCompensation != null &&
+                      Number(selectedRoute.externalPersonnelCompensation) > 0
+                        ? ` · ค่าตอบแทนบุคคลภายนอก ${Number(selectedRoute.externalPersonnelCompensation).toLocaleString("th-TH")} บาท`
+                        : ""}
+                    </p>
+                  ) : null}
                 </label>
 
                 <div className="grid gap-4 sm:col-span-2 sm:grid-cols-2">
@@ -682,7 +909,11 @@ export function MissionsPage() {
 
             {step === 1 && (
               <div className="space-y-2">
-                <div className="flex flex-wrap items-center justify-end gap-2">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <p className="text-[11px] text-slate-600">
+                    เลือกบุคลากรตามแถบประเภท · «ธปท.» คำนวณค่าตอบแทนอัตโนมัติ (เบี้ยพิเศษ 1,400 + เบี้ยเลี้ยง/วัน ×{" "}
+                    {routeMissionDays ?? "จำนวนวันจากช่วงวันที่"} วัน + ยานพาหนะ)
+                  </p>
                   <button
                     type="button"
                     className="shrink-0 rounded-lg border border-slate-200 px-2.5 py-1 text-xs font-medium text-[#4d47b6] hover:bg-slate-100"
@@ -691,6 +922,41 @@ export function MissionsPage() {
                     จัดการบทบาท…
                   </button>
                 </div>
+
+                <div
+                  className="flex flex-wrap gap-1 rounded-xl border border-slate-200 bg-slate-50/80 p-1"
+                  role="tablist"
+                  aria-label="ประเภทบุคลากร"
+                >
+                  {MISSION_PERSONNEL_TABS.map((tab) => {
+                    const active = personnelTab === tab.key;
+                    const count = personnelTabCounts[tab.key] ?? 0;
+                    return (
+                      <button
+                        key={tab.key}
+                        type="button"
+                        role="tab"
+                        aria-selected={active}
+                        className={`rounded-lg px-2.5 py-1.5 text-xs font-semibold transition ${
+                          active
+                            ? "bg-[#0000BF] text-white shadow-sm"
+                            : "text-slate-700 hover:bg-white hover:text-[#0000BF]"
+                        }`}
+                        onClick={() => setPersonnelTab(tab.key)}
+                      >
+                        {tab.label}
+                        {count > 0 ? (
+                          <span
+                            className={`ml-1 tabular-nums ${active ? "text-white/80" : "text-slate-500"}`}
+                          >
+                            ({count})
+                          </span>
+                        ) : null}
+                      </button>
+                    );
+                  })}
+                </div>
+
                 <div className="overflow-x-auto rounded-lg border border-slate-200">
                   <div className="hidden min-w-[36rem] grid-cols-[minmax(0,1.4fr)_minmax(7rem,0.9fr)_5.5rem_2.5rem] gap-1.5 border-b border-slate-200 bg-slate-50 px-2 py-1.5 text-[10px] font-bold uppercase tracking-wide text-slate-600 sm:grid">
                     <span>บุคลากร</span>
@@ -699,63 +965,93 @@ export function MissionsPage() {
                     <span className="sr-only">ลบ</span>
                   </div>
                   <ul className="min-w-[36rem] divide-y divide-slate-100">
-                    {pRows.map((row, idx) => (
-                      <li
-                        key={idx}
-                        className="grid grid-cols-[minmax(0,1.4fr)_minmax(7rem,0.9fr)_5.5rem_2.5rem] items-center gap-1.5 px-2 py-1"
-                      >
-                        <SearchableSelect
-                          value={row.personnelId}
-                          onChange={(v) => {
-                            const next = [...pRows];
-                            next[idx] = { ...row, personnelId: v };
-                            setPRows(next);
-                          }}
-                          options={personnelSearchOptions}
-                          emptyLabel="— เลือก —"
-                          allowEmpty
-                          aria-label={`บุคลากรแถว ${idx + 1}`}
-                          inputClassName="w-full rounded-md border border-slate-200 bg-white px-2 py-1 text-sm text-slate-900"
-                        />
-                        <select
-                          aria-label={`บทบาทแถว ${idx + 1}`}
-                          className="w-full rounded-md border border-slate-200 bg-white px-2 py-1 text-sm text-slate-900"
-                          value={row.personnelRoleId}
-                          onChange={(e) => {
-                            const next = [...pRows];
-                            next[idx] = { ...row, personnelRoleId: e.target.value };
-                            setPRows(next);
-                          }}
-                        >
-                          <option value="">—</option>
-                          {personnelRoleMasters.map((r) => (
-                            <option key={r.id} value={r.id}>
-                              {r.name}
-                            </option>
-                          ))}
-                        </select>
-                        <CommaNumberInput
-                          aria-label={`ค่าตอบแทนแถว ${idx + 1}`}
-                          className="w-full rounded-md border border-slate-200 bg-white px-2 py-1 text-sm tabular-nums text-slate-900"
-                          value={row.compensationRate}
-                          onChange={(raw) => {
-                            const next = [...pRows];
-                            next[idx] = { ...row, compensationRate: raw };
-                            setPRows(next);
-                          }}
-                          placeholder="0"
-                          maxFractionDigits={2}
-                        />
-                        <button
-                          type="button"
-                          className="rounded-md px-1 py-1 text-xs text-rose-600 hover:bg-rose-50"
-                          aria-label={`ลบแถว ${idx + 1}`}
-                          onClick={() => setPRows(pRows.filter((_, i) => i !== idx))}
-                        >
-                          ลบ
-                        </button>
+                    {pRowsInActiveTab.length === 0 ? (
+                      <li className="px-3 py-4 text-center text-xs text-slate-500">
+                        ยังไม่มีรายชื่อในแถบนี้ — กด «+ เพิ่มบุคลากร»
                       </li>
-                    ))}
+                    ) : (
+                      pRowsInActiveTab.map(({ row, index: idx }) => (
+                        <li
+                          key={`${row.tabKey}-${idx}`}
+                          className="grid grid-cols-[minmax(0,1.4fr)_minmax(7rem,0.9fr)_5.5rem_2.5rem] items-center gap-1.5 px-2 py-1"
+                        >
+                          <SearchableSelect
+                            value={row.personnelId}
+                            onChange={(v) => {
+                              const person = personnel.find((p) => p.id === v);
+                              const auto = botAutoCompensationRate(
+                              person,
+                              plannedStart,
+                              plannedEnd,
+                              routeMissionDays,
+                            );
+                              const next = [...pRows];
+                              next[idx] = {
+                                ...row,
+                                personnelId: v,
+                                compensationRate: auto ?? (v ? row.compensationRate : "0"),
+                              };
+                              setPRows(next);
+                            }}
+                            options={personnelOptionsByTab[personnelTab] ?? []}
+                            emptyLabel="— เลือก —"
+                            allowEmpty
+                            aria-label={`บุคลากรแถว ${idx + 1}`}
+                            inputClassName="w-full rounded-md border border-slate-200 bg-white px-2 py-1 text-sm text-slate-900"
+                          />
+                          <select
+                            aria-label={`บทบาทแถว ${idx + 1}`}
+                            className="w-full rounded-md border border-slate-200 bg-white px-2 py-1 text-sm text-slate-900"
+                            value={row.personnelRoleId}
+                            onChange={(e) => {
+                              const next = [...pRows];
+                              next[idx] = { ...row, personnelRoleId: e.target.value };
+                              setPRows(next);
+                            }}
+                          >
+                            <option value="">—</option>
+                            {personnelRoleMasters.map((r) => (
+                              <option key={r.id} value={r.id}>
+                                {r.name}
+                              </option>
+                            ))}
+                          </select>
+                          <CommaNumberInput
+                            aria-label={`ค่าตอบแทนแถว ${idx + 1}`}
+                            className={`w-full rounded-md border border-slate-200 bg-white px-2 py-1 text-sm tabular-nums text-slate-900 ${
+                              isBotPersonnelCategory(
+                                personnel.find((p) => p.id === row.personnelId)?.personnelCategory?.name,
+                              )
+                                ? "border-emerald-300 bg-emerald-50/60"
+                                : ""
+                            }`}
+                            value={row.compensationRate}
+                            onChange={(raw) => {
+                              const next = [...pRows];
+                              next[idx] = { ...row, compensationRate: raw };
+                              setPRows(next);
+                            }}
+                            placeholder="0"
+                            maxFractionDigits={2}
+                            title={
+                              isBotPersonnelCategory(
+                                personnel.find((p) => p.id === row.personnelId)?.personnelCategory?.name,
+                              )
+                                ? "คำนวณอัตโนมัติจากเบี้ยพิเศษ 1,400 + อัตราเบี้ยเลี้ยง × จำนวนวัน"
+                                : undefined
+                            }
+                          />
+                          <button
+                            type="button"
+                            className="rounded-md px-1 py-1 text-xs text-rose-600 hover:bg-rose-50"
+                            aria-label={`ลบแถว ${idx + 1}`}
+                            onClick={() => setPRows(pRows.filter((_, i) => i !== idx))}
+                          >
+                            ลบ
+                          </button>
+                        </li>
+                      ))
+                    )}
                   </ul>
                 </div>
                 <button
@@ -766,18 +1062,99 @@ export function MissionsPage() {
                       ...pRows,
                       {
                         personnelId: "",
-                        personnelRoleId: personnelRoleMasters[0]?.id ?? "",
+                        personnelRoleId: defaultMissionRoleIdForTab(personnelTab, personnelRoleMasters),
                         compensationRate: "0",
+                        tabKey: personnelTab,
                       },
                     ])
                   }
                 >
                   + เพิ่มบุคลากร
+                  {MISSION_PERSONNEL_TABS.find((t) => t.key === personnelTab)
+                    ? ` (${MISSION_PERSONNEL_TABS.find((t) => t.key === personnelTab)!.label})`
+                    : ""}
                 </button>
               </div>
             )}
 
             {step === 2 && (
+              <div className="space-y-2">
+                <p className="text-[11px] text-slate-600">
+                  ระบุสถานี/สังกัดตำรวจที่เกี่ยวข้องในภารกิจ — ใช้จัดกลุ่มตอนพิมพ์รายชื่อตำรวจ (ถ้ามีจำนวนเงิน จะแสดงเป็นแถวหน่วยงาน)
+                </p>
+                <div className="flex flex-wrap items-center justify-end gap-2">
+                  <button
+                    type="button"
+                    className="shrink-0 rounded-lg border border-slate-200 px-2.5 py-1 text-xs font-medium text-[#4d47b6] hover:bg-slate-100"
+                    onClick={() => setCrudPoliceStationOpen(true)}
+                  >
+                    จัดการสถานี…
+                  </button>
+                </div>
+                <div className="overflow-x-auto rounded-lg border border-slate-200">
+                  <div className="hidden min-w-[28rem] grid-cols-[minmax(0,1.6fr)_minmax(7rem,0.7fr)_2.5rem] gap-1.5 border-b border-slate-200 bg-slate-50 px-2 py-1.5 text-[10px] font-bold uppercase tracking-wide text-slate-600 sm:grid">
+                    <span>สถานี / สังกัด</span>
+                    <span>จำนวนเงิน (บาท)</span>
+                    <span className="sr-only">ลบ</span>
+                  </div>
+                  <ul className="min-w-[28rem] divide-y divide-slate-100">
+                    {psRows.map((row, idx) => (
+                      <li
+                        key={idx}
+                        className="grid grid-cols-[minmax(0,1.6fr)_minmax(7rem,0.7fr)_2.5rem] items-center gap-1.5 px-2 py-1"
+                      >
+                        <select
+                          aria-label={`สถานีตำรวจแถว ${idx + 1}`}
+                          className="w-full rounded-md border border-slate-200 bg-white px-2 py-1 text-sm text-slate-900"
+                          value={row.policeStationId}
+                          onChange={(e) => {
+                            const next = [...psRows];
+                            next[idx] = { ...row, policeStationId: e.target.value };
+                            setPsRows(next);
+                          }}
+                        >
+                          <option value="">— เลือก —</option>
+                          {policeStationMasters.map((s) => (
+                            <option key={s.id} value={s.id}>
+                              {s.name}
+                            </option>
+                          ))}
+                        </select>
+                        <CommaNumberInput
+                          aria-label={`จำนวนเงินสถานีแถว ${idx + 1}`}
+                          className="w-full rounded-md border border-slate-200 bg-white px-2 py-1 text-sm tabular-nums text-slate-900"
+                          value={row.amount}
+                          maxFractionDigits={2}
+                          onChange={(raw) => {
+                            const next = [...psRows];
+                            next[idx] = { ...row, amount: raw };
+                            setPsRows(next);
+                          }}
+                          placeholder="0"
+                        />
+                        <button
+                          type="button"
+                          className="rounded-md px-1 py-1 text-xs text-rose-600 hover:bg-rose-50"
+                          aria-label={`ลบแถว ${idx + 1}`}
+                          onClick={() => setPsRows(psRows.filter((_, i) => i !== idx))}
+                        >
+                          ลบ
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+                <button
+                  type="button"
+                  className="text-xs font-medium text-[#5b61ff] hover:text-[#4d47b6] hover:underline"
+                  onClick={() => setPsRows([...psRows, { policeStationId: "", amount: "0" }])}
+                >
+                  + เพิ่มสถานีตำรวจ
+                </button>
+              </div>
+            )}
+
+            {step === 3 && (
               <div className="space-y-2">
                 <div className="flex flex-wrap items-center justify-end gap-2">
                   <button
@@ -893,7 +1270,7 @@ export function MissionsPage() {
               </div>
             )}
 
-            {step === 3 && (
+            {step === 4 && (
               <div className="space-y-2">
                 <div className="overflow-x-auto rounded-lg border border-slate-200">
                   <div className="hidden min-w-[36rem] grid-cols-[minmax(0,1.2fr)_minmax(8rem,0.9fr)_4.5rem_2.5rem] gap-1.5 border-b border-slate-200 bg-slate-50 px-2 py-1.5 text-[10px] font-bold uppercase tracking-wide text-slate-600 sm:grid">
@@ -963,12 +1340,28 @@ export function MissionsPage() {
               </div>
             )}
 
-            {step === 4 && (
+            {step === 5 && (
               <div className="space-y-2">
-                {compensationExpenseTypeId ? (
-                  <p className="rounded-md border border-[#0000BF]/25 bg-[#0000BF]/8 px-2.5 py-1.5 text-[11px] text-[#2e2a58]">
-                    หมวดที่ชื่อมี &quot;ค่าตอบแทน&quot; จะคำนวณยอดรวมจากอัตราค่าตอบแทนของบุคลากรโดยอัตโนมัติ
-                  </p>
+                {botCompensationExpenseTypeId || externalCompensationExpenseTypeId ? (
+                  <div className="space-y-1 rounded-md border border-[#0000BF]/25 bg-[#0000BF]/8 px-2.5 py-1.5 text-[11px] text-[#2e2a58]">
+                    {botCompensationExpenseTypeId ? (
+                      <p>
+                        «ค่าตอบแทน» รวมอัตโนมัติจากบุคลากรแถบ ธปท. (
+                        {botCompensationSum.toLocaleString("th-TH")} บาท)
+                      </p>
+                    ) : null}
+                    {externalCompensationExpenseTypeId ? (
+                      <p>
+                        «ค่าตอบแทนบุคคลภายนอก» รวมอัตโนมัติ
+                        {selectedRoute?.externalPersonnelCompensation != null &&
+                        Number(selectedRoute.externalPersonnelCompensation) > 0
+                          ? " จากยอดมาตรฐานของเส้นทาง"
+                          : " จาก ทางหลวง / กองปราบ / ปฏิบัติการพิเศษ + สถานีตำรวจ"}{" "}
+                        — ไม่รวม ธปท. และขับรถสินค้า (
+                        {externalCompensationSum.toLocaleString("th-TH")} บาท)
+                      </p>
+                    ) : null}
+                  </div>
                 ) : null}
                 <div className="flex flex-wrap items-center justify-end gap-2">
                   <button
@@ -987,9 +1380,15 @@ export function MissionsPage() {
                   </div>
                   <ul className="min-w-[28rem] divide-y divide-slate-100">
                     {eRows.map((row, idx) => {
-                      const isAutoComp =
-                        Boolean(compensationExpenseTypeId) &&
-                        row.expenseTypeId === compensationExpenseTypeId;
+                      const isAutoComp = Boolean(
+                        row.expenseTypeId && autoCompensationTypeIds.has(row.expenseTypeId),
+                      );
+                      const autoHint =
+                        row.expenseTypeId === externalCompensationExpenseTypeId
+                          ? "รวมจากทางหลวง / กองปราบ / ปฏิบัติการพิเศษ + สถานีตำรวจ"
+                          : row.expenseTypeId === botCompensationExpenseTypeId
+                            ? "รวมจากบุคลากรประเภท ธปท."
+                            : "คำนวณอัตโนมัติ";
                       return (
                         <li
                           key={idx}
@@ -1009,16 +1408,14 @@ export function MissionsPage() {
                             {expenseTypeMasters.map((t) => (
                               <option key={t.id} value={t.id}>
                                 {t.name}
-                                {compensationExpenseTypeId && t.id === compensationExpenseTypeId
-                                  ? " (อัตโนมัติ)"
-                                  : ""}
+                                {autoCompensationTypeIds.has(t.id) ? " (อัตโนมัติ)" : ""}
                               </option>
                             ))}
                           </select>
                           <CommaNumberInput
                             aria-label={`จำนวนเงินแถว ${idx + 1}`}
                             readOnly={isAutoComp}
-                            title={isAutoComp ? "รวมจากอัตราค่าตอบแทนบุคลากร" : undefined}
+                            title={isAutoComp ? autoHint : undefined}
                             className={`w-full rounded-md border px-2 py-1 text-sm tabular-nums text-slate-900 ${
                               isAutoComp
                                 ? "cursor-not-allowed border-slate-200 bg-white/90 text-slate-700"
@@ -1130,6 +1527,13 @@ export function MissionsPage() {
         apiPath="/api/mission-expense-types"
         open={crudExpenseTypeOpen}
         onClose={() => setCrudExpenseTypeOpen(false)}
+        onChanged={load}
+      />
+      <CrudNameMasterModal
+        title="สถานีตำรวจ / สังกัด"
+        apiPath="/api/police-stations"
+        open={crudPoliceStationOpen}
+        onClose={() => setCrudPoliceStationOpen(false)}
         onChanged={load}
       />
 

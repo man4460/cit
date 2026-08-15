@@ -28,7 +28,7 @@ function resolveRoleName(position: string | null, orgName: string | null): strin
   const org = (orgName ?? "").trim();
 
   // ตำรวจ: ดูจากตำแหน่ง (ที่ seed ใส่สังกัดไว้) หรือชื่อหน่วยงาน
-  if (/ทางหลวง|ปราบปราม|กองปราบ|อรินทราช|ตำรวจ|สถานี/.test(pos) || /ตำรวจ|อรินทราช/.test(org)) {
+  if (/ทางหลวง|ปราบปราม|กองปราบ|อรินทราช|ก่อการร้าย|ตำรวจ|สถานี/.test(pos) || /ตำรวจ|อรินทราช|ทางหลวง|กองปราบ/.test(org)) {
     return missionRoleFromPoliceUnit(pos || org);
   }
   // ฝรภ. / ตำแหน่งองค์กร

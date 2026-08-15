@@ -326,3 +326,355 @@ input[type="time"]::-webkit-calendar-picker-indicator {
 .pickable-date-wrap input[type="datetime-local"]::-webkit-calendar-picker-indicator {
   display: none !important;
 }
+
+/* —— แบบฟอร์มเบี้ยเลี้ยง ธปท. (A4 แนวนอน) —— */
+.bot-allowance-print-root {
+  display: none;
+}
+
+@media print {
+  html.print-bot-allowance body {
+    background: #fff !important;
+    print-color-adjust: exact;
+    -webkit-print-color-adjust: exact;
+  }
+
+  html.print-bot-allowance body > *:not(.bot-allowance-print-root) {
+    display: none !important;
+  }
+
+  html.print-bot-allowance .bot-allowance-print-root {
+    display: block !important;
+  }
+
+  html.print-bot-allowance .bot-allowance-print {
+    display: block !important;
+    width: 100%;
+    box-sizing: border-box;
+    padding: 8mm;
+    color: #000;
+    font-family: "Noto Sans Thai", "TH Sarabun New", sans-serif;
+    font-size: 9.5pt;
+    line-height: 1.25;
+  }
+
+  html.print-bot-allowance .bot-allowance-print__header {
+    text-align: center;
+    margin-bottom: 0.55rem;
+  }
+
+  html.print-bot-allowance .bot-allowance-print__header h1 {
+    margin: 0;
+    font-size: 12pt;
+    font-weight: 700;
+  }
+
+  html.print-bot-allowance .bot-allowance-print__org,
+  html.print-bot-allowance .bot-allowance-print__date {
+    margin: 0.15rem 0 0;
+    font-size: 10pt;
+    font-weight: 600;
+  }
+
+  html.print-bot-allowance .bot-allowance-print__mission {
+    margin: 0.1rem 0 0;
+    font-size: 8.5pt;
+    color: #333;
+  }
+
+  html.print-bot-allowance .bot-allowance-print__table {
+    width: 100%;
+    border-collapse: collapse;
+    table-layout: fixed;
+    font-size: 8.5pt;
+  }
+
+  html.print-bot-allowance .bot-allowance-print__table th,
+  html.print-bot-allowance .bot-allowance-print__table td {
+    border: 1px solid #222 !important;
+    padding: 3px 4px !important;
+    vertical-align: middle;
+    background: #fff !important;
+  }
+
+  html.print-bot-allowance .bot-allowance-print__table thead th {
+    background: #f3f3f3 !important;
+    font-weight: 700;
+    text-align: center;
+  }
+
+  html.print-bot-allowance .bot-allowance-print__table .sub {
+    display: block;
+    font-size: 7.5pt;
+    font-weight: 500;
+  }
+
+  html.print-bot-allowance .bot-allowance-print__table .col-no {
+    width: 4%;
+    text-align: center;
+  }
+  html.print-bot-allowance .bot-allowance-print__table .col-id {
+    width: 10%;
+    text-align: center;
+    font-variant-numeric: tabular-nums;
+  }
+  html.print-bot-allowance .bot-allowance-print__table .col-name {
+    width: 18%;
+  }
+  html.print-bot-allowance .bot-allowance-print__table .col-pos {
+    width: 14%;
+  }
+  html.print-bot-allowance .bot-allowance-print__table .col-level {
+    width: 5%;
+    text-align: center;
+  }
+  html.print-bot-allowance .bot-allowance-print__table .col-money {
+    width: 9%;
+  }
+  html.print-bot-allowance .bot-allowance-print__table .col-sign {
+    width: 12%;
+  }
+  html.print-bot-allowance .bot-allowance-print__table .num {
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+  }
+  html.print-bot-allowance .bot-allowance-print__table .empty {
+    text-align: center;
+    padding: 1rem !important;
+  }
+  html.print-bot-allowance .bot-allowance-print__table .total-label {
+    text-align: center;
+    font-weight: 700;
+  }
+  html.print-bot-allowance .bot-allowance-print__table tfoot td {
+    font-weight: 700;
+    background: #fafafa !important;
+  }
+
+  html.print-bot-allowance .bot-allowance-print__note {
+    margin: 0.55rem 0 0.35rem;
+    font-size: 8.5pt;
+    font-weight: 600;
+  }
+
+  html.print-bot-allowance .bot-allowance-print__rules {
+    margin: 0;
+    padding-left: 1.1rem;
+    font-size: 7.5pt;
+    line-height: 1.35;
+  }
+
+  html.print-bot-allowance .bot-allowance-print__sign {
+    margin-top: 1.1rem;
+    text-align: center;
+    font-size: 9pt;
+  }
+
+  html.print-bot-allowance .bot-allowance-print__sign p {
+    margin: 0.15rem 0;
+  }
+}
+
+/* —— แบบฟอร์มค่าตอบแทนบุคคลภายนอก / ตำรวจ (A4 แนวตั้ง) —— */
+.police-allowance-print-root {
+  display: none;
+}
+
+/* สไตล์ร่วม: พิมพ์จริง + ตอนจับภาพเป็น PDF (ตัด header/footer เบราว์เซอร์) */
+html.print-police-allowance .police-allowance-print,
+html.pdf-capture-police .police-allowance-print {
+  display: block !important;
+  width: 100%;
+  box-sizing: border-box;
+  padding: 10mm;
+  color: #000;
+  font-family: "Noto Sans Thai", "TH Sarabun New", sans-serif;
+  font-size: 9.5pt;
+  line-height: 1.2;
+}
+
+html.print-police-allowance .police-allowance-print__header,
+html.pdf-capture-police .police-allowance-print__header {
+  text-align: center;
+  margin-bottom: 0.45rem;
+}
+
+html.print-police-allowance .police-allowance-print__header h1,
+html.pdf-capture-police .police-allowance-print__header h1 {
+  margin: 0;
+  font-size: 13pt;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+html.print-police-allowance .police-allowance-print__org,
+html.print-police-allowance .police-allowance-print__date,
+html.pdf-capture-police .police-allowance-print__org,
+html.pdf-capture-police .police-allowance-print__date {
+  margin: 0.1rem 0 0;
+  font-size: 10.5pt;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+html.print-police-allowance .police-allowance-print__mission,
+html.pdf-capture-police .police-allowance-print__mission {
+  margin: 0.08rem 0 0;
+  font-size: 8.5pt;
+  color: #333;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+html.print-police-allowance .police-allowance-print__empty,
+html.pdf-capture-police .police-allowance-print__empty {
+  text-align: center;
+  padding: 1.5rem;
+}
+
+html.print-police-allowance .police-allowance-print__table,
+html.pdf-capture-police .police-allowance-print__table {
+  width: 100%;
+  border-collapse: collapse;
+  table-layout: fixed;
+  font-size: 8.5pt;
+  margin-bottom: 0.5rem;
+}
+
+html.print-police-allowance .police-allowance-print__table col.col-no,
+html.pdf-capture-police .police-allowance-print__table col.col-no {
+  width: 5%;
+}
+html.print-police-allowance .police-allowance-print__table col.col-rank,
+html.pdf-capture-police .police-allowance-print__table col.col-rank {
+  width: 7%;
+}
+html.print-police-allowance .police-allowance-print__table col.col-first,
+html.pdf-capture-police .police-allowance-print__table col.col-first {
+  width: 18%;
+}
+html.print-police-allowance .police-allowance-print__table col.col-last,
+html.pdf-capture-police .police-allowance-print__table col.col-last {
+  width: 13%;
+}
+html.print-police-allowance .police-allowance-print__table col.col-id,
+html.pdf-capture-police .police-allowance-print__table col.col-id {
+  width: 22%;
+}
+html.print-police-allowance .police-allowance-print__table col.col-money,
+html.pdf-capture-police .police-allowance-print__table col.col-money {
+  width: 11%;
+}
+html.print-police-allowance .police-allowance-print__table col.col-aff,
+html.pdf-capture-police .police-allowance-print__table col.col-aff {
+  width: 24%;
+}
+
+html.print-police-allowance .police-allowance-print__table th,
+html.print-police-allowance .police-allowance-print__table td,
+html.pdf-capture-police .police-allowance-print__table th,
+html.pdf-capture-police .police-allowance-print__table td {
+  border: 1px solid #222 !important;
+  padding: 2px 3px !important;
+  vertical-align: middle;
+  background: #fff !important;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  line-height: 1.15;
+}
+
+html.print-police-allowance .police-allowance-print__table .group-title,
+html.pdf-capture-police .police-allowance-print__table .group-title {
+  text-align: center;
+  font-weight: 700;
+  font-size: 9.5pt;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+html.print-police-allowance .police-allowance-print__table thead tr:last-child th,
+html.pdf-capture-police .police-allowance-print__table thead tr:last-child th {
+  background: #f3f3f3 !important;
+  font-weight: 700;
+  text-align: center;
+  font-size: 8pt;
+}
+
+html.print-police-allowance .police-allowance-print__table .col-no,
+html.pdf-capture-police .police-allowance-print__table .col-no {
+  text-align: center;
+}
+html.print-police-allowance .police-allowance-print__table .col-rank,
+html.pdf-capture-police .police-allowance-print__table .col-rank {
+  text-align: center;
+}
+html.print-police-allowance .police-allowance-print__table .col-id,
+html.pdf-capture-police .police-allowance-print__table .col-id {
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+  font-size: 8pt;
+}
+html.print-police-allowance .police-allowance-print__table tr.is-entity .col-first,
+html.pdf-capture-police .police-allowance-print__table tr.is-entity .col-first {
+  font-size: 7.5pt;
+}
+html.print-police-allowance .police-allowance-print__table .num,
+html.pdf-capture-police .police-allowance-print__table .num {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+html.print-police-allowance .police-allowance-print__total,
+html.pdf-capture-police .police-allowance-print__total {
+  margin: 0.35rem 0 0.7rem;
+  text-align: right;
+  font-size: 10.5pt;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+html.print-police-allowance .police-allowance-print__total .total-box,
+html.pdf-capture-police .police-allowance-print__total .total-box {
+  display: inline-block;
+  margin-left: 0.35rem;
+  border: 2px solid #c00;
+  color: #c00;
+  padding: 0.12rem 0.5rem;
+  min-width: 5rem;
+  text-align: center;
+}
+
+html.print-police-allowance .police-allowance-print__sign,
+html.pdf-capture-police .police-allowance-print__sign {
+  margin-top: 1rem;
+  text-align: center;
+  font-size: 9.5pt;
+}
+
+html.print-police-allowance .police-allowance-print__sign p,
+html.pdf-capture-police .police-allowance-print__sign p {
+  margin: 0.12rem 0;
+}
+
+html.pdf-capture-police .police-allowance-print-root {
+  display: block !important;
+}
+
+@media print {
+  html.print-police-allowance body {
+    background: #fff !important;
+    print-color-adjust: exact;
+    -webkit-print-color-adjust: exact;
+  }
+
+  html.print-police-allowance body > *:not(.police-allowance-print-root) {
+    display: none !important;
+  }
+
+  html.print-police-allowance .police-allowance-print-root {
+    display: block !important;
+  }
+}

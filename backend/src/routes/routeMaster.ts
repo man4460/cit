@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { Prisma } from "@prisma/client";
+import { Prisma, RouteMasterStatus } from "@prisma/client";
 import { prisma } from "../lib/prisma.js";
 import { computeRouteDistanceKm, knownLocationLabels } from "../lib/routeDistance.js";
 import { routeParam } from "../lib/routeParam.js";
@@ -11,9 +11,40 @@ function dec(v: string | number | undefined | null) {
   return new Prisma.Decimal(v);
 }
 
-routeMasterRouter.get("/", async (_req, res, next) => {
+function optionalDec(v: string | number | undefined | null) {
+  if (v === undefined) return undefined;
+  if (v === null || v === "") return null;
+  const n = Number(v);
+  if (!Number.isFinite(n)) return null;
+  return new Prisma.Decimal(n);
+}
+
+function optionalInt(v: string | number | undefined | null) {
+  if (v === undefined) return undefined;
+  if (v === null || v === "") return null;
+  const n = Number(v);
+  if (!Number.isFinite(n) || n < 0) return null;
+  return Math.floor(n);
+}
+
+function parseStatus(v: unknown): RouteMasterStatus | undefined {
+  if (v === undefined || v === null || v === "") return undefined;
+  const s = String(v).toUpperCase();
+  if (s === "ACTIVE" || s === "INACTIVE") return s as RouteMasterStatus;
+  return undefined;
+}
+
+routeMasterRouter.get("/", async (req, res, next) => {
   try {
-    const rows = await prisma.routeMaster.findMany({ orderBy: { startLocation: "asc" } });
+    const statusQ = String(req.query.status ?? "").trim().toUpperCase();
+    const where =
+      statusQ === "ACTIVE" || statusQ === "INACTIVE"
+        ? { status: statusQ as RouteMasterStatus }
+        : undefined;
+    const rows = await prisma.routeMaster.findMany({
+      where,
+      orderBy: { startLocation: "asc" },
+    });
     res.json(rows);
   } catch (e) {
     next(e);
@@ -103,7 +134,8 @@ routeMasterRouter.get("/:id", async (req, res, next) => {
 
 routeMasterRouter.post("/", async (req, res, next) => {
   try {
-    const { name, startLocation, endLocation, distanceKm } = req.body;
+    const { name, startLocation, endLocation, distanceKm, externalPersonnelCompensation, missionDays, status } =
+      req.body;
     if (!startLocation || !endLocation)
       return res.status(400).json({ error: "startLocation, endLocation required" });
 
@@ -120,6 +152,9 @@ routeMasterRouter.post("/", async (req, res, next) => {
         startLocation,
         endLocation,
         distanceKm: km,
+        externalPersonnelCompensation: optionalDec(externalPersonnelCompensation) ?? null,
+        missionDays: optionalInt(missionDays) ?? null,
+        status: parseStatus(status) ?? RouteMasterStatus.ACTIVE,
       },
     });
     res.status(201).json(row);
@@ -130,12 +165,22 @@ routeMasterRouter.post("/", async (req, res, next) => {
 
 routeMasterRouter.put("/:id", async (req, res, next) => {
   try {
-    const { name, startLocation, endLocation, distanceKm } = req.body;
+    const { name, startLocation, endLocation, distanceKm, externalPersonnelCompensation, missionDays, status } =
+      req.body;
     const data: Record<string, unknown> = {};
     if (name !== undefined) data.name = name || null;
     if (startLocation !== undefined) data.startLocation = startLocation;
     if (endLocation !== undefined) data.endLocation = endLocation;
     if (distanceKm !== undefined) data.distanceKm = dec(distanceKm);
+    if (externalPersonnelCompensation !== undefined) {
+      data.externalPersonnelCompensation = optionalDec(externalPersonnelCompensation);
+    }
+    if (missionDays !== undefined) data.missionDays = optionalInt(missionDays);
+    const nextStatus = parseStatus(status);
+    if (status !== undefined) {
+      if (!nextStatus) return res.status(400).json({ error: "status ต้องเป็น ACTIVE หรือ INACTIVE" });
+      data.status = nextStatus;
+    }
 
     const existing = await prisma.routeMaster.findUnique({ where: { id: routeParam(req.params.id) } });
     if (!existing) return res.status(404).json({ error: "Not found" });

@@ -7,6 +7,7 @@ import { MissionsSubNav } from "../components/MissionsSubNav";
 import { PrintA4Table } from "../components/PrintA4Table";
 import { rowMatchesFilter } from "../lib/searchNormalize";
 import {
+  brandGradientFillClass,
   listCardAccentClass,
   listCardClass,
   toolbarLinkBtnClass,
@@ -14,7 +15,11 @@ import {
   toolbarMasterGroupClass,
   toolbarPrimaryBtnClass,
 } from "../lib/uiTokens";
-import type { RouteMaster } from "../types";
+import type { RouteMaster, RouteMasterStatus } from "../types";
+
+function routeStatusLabel(status?: RouteMasterStatus) {
+  return status === "INACTIVE" ? "เลิกใช้" : "ใช้งาน";
+}
 
 export function RouteMasterPage() {
   const [rows, setRows] = useState<RouteMaster[]>([]);
@@ -25,13 +30,17 @@ export function RouteMasterPage() {
   const [start, setStart] = useState("");
   const [end, setEnd] = useState("");
   const [km, setKm] = useState("");
+  const [externalComp, setExternalComp] = useState("");
+  const [missionDays, setMissionDays] = useState("");
+  const [status, setStatus] = useState<RouteMasterStatus>("ACTIVE");
+  const [statusView, setStatusView] = useState<RouteMasterStatus>("ACTIVE");
   const [listFilter, setListFilter] = useState("");
   const [estimating, setEstimating] = useState(false);
   const [recalcBusy, setRecalcBusy] = useState(false);
 
   const load = useCallback(async () => {
-    setRows(await apiJson<RouteMaster[]>("/api/route-master"));
-  }, []);
+    setRows(await apiJson<RouteMaster[]>(`/api/route-master?status=${statusView}`));
+  }, [statusView]);
 
   useEffect(() => {
     load();
@@ -43,6 +52,9 @@ export function RouteMasterPage() {
     setStart("");
     setEnd("");
     setKm("");
+    setExternalComp("");
+    setMissionDays("");
+    setStatus("ACTIVE");
     setModalOpen(true);
   }
 
@@ -53,6 +65,13 @@ export function RouteMasterPage() {
     setStart(r.startLocation);
     setEnd(r.endLocation);
     setKm(String(r.distanceKm));
+    setExternalComp(
+      r.externalPersonnelCompensation != null && r.externalPersonnelCompensation !== ""
+        ? String(r.externalPersonnelCompensation)
+        : "",
+    );
+    setMissionDays(r.missionDays != null && r.missionDays > 0 ? String(r.missionDays) : "");
+    setStatus(r.status === "INACTIVE" ? "INACTIVE" : "ACTIVE");
     setModalOpen(true);
   }
 
@@ -121,6 +140,9 @@ export function RouteMasterPage() {
       startLocation: start.trim(),
       endLocation: end.trim(),
       distanceKm,
+      externalPersonnelCompensation: externalComp.trim() === "" ? null : externalComp.trim(),
+      missionDays: missionDays.trim() === "" ? null : Number(missionDays),
+      status,
     });
     try {
       if (editingId) {
@@ -133,7 +155,11 @@ export function RouteMasterPage() {
       setStart("");
       setEnd("");
       setKm("");
-      await load();
+      setExternalComp("");
+      setMissionDays("");
+      setStatus("ACTIVE");
+      if (status !== statusView) setStatusView(status);
+      else await load();
     } catch (err) {
       alert(err instanceof Error ? err.message : "บันทึกไม่สำเร็จ");
     }
@@ -159,6 +185,9 @@ export function RouteMasterPage() {
           r.startLocation,
           r.endLocation,
           String(r.distanceKm),
+          r.externalPersonnelCompensation,
+          r.missionDays != null ? String(r.missionDays) : "",
+          routeStatusLabel(r.status),
         ]),
       ),
     [rows, listFilter],
@@ -175,6 +204,30 @@ export function RouteMasterPage() {
           printTitle: "เส้นทางภารกิจ",
           placeholder: "กรองชื่อ / ต้นทาง / ปลายทาง / ระยะ…",
         }}
+        segments={
+          <div className={toolbarMasterGroupClass}>
+            {(
+              [
+                ["ACTIVE", "ใช้งาน"],
+                ["INACTIVE", "เลิกใช้"],
+              ] as const
+            ).map(([id, label]) => {
+              const active = statusView === id;
+              return (
+                <button
+                  key={id}
+                  type="button"
+                  onClick={() => setStatusView(id)}
+                  className={`inline-flex h-8 items-center rounded-lg px-2.5 text-[11px] font-black transition sm:h-9 sm:px-3 sm:text-xs ${
+                    active ? `${brandGradientFillClass} text-white shadow-md` : toolbarMasterBtnClass
+                  }`}
+                >
+                  {label}
+                </button>
+              );
+            })}
+          </div>
+        }
         extras={
           <>
             <div className={toolbarMasterGroupClass}>
@@ -252,6 +305,47 @@ export function RouteMasterPage() {
                 </button>
               </div>
             </label>
+            <label>
+              <span className="text-xs font-medium text-slate-700">จำนวนวันภารกิจ</span>
+              <input
+                type="number"
+                min={1}
+                step={1}
+                className="mt-1 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-slate-900"
+                value={missionDays}
+                onChange={(e) => setMissionDays(e.target.value)}
+                placeholder="เช่น 3"
+              />
+              <span className="mt-0.5 block text-[10px] text-slate-500">
+                ใช้คำนวณเบี้ยเลี้ยง ธปท. อัตโนมัติเมื่อเลือกเส้นทางในภารกิจ
+              </span>
+            </label>
+            <label>
+              <span className="text-xs font-medium text-slate-700">ค่าตอบแทนบุคคลภายนอก (บาท)</span>
+              <input
+                type="number"
+                min={0}
+                step="1"
+                className="mt-1 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-slate-900"
+                value={externalComp}
+                onChange={(e) => setExternalComp(e.target.value)}
+                placeholder="เช่น 71700"
+              />
+              <span className="mt-0.5 block text-[10px] text-slate-500">
+                เติมยอดค่าใช้จ่าย «ค่าตอบแทนบุคคลภายนอก» อัตโนมัติเมื่อเลือกเส้นทาง
+              </span>
+            </label>
+            <label className="sm:col-span-2">
+              <span className="text-xs font-medium text-slate-700">สถานะ</span>
+              <select
+                className="mt-1 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-slate-900"
+                value={status}
+                onChange={(e) => setStatus(e.target.value as RouteMasterStatus)}
+              >
+                <option value="ACTIVE">ใช้งาน</option>
+                <option value="INACTIVE">เลิกใช้</option>
+              </select>
+            </label>
           </ModalFormBody>
           <ModalFormActions>
             <button
@@ -274,7 +368,9 @@ export function RouteMasterPage() {
       <div className="mt-6 print:hidden">
         {rows.length === 0 ? (
           <div className="rounded-[1.15rem] border border-dashed border-[#dcd8f0] bg-white/70 px-4 py-10 text-center text-slate-600">
-            ยังไม่มีเส้นทาง — กด «เพิ่มเส้นทาง»
+            {statusView === "ACTIVE"
+              ? "ยังไม่มีเส้นทางที่ใช้งาน — กด «เพิ่มเส้นทาง»"
+              : "ยังไม่มีเส้นทางที่เลิกใช้"}
           </div>
         ) : filteredRows.length === 0 ? (
           <div className="rounded-[1.15rem] border border-dashed border-[#dcd8f0] bg-white/70 px-4 py-10 text-center text-slate-600">
@@ -306,8 +402,31 @@ export function RouteMasterPage() {
                       <span className="mx-1.5 text-[#8b5cf6]">→</span>
                       <span className="text-[#ec4899]">{r.endLocation}</span>
                     </p>
-                    <p className="mt-2 inline-flex rounded-full bg-[#0000BF]/10 px-2.5 py-0.5 text-[11px] font-bold tabular-nums text-[#4d47b6]">
-                      {Number(r.distanceKm).toLocaleString("th-TH", { maximumFractionDigits: 1 })} กม.
+                    <p className="mt-2 flex flex-wrap gap-1.5">
+                      <span
+                        className={`inline-flex rounded-full px-2.5 py-0.5 text-[11px] font-bold ${
+                          r.status === "INACTIVE"
+                            ? "bg-slate-200/80 text-slate-700"
+                            : "bg-emerald-500/10 text-emerald-800"
+                        }`}
+                      >
+                        {routeStatusLabel(r.status)}
+                      </span>
+                      <span className="inline-flex rounded-full bg-[#0000BF]/10 px-2.5 py-0.5 text-[11px] font-bold tabular-nums text-[#4d47b6]">
+                        {Number(r.distanceKm).toLocaleString("th-TH", { maximumFractionDigits: 1 })} กม.
+                      </span>
+                      {r.missionDays != null && r.missionDays > 0 ? (
+                        <span className="inline-flex rounded-full bg-emerald-500/10 px-2.5 py-0.5 text-[11px] font-bold tabular-nums text-emerald-800">
+                          {r.missionDays} วัน
+                        </span>
+                      ) : null}
+                      {r.externalPersonnelCompensation != null &&
+                      Number(r.externalPersonnelCompensation) > 0 ? (
+                        <span className="inline-flex rounded-full bg-amber-500/10 px-2.5 py-0.5 text-[11px] font-bold tabular-nums text-amber-800">
+                          บุคคลภายนอก{" "}
+                          {Number(r.externalPersonnelCompensation).toLocaleString("th-TH")} ฿
+                        </span>
+                      ) : null}
                     </p>
                   </div>
                   <div
@@ -348,11 +467,25 @@ export function RouteMasterPage() {
             <ModalFormBody>
               <div className="grid gap-3 sm:grid-cols-2">
                 <DetailField label="ชื่อเส้นทาง" value={detail.name || "—"} className="sm:col-span-2" />
+                <DetailField label="สถานะ" value={routeStatusLabel(detail.status)} />
                 <DetailField label="ต้นทาง" value={detail.startLocation} />
                 <DetailField label="ปลายทาง" value={detail.endLocation} />
                 <DetailField
                   label="ระยะทาง (กม.)"
                   value={Number(detail.distanceKm).toLocaleString("th-TH", { maximumFractionDigits: 1 })}
+                />
+                <DetailField
+                  label="จำนวนวันภารกิจ"
+                  value={detail.missionDays != null && detail.missionDays > 0 ? `${detail.missionDays} วัน` : "—"}
+                />
+                <DetailField
+                  label="ค่าตอบแทนบุคคลภายนอก"
+                  value={
+                    detail.externalPersonnelCompensation != null &&
+                    Number(detail.externalPersonnelCompensation) > 0
+                      ? `${Number(detail.externalPersonnelCompensation).toLocaleString("th-TH")} บาท`
+                      : "—"
+                  }
                 />
               </div>
             </ModalFormBody>
@@ -367,15 +500,23 @@ export function RouteMasterPage() {
       <PrintA4Table
         columns={[
           { label: "ชื่อ" },
+          { label: "สถานะ" },
           { label: "ต้นทาง" },
           { label: "ปลายทาง" },
           { label: "ระยะทาง (กม.)" },
+          { label: "วันภารกิจ" },
+          { label: "ค่าตอบแทนบุคคลภายนอก" },
         ]}
         rows={filteredRows.map((r) => [
           r.name ?? "—",
+          routeStatusLabel(r.status),
           r.startLocation,
           r.endLocation,
           String(r.distanceKm),
+          r.missionDays != null && r.missionDays > 0 ? String(r.missionDays) : "—",
+          r.externalPersonnelCompensation != null && Number(r.externalPersonnelCompensation) > 0
+            ? Number(r.externalPersonnelCompensation).toLocaleString("th-TH")
+            : "—",
         ])}
       />
     </div>

@@ -6,6 +6,7 @@ import { ListPagination } from "../components/ListPagination";
 import { Modal, ModalFormActions, ModalFormBody, ModalFormSection } from "../components/Modal";
 import { PageHeaderBar } from "../components/PageHeaderBar";
 import { PrintA4Table } from "../components/PrintA4Table";
+import { botPerDiemDailyRate } from "../lib/botAllowancePrint";
 import { formatBaht } from "../lib/formatNumber";
 import { rowMatchesFilter } from "../lib/searchNormalize";
 import { prepareImageFileForUpload } from "../lib/prepareImageFileForUpload";
@@ -17,7 +18,7 @@ import {
   toolbarMasterGroupClass,
   toolbarPrimaryBtnClass,
 } from "../lib/uiTokens";
-import type { OrganizationUnitType, Personnel, PersonnelCategory, PersonnelMissionHistory } from "../types";
+import type { Personnel, PersonnelCategory, PersonnelMissionHistory } from "../types";
 
 const PAGE_SIZE = 24; // 3 คอลัมน์ × 8 แถว
 
@@ -209,14 +210,13 @@ export function PersonnelPage() {
 
   const [rows, setRows] = useState<Personnel[]>([]);
   const [categories, setCategories] = useState<PersonnelCategory[]>([]);
-  const [orgUnits, setOrgUnits] = useState<OrganizationUnitType[]>([]);
   const [loading, setLoading] = useState(true);
   const [modalOpen, setModalOpen] = useState(false);
-  const [masterModal, setMasterModal] = useState<"category" | "org" | null>(null);
+  const [masterModal, setMasterModal] = useState<"category" | null>(null);
   const [photoPreview, setPhotoPreview] = useState<string | null>(null);
   const [lightboxUrl, setLightboxUrl] = useState<string | null>(null);
   const [lightboxTitle, setLightboxTitle] = useState<string | null>(null);
-  /** แสดงเลขประจำตัวจริงต่อแถว (คลิกปุ่มแสดง) */
+  /** แสดงเลขบัตรประชาชนจริงต่อแถว (คลิกปุ่มแสดง) */
   const [idRevealed, setIdRevealed] = useState<Record<string, boolean>>({});
   const [editingId, setEditingId] = useState<string | null>(null);
   const [detailId, setDetailId] = useState<string | null>(null);
@@ -224,16 +224,20 @@ export function PersonnelPage() {
   const [missionHistory, setMissionHistory] = useState<PersonnelMissionHistory | null>(null);
   const [missionHistoryLoading, setMissionHistoryLoading] = useState(false);
   const [listFilter, setListFilter] = useState("");
+  const [categoryFilter, setCategoryFilter] = useState("");
   const [page, setPage] = useState(1);
 
   const [form, setForm] = useState({
     fullName: "",
     idNumber: "",
+    employeeCode: "",
     rank: "",
     position: "",
     phone: "",
+    gradeLevel: "",
+    perDiemRate: "",
+    vehicleTravelAllowance: "",
     personnelCategoryId: "",
-    organizationUnitTypeId: "",
     insuranceCompany: "",
     insurancePolicyNumber: "",
     insuranceExpiry: "",
@@ -244,18 +248,20 @@ export function PersonnelPage() {
 
   const filteredPersonnel = useMemo(
     () =>
-      rows.filter((r) =>
-        rowMatchesFilter(listFilter, [
+      rows.filter((r) => {
+        if (categoryFilter && r.personnelCategoryId !== categoryFilter) return false;
+        return rowMatchesFilter(listFilter, [
           r.fullName,
           r.rank,
           r.position,
-          r.organizationUnitType?.name,
           r.personnelCategory?.name,
           r.phone,
           r.idNumber,
-        ]),
-      ),
-    [rows, listFilter],
+          r.employeeCode,
+          r.gradeLevel,
+        ]);
+      }),
+    [rows, listFilter, categoryFilter],
   );
 
   const pageCount = Math.max(1, Math.ceil(filteredPersonnel.length / PAGE_SIZE));
@@ -267,7 +273,7 @@ export function PersonnelPage() {
 
   useEffect(() => {
     setPage(1);
-  }, [listFilter]);
+  }, [listFilter, categoryFilter]);
 
   useEffect(() => {
     if (page > pageCount) setPage(pageCount);
@@ -301,14 +307,12 @@ export function PersonnelPage() {
   }, [detailId]);
 
   const loadLists = useCallback(async () => {
-    const [p, c, o] = await Promise.all([
+    const [p, c] = await Promise.all([
       apiJson<Personnel[]>("/api/personnel"),
       apiJson<PersonnelCategory[]>("/api/personnel-categories"),
-      apiJson<OrganizationUnitType[]>("/api/organization-unit-types"),
     ]);
     setRows(p);
     setCategories(c);
-    setOrgUnits(o);
   }, []);
 
   const load = useCallback(async () => {
@@ -372,11 +376,14 @@ export function PersonnelPage() {
     setForm({
       fullName: "",
       idNumber: "",
+      employeeCode: "",
       rank: "",
       position: "",
       phone: "",
+      gradeLevel: "",
+      perDiemRate: "",
+      vehicleTravelAllowance: "",
       personnelCategoryId: "",
-      organizationUnitTypeId: orgUnits[0]?.id ?? "",
       insuranceCompany: "",
       insurancePolicyNumber: "",
       insuranceExpiry: "",
@@ -391,18 +398,8 @@ export function PersonnelPage() {
     if (input) input.value = "";
   }
 
-  useEffect(() => {
-    if (modalOpen && orgUnits.length && !form.organizationUnitTypeId) {
-      setForm((f) => ({ ...f, organizationUnitTypeId: orgUnits[0].id }));
-    }
-  }, [modalOpen, orgUnits, form.organizationUnitTypeId]);
-
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
-    if (!form.organizationUnitTypeId) {
-      alert("เลือกประเภทหน่วยงาน หรือเพิ่มรายการในจัดการข้อมูล master");
-      return;
-    }
 
     const benPayload = beneficiaries
       .filter((b) => b.fullName.trim())
@@ -416,11 +413,14 @@ export function PersonnelPage() {
     const fd = new FormData();
     fd.append("fullName", form.fullName);
     fd.append("idNumber", form.idNumber);
+    fd.append("employeeCode", form.employeeCode);
     fd.append("rank", form.rank);
     fd.append("position", form.position);
     fd.append("phone", form.phone);
+    fd.append("gradeLevel", form.gradeLevel);
+    if (form.perDiemRate !== "") fd.append("perDiemRate", form.perDiemRate);
+    if (form.vehicleTravelAllowance !== "") fd.append("vehicleTravelAllowance", form.vehicleTravelAllowance);
     if (form.personnelCategoryId) fd.append("personnelCategoryId", form.personnelCategoryId);
-    fd.append("organizationUnitTypeId", form.organizationUnitTypeId);
     fd.append("insuranceCompany", form.insuranceCompany);
     fd.append("insurancePolicyNumber", form.insurancePolicyNumber);
     if (form.insuranceExpiry) fd.append("insuranceExpiry", form.insuranceExpiry);
@@ -463,11 +463,17 @@ export function PersonnelPage() {
     setForm({
       fullName: r.fullName,
       idNumber: r.idNumber,
+      employeeCode: r.employeeCode ?? "",
       rank: r.rank ?? "",
       position: r.position ?? "",
       phone: r.phone ?? "",
+      gradeLevel: r.gradeLevel ?? "",
+      perDiemRate: r.perDiemRate != null && r.perDiemRate !== "" ? String(r.perDiemRate) : "",
+      vehicleTravelAllowance:
+        r.vehicleTravelAllowance != null && r.vehicleTravelAllowance !== ""
+          ? String(r.vehicleTravelAllowance)
+          : "",
       personnelCategoryId: r.personnelCategoryId ?? "",
-      organizationUnitTypeId: r.organizationUnitTypeId ?? orgUnits[0]?.id ?? "",
       insuranceCompany: r.insuranceCompany ?? "",
       insurancePolicyNumber: r.insurancePolicyNumber ?? "",
       insuranceExpiry: r.insuranceExpiry ? r.insuranceExpiry.slice(0, 10) : "",
@@ -512,15 +518,27 @@ export function PersonnelPage() {
           value: listFilter,
           onChange: setListFilter,
           printTitle: "บุคลากร",
-          placeholder: "กรองชื่อ / ยศ / ตำแหน่ง / หน่วย / ประเภท / โทร / เลขประจำตัว…",
+          placeholder: "กรองชื่อ / ยศ / ตำแหน่ง / ประเภท / โทร / เลขบัตรประชาชน / รหัส…",
         }}
+        segments={
+          <select
+            aria-label="กรองประเภทบุคลากร"
+            className={`${toolbarMasterBtnClass} max-w-[10rem] cursor-pointer`}
+            value={categoryFilter}
+            onChange={(e) => setCategoryFilter(e.target.value)}
+          >
+            <option value="">ทุกประเภท</option>
+            {categories.map((c) => (
+              <option key={c.id} value={c.id}>
+                {c.name}
+              </option>
+            ))}
+          </select>
+        }
         masters={
           <div className={toolbarMasterGroupClass}>
             <button type="button" onClick={() => setMasterModal("category")} className={toolbarMasterBtnClass}>
               ประเภท
-            </button>
-            <button type="button" onClick={() => setMasterModal("org")} className={toolbarMasterBtnClass}>
-              หน่วยงาน
             </button>
           </div>
         }
@@ -544,13 +562,6 @@ export function PersonnelPage() {
         onClose={() => setMasterModal(null)}
         title="ประเภทบุคลากร (เพิ่ม / แก้ไข / ลบ)"
         apiPath="/api/personnel-categories"
-        onChanged={loadLists}
-      />
-      <MasterDataModal
-        open={masterModal === "org"}
-        onClose={() => setMasterModal(null)}
-        title="ประเภทหน่วยงาน (เพิ่ม / แก้ไข / ลบ)"
-        apiPath="/api/organization-unit-types"
         onChanged={loadLists}
       />
 
@@ -620,12 +631,21 @@ export function PersonnelPage() {
               />
             </label>
             <label className="block">
-              <span className="text-xs font-medium text-slate-700">เลขประจำตัว</span>
+              <span className="text-xs font-medium text-slate-700">เลขบัตรประชาชน</span>
               <input
                 required
                 className="mt-1 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-slate-900"
                 value={form.idNumber}
                 onChange={(e) => setForm((f) => ({ ...f, idNumber: e.target.value }))}
+              />
+            </label>
+            <label className="block">
+              <span className="text-xs font-medium text-slate-700">รหัสพนักงาน</span>
+              <input
+                className="mt-1 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-slate-900"
+                value={form.employeeCode}
+                onChange={(e) => setForm((f) => ({ ...f, employeeCode: e.target.value }))}
+                placeholder="เช่น รหัส ธปท."
               />
             </label>
             <label className="block">
@@ -658,7 +678,17 @@ export function PersonnelPage() {
               <select
                 className="mt-1 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-slate-900"
                 value={form.personnelCategoryId}
-                onChange={(e) => setForm((f) => ({ ...f, personnelCategoryId: e.target.value }))}
+                onChange={(e) => {
+                  const personnelCategoryId = e.target.value;
+                  setForm((f) => {
+                    const catName = categories.find((c) => c.id === personnelCategoryId)?.name;
+                    const next = { ...f, personnelCategoryId };
+                    if (catName === "ธปท." && f.gradeLevel.trim()) {
+                      next.perDiemRate = String(botPerDiemDailyRate(f.gradeLevel));
+                    }
+                    return next;
+                  });
+                }}
               >
                 <option value="">— เลือก —</option>
                 {categories.map((c) => (
@@ -668,21 +698,51 @@ export function PersonnelPage() {
                 ))}
               </select>
             </label>
-            <label className="block sm:col-span-2">
-              <span className="text-xs font-medium text-slate-700">ประเภทหน่วยงาน</span>
-              <select
-                required
+            <label className="block">
+              <span className="text-xs font-medium text-slate-700">ระดับชั้น</span>
+              <input
                 className="mt-1 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-slate-900"
-                value={form.organizationUnitTypeId}
-                onChange={(e) => setForm((f) => ({ ...f, organizationUnitTypeId: e.target.value }))}
-              >
-                <option value="">— เลือก —</option>
-                {orgUnits.map((o) => (
-                  <option key={o.id} value={o.id}>
-                    {o.name}
-                  </option>
-                ))}
-              </select>
+                value={form.gradeLevel}
+                onChange={(e) => {
+                  const gradeLevel = e.target.value;
+                  setForm((f) => {
+                    const catName = categories.find((c) => c.id === f.personnelCategoryId)?.name;
+                    const next = { ...f, gradeLevel };
+                    if (catName === "ธปท.") {
+                      next.perDiemRate = String(botPerDiemDailyRate(gradeLevel));
+                    }
+                    return next;
+                  });
+                }}
+                placeholder="เช่น จรส. / จรส.(ควบ) / 4 / 5(ควบ) / 6 / 7"
+              />
+            </label>
+            <label className="block">
+              <span className="text-xs font-medium text-slate-700">อัตราเบี้ยเลี้ยง (บาท/วัน)</span>
+              <input
+                type="number"
+                min={0}
+                step="1"
+                className="mt-1 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-slate-900"
+                value={form.perDiemRate}
+                onChange={(e) => setForm((f) => ({ ...f, perDiemRate: e.target.value }))}
+                placeholder="จรส. = 450 · อื่นๆ / จรส.(ควบ) = 500"
+              />
+              <span className="mt-0.5 block text-[10px] text-slate-500">
+                ประเภท ธปท.: จรส. ได้ 450/วัน · จรส.(ควบ) และอื่นๆ ได้ 500/วัน (ใส่ระดับชั้นแล้วจะเติมให้อัตโนมัติ)
+              </span>
+            </label>
+            <label className="block">
+              <span className="text-xs font-medium text-slate-700">เงินช่วยเหลือยานพาหนะไป-กลับ (บาท)</span>
+              <input
+                type="number"
+                min={0}
+                step="1"
+                className="mt-1 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-slate-900"
+                value={form.vehicleTravelAllowance}
+                onChange={(e) => setForm((f) => ({ ...f, vehicleTravelAllowance: e.target.value }))}
+                placeholder="ต่อครั้งภารกิจ (ไม่คูณจำนวนวัน)"
+              />
             </label>
             </div>
           </ModalFormSection>
@@ -773,7 +833,7 @@ export function PersonnelPage() {
                     }}
                   />
                   <input
-                    placeholder="เลขประจำตัว (ถ้ามี)"
+                    placeholder="เลขบัตรประชาชน (ถ้ามี)"
                     className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 sm:col-span-2"
                     value={b.idNumber}
                     onChange={(e) => {
@@ -918,11 +978,6 @@ export function PersonnelPage() {
                             <p className="mt-0.5 text-sm text-slate-600">{p.position}</p>
                           ) : null}
                           <div className="mt-2 flex flex-wrap justify-center gap-1.5">
-                            {p.organizationUnitType?.name ? (
-                              <span className="rounded-full bg-[#0000BF]/10 px-2.5 py-0.5 text-[11px] font-bold text-[#4d47b6]">
-                                {p.organizationUnitType.name}
-                              </span>
-                            ) : null}
                             {p.personnelCategory?.name ? (
                               <span className="rounded-full bg-violet-500/15 px-2.5 py-0.5 text-[11px] font-bold text-violet-700">
                                 {p.personnelCategory.name}
@@ -935,7 +990,7 @@ export function PersonnelPage() {
                       <dl className="grid grid-cols-2 gap-x-3 gap-y-2">
                         {p.phone?.trim() ? <Field label="โทรศัพท์" value={p.phone.trim()} /> : null}
                         <div className="min-w-0">
-                          <dt className="text-[10px] font-semibold tracking-wide text-slate-500">เลขประจำตัว</dt>
+                          <dt className="text-[10px] font-semibold tracking-wide text-slate-500">เลขบัตรประชาชน</dt>
                           <dd className="mt-0.5 flex flex-wrap items-center gap-2">
                             <span
                               className={`font-mono text-xs font-medium tabular-nums tracking-wide text-[#1e1b4b] ${
@@ -1160,11 +1215,6 @@ export function PersonnelPage() {
                       </p>
                       <p className="mt-0.5 truncate text-xs text-slate-600">{r.position ?? "—"}</p>
                       <div className="mt-1.5 flex flex-wrap gap-1">
-                        {r.organizationUnitType?.name ? (
-                          <span className="rounded bg-[#0000BF]/10 px-1.5 py-0.5 text-[10px] font-medium text-[#4d47b6]">
-                            {r.organizationUnitType.name}
-                          </span>
-                        ) : null}
                         {r.personnelCategory?.name ? (
                           <span className="rounded bg-violet-500/15 px-1.5 py-0.5 text-[10px] font-medium text-violet-700">
                             {r.personnelCategory.name}
@@ -1179,7 +1229,7 @@ export function PersonnelPage() {
                       <span className="text-slate-500">โทร:</span> {r.phone ?? "—"}
                     </p>
                     <div className="flex flex-wrap items-center gap-2">
-                      <span className="text-slate-500">เลขประจำตัว:</span>
+                      <span className="text-slate-500">เลขบัตรประชาชน:</span>
                       <span
                         className={`font-mono tabular-nums tracking-wide ${
                           idRevealed[r.id] ? "text-slate-800" : "select-none text-slate-700"
@@ -1243,14 +1293,12 @@ export function PersonnelPage() {
         columns={[
           { label: "ชื่อ" },
           { label: "ตำแหน่ง" },
-          { label: "หน่วยงาน" },
           { label: "หมวด" },
           { label: "โทร" },
         ]}
         rows={filteredPersonnel.map((r) => [
           [r.rank, r.fullName].filter(Boolean).join(" "),
           r.position || "—",
-          r.organizationUnitType?.name || "—",
           r.personnelCategory?.name || "—",
           r.phone || "—",
         ])}

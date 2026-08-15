@@ -38,9 +38,10 @@ export async function seedMissionMasterData() {
 
   const expenseTypes = [
     { name: "ค่าตอบแทน", sortOrder: 0 },
-    { name: "ค่าอาหาร / เครื่องดื่ม", sortOrder: 1 },
-    { name: "ค่าที่พัก", sortOrder: 2 },
-    { name: "ค่าน้ำมัน / เชื้อเพลิง", sortOrder: 3 },
+    { name: "ค่าตอบแทนบุคคลภายนอก", sortOrder: 1 },
+    { name: "ค่าอาหาร / เครื่องดื่ม", sortOrder: 2 },
+    { name: "ค่าที่พัก", sortOrder: 3 },
+    { name: "ค่าน้ำมัน / เชื้อเพลิง", sortOrder: 4 },
   ];
   for (const r of expenseTypes) {
     await prisma.missionExpenseTypeMaster.upsert({

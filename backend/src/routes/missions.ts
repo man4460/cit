@@ -98,11 +98,18 @@ async function missionSummary(missionId: string) {
       expenses: { include: { expenseType: true }, orderBy: { incurredAt: "asc" } },
       destinations: { orderBy: { sortOrder: "asc" } },
       personnel: {
-        include: { personnel: true, personnelRole: true },
+        include: {
+          personnel: { include: { personnelCategory: true, policeStation: true } },
+          personnelRole: true,
+        },
         orderBy: { personnel: { fullName: "asc" } },
       },
       vehicles: {
         include: { vehicle: true, vehicleRole: true },
+      },
+      policeStations: {
+        include: { policeStation: true },
+        orderBy: [{ sortOrder: "asc" }, { policeStation: { name: "asc" } }],
       },
     },
   });
@@ -193,8 +200,26 @@ async function missionSummary(missionId: string) {
       personnelId: p.personnelId,
       fullName: p.personnel.fullName,
       rank: p.personnel.rank,
+      position: p.personnel.position,
+      idNumber: p.personnel.idNumber,
+      employeeCode: p.personnel.employeeCode,
+      gradeLevel: p.personnel.gradeLevel,
+      perDiemRate: p.personnel.perDiemRate?.toString() ?? null,
+      vehicleTravelAllowance: p.personnel.vehicleTravelAllowance?.toString() ?? null,
+      personnelCategoryName: p.personnel.personnelCategory?.name ?? null,
+      policeStationId: p.personnel.policeStationId ?? null,
+      policeStationName: p.personnel.policeStation?.name ?? null,
+      policeStationVendorCode: p.personnel.policeStation?.vendorCode ?? null,
       roleName: p.personnelRole.name,
       compensationRate: p.compensationRate.toString(),
+    })),
+    policeStations: mission.policeStations.map((s) => ({
+      policeStationId: s.policeStationId,
+      name: s.policeStation.name,
+      vendorCode: s.policeStation.vendorCode,
+      amount: s.amount.toString(),
+      note: s.note,
+      sortOrder: s.sortOrder,
     })),
     vehicles: mission.vehicles.map((v) => ({
       vehicleId: v.vehicleId,
@@ -213,7 +238,10 @@ async function missionSummary(missionId: string) {
   };
 }
 
-async function allIdsExist(model: "personnelRole" | "vehicleRole" | "expenseType", ids: string[]) {
+async function allIdsExist(
+  model: "personnelRole" | "vehicleRole" | "expenseType" | "policeStation",
+  ids: string[],
+) {
   const uniq = [...new Set(ids.filter(Boolean))];
   if (!uniq.length) return true;
   let count = 0;
@@ -221,6 +249,8 @@ async function allIdsExist(model: "personnelRole" | "vehicleRole" | "expenseType
     count = await prisma.missionPersonnelRoleMaster.count({ where: { id: { in: uniq } } });
   else if (model === "vehicleRole")
     count = await prisma.missionVehicleRoleMaster.count({ where: { id: { in: uniq } } });
+  else if (model === "policeStation")
+    count = await prisma.policeStationMaster.count({ where: { id: { in: uniq } } });
   else count = await prisma.missionExpenseTypeMaster.count({ where: { id: { in: uniq } } });
   return count === uniq.length;
 }
@@ -498,13 +528,25 @@ missionsRouter.get("/:id", async (req, res, next) => {
         vehicles: { include: { vehicle: true, vehicleRole: true } },
         destinations: { orderBy: { sortOrder: "asc" } },
         expenses: { include: { expenseType: true }, orderBy: { incurredAt: "desc" } },
+        policeStations: {
+          include: { policeStation: true },
+          orderBy: [{ sortOrder: "asc" }, { policeStation: { name: "asc" } }],
+        },
         attachments: { orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }] },
       },
     });
     if (!row) return res.status(404).json({ error: "Not found" });
-    const { attachments, ...rest } = row;
+    const { attachments, policeStations, ...rest } = row;
     res.json({
       ...rest,
+      policeStations: policeStations.map((s) => ({
+        id: s.id,
+        policeStationId: s.policeStationId,
+        amount: s.amount.toString(),
+        note: s.note,
+        sortOrder: s.sortOrder,
+        policeStation: s.policeStation,
+      })),
       attachments: attachments.map(serializeMissionAttachment),
     });
   } catch (e) {
@@ -526,6 +568,12 @@ type ExpIn = {
   description?: string;
   incurredAt?: string;
 };
+type PoliceStationIn = {
+  policeStationId: string;
+  amount?: string | number;
+  note?: string | null;
+  sortOrder?: number;
+};
 
 missionsRouter.post("/", async (req, res, next) => {
   try {
@@ -541,6 +589,7 @@ missionsRouter.post("/", async (req, res, next) => {
       vehicles,
       destinations,
       expenses,
+      policeStations,
     } = req.body;
 
     if (status && !Object.values(MissionStatus).includes(status))
@@ -550,6 +599,7 @@ missionsRouter.post("/", async (req, res, next) => {
     const vehiclesArr: VehicleIn[] = Array.isArray(vehicles) ? vehicles : [];
     const destArr: DestIn[] = Array.isArray(destinations) ? destinations : [];
     const expArr: ExpIn[] = Array.isArray(expenses) ? expenses : [];
+    const policeStationArr: PoliceStationIn[] = Array.isArray(policeStations) ? policeStations : [];
 
     for (const p of personnelArr) {
       if (!p.personnelId || !p.personnelRoleId)
@@ -569,6 +619,9 @@ missionsRouter.post("/", async (req, res, next) => {
       if (!e.expenseTypeId || e.amount === undefined)
         return res.status(400).json({ error: "Invalid expense entry" });
     }
+    for (const s of policeStationArr) {
+      if (!s.policeStationId) return res.status(400).json({ error: "Invalid police station entry" });
+    }
 
     if (!(await allIdsExist("personnelRole", personnelArr.map((p) => p.personnelRoleId))))
       return res.status(400).json({ error: "Invalid personnel role" });
@@ -576,6 +629,8 @@ missionsRouter.post("/", async (req, res, next) => {
       return res.status(400).json({ error: "Invalid vehicle role" });
     if (!(await allIdsExist("expenseType", expArr.map((e) => e.expenseTypeId))))
       return res.status(400).json({ error: "Invalid expense type" });
+    if (!(await allIdsExist("policeStation", policeStationArr.map((s) => s.policeStationId))))
+      return res.status(400).json({ error: "Invalid police station" });
 
     const codeIn = code == null || code === "" ? "" : String(code).trim();
     const finalCode = codeIn ? codeIn : await generateNextMissionCode();
@@ -620,6 +675,14 @@ missionsRouter.post("/", async (req, res, next) => {
             incurredAt: e.incurredAt ? new Date(e.incurredAt) : undefined,
           })),
         },
+        policeStations: {
+          create: policeStationArr.map((s, i) => ({
+            policeStationId: s.policeStationId,
+            amount: dec(s.amount) ?? new Prisma.Decimal(0),
+            note: s.note ? String(s.note) : null,
+            sortOrder: s.sortOrder ?? i,
+          })),
+        },
       },
       include: {
         route: true,
@@ -627,6 +690,7 @@ missionsRouter.post("/", async (req, res, next) => {
         vehicles: { include: { vehicle: true, vehicleRole: true } },
         destinations: true,
         expenses: { include: { expenseType: true } },
+        policeStations: { include: { policeStation: true } },
         attachments: { orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }] },
       },
     });
@@ -656,6 +720,7 @@ missionsRouter.put("/:id", async (req, res, next) => {
       vehicles,
       destinations,
       expenses,
+      policeStations,
     } = req.body;
 
     if (status && !Object.values(MissionStatus).includes(status))
@@ -665,6 +730,7 @@ missionsRouter.put("/:id", async (req, res, next) => {
     const vehiclesArr: VehicleIn[] = Array.isArray(vehicles) ? vehicles : [];
     const destArr: DestIn[] = Array.isArray(destinations) ? destinations : [];
     const expArr: ExpIn[] = Array.isArray(expenses) ? expenses : [];
+    const policeStationArr: PoliceStationIn[] = Array.isArray(policeStations) ? policeStations : [];
 
     for (const p of personnelArr) {
       if (!p.personnelId || !p.personnelRoleId)
@@ -684,6 +750,9 @@ missionsRouter.put("/:id", async (req, res, next) => {
       if (!e.expenseTypeId || e.amount === undefined)
         return res.status(400).json({ error: "Invalid expense entry" });
     }
+    for (const s of policeStationArr) {
+      if (!s.policeStationId) return res.status(400).json({ error: "Invalid police station entry" });
+    }
 
     if (!(await allIdsExist("personnelRole", personnelArr.map((p) => p.personnelRoleId))))
       return res.status(400).json({ error: "Invalid personnel role" });
@@ -691,12 +760,15 @@ missionsRouter.put("/:id", async (req, res, next) => {
       return res.status(400).json({ error: "Invalid vehicle role" });
     if (!(await allIdsExist("expenseType", expArr.map((e) => e.expenseTypeId))))
       return res.status(400).json({ error: "Invalid expense type" });
+    if (!(await allIdsExist("policeStation", policeStationArr.map((s) => s.policeStationId))))
+      return res.status(400).json({ error: "Invalid police station" });
 
     const row = await prisma.$transaction(async (tx) => {
       await tx.missionPersonnel.deleteMany({ where: { missionId: id } });
       await tx.missionVehicle.deleteMany({ where: { missionId: id } });
       await tx.missionDestination.deleteMany({ where: { missionId: id } });
       await tx.missionExpense.deleteMany({ where: { missionId: id } });
+      await tx.missionPoliceStation.deleteMany({ where: { missionId: id } });
 
       return tx.mission.update({
         where: { id },
@@ -747,6 +819,14 @@ missionsRouter.put("/:id", async (req, res, next) => {
               incurredAt: e.incurredAt ? new Date(e.incurredAt) : undefined,
             })),
           },
+          policeStations: {
+            create: policeStationArr.map((s, i) => ({
+              policeStationId: s.policeStationId,
+              amount: dec(s.amount) ?? new Prisma.Decimal(0),
+              note: s.note ? String(s.note) : null,
+              sortOrder: s.sortOrder ?? i,
+            })),
+          },
         },
         include: {
           route: true,
@@ -754,6 +834,7 @@ missionsRouter.put("/:id", async (req, res, next) => {
           vehicles: { include: { vehicle: true, vehicleRole: true } },
           destinations: true,
           expenses: { include: { expenseType: true } },
+          policeStations: { include: { policeStation: true } },
           attachments: { orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }] },
         },
       });
@@ -802,6 +883,7 @@ missionsRouter.patch("/:id", async (req, res, next) => {
         vehicles: { include: { vehicle: true, vehicleRole: true } },
         destinations: true,
         expenses: { include: { expenseType: true } },
+        policeStations: { include: { policeStation: true } },
         attachments: { orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }] },
       },
     });

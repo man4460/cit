@@ -5,6 +5,7 @@
  * - ผู้ช่วยผู้อำนวยการ → ผช.ผอ.เดินทาง
  * - ตำรวจทางหลวง → ตร.ทางหลวง
  * - กองปราบปราม → ตร.กองปราบ
+ * - อรินทราช / ก่อการร้าย → ตร.อรินทราช
  */
 export function missionRoleFromFarabPosition(position: string): string {
   const p = position.trim();
@@ -18,7 +19,7 @@ export function missionRoleFromFarabPosition(position: string): string {
 export function missionRoleFromPoliceUnit(unitOrPosition: string): string {
   const u = unitOrPosition.trim();
   if (/ทางหลวง/.test(u)) return "ตร.ทางหลวง";
+  if (/อรินทราช|ก่อการร้าย|ต่อต้านการก่อการร้าย/.test(u)) return "ตร.อรินทราช";
   if (/ปราบปราม|กองปราบ/.test(u)) return "ตร.กองปราบ";
-  if (/อรินทราช/.test(u)) return "ตร.อรินทราช";
   return "ตำรวจ / ประสาน";
 }

@@ -27,6 +27,7 @@
     "seed:missions:jul69-sosor": "tsx scripts/seed-mission-jul69-sosor-detail.ts",
     "seed:missions:destinations-2569": "tsx scripts/seed-mission-destinations-2569.ts",
     "seed:missions:remap-roles-2569": "tsx scripts/remap-mission-roles-2569.ts",
+    "seed:personnel:remap-police-categories": "tsx scripts/remap-police-categories.ts",
     "seed:training:tactical-driving-2569": "tsx scripts/seed-training-tactical-driving-2569.ts",
     "seed:security-incidents": "tsx scripts/seed-security-incidents-from-csv.ts",
     "seed:budget": "tsx scripts/seed-budget-from-xlsx.ts",

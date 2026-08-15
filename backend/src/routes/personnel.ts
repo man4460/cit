@@ -9,6 +9,7 @@ export const personnelRouter = Router();
 const personnelInclude = {
   personnelCategory: true,
   organizationUnitType: true,
+  policeStation: true,
   beneficiaries: { orderBy: { sortOrder: "asc" as const } },
 } as const;
 
@@ -16,9 +17,14 @@ function personnelAuditSnapshot(p: {
   id: string;
   fullName: string;
   idNumber: string;
+  employeeCode?: string | null;
   rank: string | null;
   position: string | null;
   phone: string | null;
+  gradeLevel?: string | null;
+  perDiemRate?: { toString(): string } | number | null;
+  vehicleTravelAllowance?: { toString(): string } | number | null;
+  policeStationId?: string | null;
   personnelCategoryId: string | null;
   organizationUnitTypeId: string | null;
   remarks: string | null;
@@ -29,9 +35,14 @@ function personnelAuditSnapshot(p: {
     id: p.id,
     fullName: p.fullName,
     idNumber: p.idNumber,
+    employeeCode: p.employeeCode ?? null,
     rank: p.rank,
     position: p.position,
     phone: p.phone,
+    gradeLevel: p.gradeLevel ?? null,
+    perDiemRate: p.perDiemRate == null ? null : String(p.perDiemRate),
+    vehicleTravelAllowance: p.vehicleTravelAllowance == null ? null : String(p.vehicleTravelAllowance),
+    policeStationId: p.policeStationId ?? null,
     personnelCategoryId: p.personnelCategoryId,
     personnelCategoryName: p.personnelCategory?.name ?? null,
     organizationUnitTypeId: p.organizationUnitTypeId,
@@ -43,15 +54,28 @@ function personnelAuditSnapshot(p: {
 const PERSONNEL_AUDIT_KEYS = [
   "fullName",
   "idNumber",
+  "employeeCode",
   "rank",
   "position",
   "phone",
+  "gradeLevel",
+  "perDiemRate",
+  "vehicleTravelAllowance",
+  "policeStationId",
   "personnelCategoryId",
   "personnelCategoryName",
   "organizationUnitTypeId",
   "organizationUnitTypeName",
   "remarks",
 ];
+
+function parseOptionalDecimal(v: unknown): number | null | undefined {
+  if (v === undefined) return undefined;
+  if (v === null || v === "") return null;
+  const n = Number(v);
+  if (!Number.isFinite(n) || n < 0) return undefined;
+  return n;
+}
 
 type BenInput = {
   fullName: string;
@@ -178,9 +202,14 @@ personnelRouter.post("/", upload.single("photo"), async (req, res, next) => {
     const {
       fullName,
       idNumber,
+      employeeCode,
       phone,
       rank,
       position,
+      gradeLevel,
+      perDiemRate,
+      vehicleTravelAllowance,
+      policeStationId,
       personnelCategoryId,
       organizationUnitTypeId,
       insuranceCompany,
@@ -191,17 +220,40 @@ personnelRouter.post("/", upload.single("photo"), async (req, res, next) => {
       beneficiaries: benRaw,
     } = b;
 
-    if (!fullName || !idNumber || !organizationUnitTypeId)
-      return res.status(400).json({ error: "ต้องกรอก ชื่อ–สกุล เลขประจำตัว และประเภทหน่วยงาน" });
+    if (!fullName || !idNumber)
+      return res.status(400).json({ error: "ต้องกรอก ชื่อ–สกุล และเลขบัตรประชาชน" });
 
-    const exists = await prisma.organizationUnitType.findUnique({
-      where: { id: String(organizationUnitTypeId) },
-    });
-    if (!exists) return res.status(400).json({ error: "ประเภทหน่วยงานไม่ถูกต้อง" });
+    const parsedPerDiem = parseOptionalDecimal(perDiemRate);
+    if (perDiemRate !== undefined && perDiemRate !== null && perDiemRate !== "" && parsedPerDiem === undefined)
+      return res.status(400).json({ error: "อัตราเบี้ยเลี้ยงไม่ถูกต้อง" });
+    const parsedVehicleTravel = parseOptionalDecimal(vehicleTravelAllowance);
+    if (
+      vehicleTravelAllowance !== undefined &&
+      vehicleTravelAllowance !== null &&
+      vehicleTravelAllowance !== "" &&
+      parsedVehicleTravel === undefined
+    )
+      return res.status(400).json({ error: "เงินช่วยเหลือยานพาหนะไม่ถูกต้อง" });
+
+    let resolvedOrgUnitId: string | null = null;
+    if (organizationUnitTypeId) {
+      const exists = await prisma.organizationUnitType.findUnique({
+        where: { id: String(organizationUnitTypeId) },
+      });
+      if (!exists) return res.status(400).json({ error: "ประเภทหน่วยงานไม่ถูกต้อง" });
+      resolvedOrgUnitId = String(organizationUnitTypeId);
+    }
 
     if (personnelCategoryId) {
       const c = await prisma.personnelCategory.findUnique({ where: { id: String(personnelCategoryId) } });
       if (!c) return res.status(400).json({ error: "ประเภทบุคลากรไม่ถูกต้อง" });
+    }
+
+    let resolvedPoliceStationId: string | null = null;
+    if (policeStationId) {
+      const s = await prisma.policeStationMaster.findUnique({ where: { id: String(policeStationId) } });
+      if (!s) return res.status(400).json({ error: "สถานีตำรวจไม่ถูกต้อง" });
+      resolvedPoliceStationId = String(policeStationId);
     }
 
     const beneficiaries = parseBeneficiaries(benRaw);
@@ -224,11 +276,16 @@ personnelRouter.post("/", upload.single("photo"), async (req, res, next) => {
       data: {
         fullName: String(fullName),
         idNumber: String(idNumber),
+        employeeCode: employeeCode != null && String(employeeCode).trim() ? String(employeeCode).trim() : null,
         rank: rank ? String(rank) : null,
         position: position ? String(position) : null,
         phone: phone ? String(phone) : null,
+        gradeLevel: gradeLevel != null && String(gradeLevel).trim() ? String(gradeLevel).trim() : null,
+        perDiemRate: parsedPerDiem ?? null,
+        vehicleTravelAllowance: parsedVehicleTravel ?? null,
+        policeStationId: resolvedPoliceStationId,
         personnelCategoryId: personnelCategoryId ? String(personnelCategoryId) : null,
-        organizationUnitTypeId: String(organizationUnitTypeId),
+        organizationUnitTypeId: resolvedOrgUnitId,
         insuranceCompany: insuranceCompany ? String(insuranceCompany) : null,
         insurancePolicyNumber: insurancePolicyNumber ? String(insurancePolicyNumber) : null,
         insuranceExpiry: parseOptionalDate(insuranceExpiry),
@@ -260,7 +317,7 @@ personnelRouter.post("/", upload.single("photo"), async (req, res, next) => {
     res.status(201).json(row);
   } catch (e: unknown) {
     if (e && typeof e === "object" && "code" in e && (e as { code: string }).code === "P2002")
-      return res.status(409).json({ error: "เลขประจำตัวซ้ำ" });
+      return res.status(409).json({ error: "เลขบัตรประชาชนซ้ำ" });
     next(e);
   }
 });
@@ -272,9 +329,14 @@ personnelRouter.put("/:id", upload.single("photo"), async (req, res, next) => {
     const {
       fullName,
       idNumber,
+      employeeCode,
       phone,
       rank,
       position,
+      gradeLevel,
+      perDiemRate,
+      vehicleTravelAllowance,
+      policeStationId,
       personnelCategoryId,
       organizationUnitTypeId,
       insuranceCompany,
@@ -289,15 +351,43 @@ personnelRouter.put("/:id", upload.single("photo"), async (req, res, next) => {
     const data: Record<string, unknown> = {};
     if (fullName !== undefined) data.fullName = fullName;
     if (idNumber !== undefined) data.idNumber = idNumber;
+    if (employeeCode !== undefined)
+      data.employeeCode = employeeCode == null || employeeCode === "" ? null : String(employeeCode).trim() || null;
     if (phone !== undefined) data.phone = phone || null;
     if (rank !== undefined) data.rank = rank ? String(rank) : null;
     if (position !== undefined) data.position = position ? String(position) : null;
+    if (gradeLevel !== undefined)
+      data.gradeLevel = gradeLevel == null || gradeLevel === "" ? null : String(gradeLevel).trim() || null;
+    if (perDiemRate !== undefined) {
+      const parsed = parseOptionalDecimal(perDiemRate);
+      if (perDiemRate !== null && perDiemRate !== "" && parsed === undefined)
+        return res.status(400).json({ error: "อัตราเบี้ยเลี้ยงไม่ถูกต้อง" });
+      data.perDiemRate = parsed ?? null;
+    }
+    if (vehicleTravelAllowance !== undefined) {
+      const parsed = parseOptionalDecimal(vehicleTravelAllowance);
+      if (vehicleTravelAllowance !== null && vehicleTravelAllowance !== "" && parsed === undefined)
+        return res.status(400).json({ error: "เงินช่วยเหลือยานพาหนะไม่ถูกต้อง" });
+      data.vehicleTravelAllowance = parsed ?? null;
+    }
+    if (policeStationId !== undefined) {
+      if (!policeStationId) {
+        data.policeStationId = null;
+      } else {
+        const s = await prisma.policeStationMaster.findUnique({ where: { id: String(policeStationId) } });
+        if (!s) return res.status(400).json({ error: "สถานีตำรวจไม่ถูกต้อง" });
+        data.policeStationId = String(policeStationId);
+      }
+    }
     if (personnelCategoryId !== undefined) data.personnelCategoryId = personnelCategoryId || null;
     if (organizationUnitTypeId !== undefined) {
-      if (!organizationUnitTypeId) return res.status(400).json({ error: "ประเภทหน่วยงานต้องไม่ว่าง" });
-      const ex = await prisma.organizationUnitType.findUnique({ where: { id: String(organizationUnitTypeId) } });
-      if (!ex) return res.status(400).json({ error: "ประเภทหน่วยงานไม่ถูกต้อง" });
-      data.organizationUnitTypeId = String(organizationUnitTypeId);
+      if (!organizationUnitTypeId) {
+        data.organizationUnitTypeId = null;
+      } else {
+        const ex = await prisma.organizationUnitType.findUnique({ where: { id: String(organizationUnitTypeId) } });
+        if (!ex) return res.status(400).json({ error: "ประเภทหน่วยงานไม่ถูกต้อง" });
+        data.organizationUnitTypeId = String(organizationUnitTypeId);
+      }
     }
     if (insuranceCompany !== undefined) data.insuranceCompany = insuranceCompany ? String(insuranceCompany) : null;
     if (insurancePolicyNumber !== undefined)
@@ -372,7 +462,7 @@ personnelRouter.put("/:id", upload.single("photo"), async (req, res, next) => {
     if (e && typeof e === "object" && "code" in e && (e as { code: string }).code === "P2025")
       return res.status(404).json({ error: "Not found" });
     if (e && typeof e === "object" && "code" in e && (e as { code: string }).code === "P2002")
-      return res.status(409).json({ error: "เลขประจำตัวซ้ำ" });
+      return res.status(409).json({ error: "เลขบัตรประชาชนซ้ำ" });
     next(e);
   }
 });

@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import { createPortal } from "react-dom";
 import { Link } from "react-router-dom";
 import {
   Bar,
@@ -12,7 +13,12 @@ import {
   YAxis,
 } from "recharts";
 import { Modal, ModalFormBody } from "./Modal";
+import { MissionBotAllowancePrintSheet } from "./MissionBotAllowancePrintSheet";
+import { MissionPoliceAllowancePrintSheet } from "./MissionPoliceAllowancePrintSheet";
 import { formatBaht, formatInt, formatLiters } from "../lib/formatNumber";
+import { filterBotAllowancePersonnel } from "../lib/botAllowancePrint";
+import { filterPoliceAllowancePersonnel } from "../lib/policeAllowancePrint";
+import { printIsolatedElement } from "../lib/printIsolated";
 import type { MissionStatus, MissionSummary } from "../types";
 import { apiUrl } from "../api/client";
 
@@ -88,9 +94,44 @@ export function MissionSummaryModal({
         ? [{ name: "รายจ่าย", value: exp }]
         : [];
   const pieColors = ["#14b8a6", "#818cf8", "#f59e0b"];
+  const botAllowanceCount = filterBotAllowancePersonnel(personnel).length;
+  const policeAllowanceCount = filterPoliceAllowancePersonnel(personnel).length;
+  const policeStations = summary.policeStations ?? [];
+
+  function printBotAllowance() {
+    if (!botAllowanceCount) {
+      window.alert("ไม่มีรายชื่อที่เข้าเงื่อนไข (ไม่ใช่ตำรวจ และไม่ใช่คนขับ) ในภารกิจนี้");
+      return;
+    }
+    const ok = printIsolatedElement({
+      rootSelector: ".bot-allowance-print-root",
+      htmlClass: "print-bot-allowance",
+      pageSize: "A4 landscape",
+    });
+    if (!ok) window.alert("ไม่พบแบบฟอร์มสำหรับพิมพ์");
+  }
+
+  function printPoliceAllowance() {
+    if (!policeAllowanceCount && !policeStations.some((s) => Number(s.amount) > 0)) {
+      window.alert("ไม่มีรายชื่อบุคคลภายนอก (ไม่รวมประเภท ธปท.) ในภารกิจนี้");
+      return;
+    }
+    const ok = printIsolatedElement({
+      rootSelector: ".police-allowance-print-root",
+      htmlClass: "print-police-allowance",
+      pageSize: "A4 portrait",
+    });
+    if (!ok) window.alert("ไม่พบแบบฟอร์มสำหรับพิมพ์");
+  }
+
+  const routeLabel = summary.route
+    ? [summary.route.startLocation, summary.route.endLocation].filter(Boolean).join(" - ") ||
+      summary.route.name
+    : null;
 
   return (
-    <Modal open onClose={onClose} title="สรุปภารกิจ" size="wide" overlayZClass="z-[90]">
+    <>
+      <Modal open onClose={onClose} title="สรุปภารกิจ" size="wide" overlayZClass="z-[90]">
       <ModalFormBody className="!space-y-4">
         <div className="overflow-hidden rounded-2xl border border-indigo-100 bg-gradient-to-br from-indigo-50 via-white to-teal-50 p-4 shadow-sm">
           <div className="flex flex-wrap items-start justify-between gap-3">
@@ -110,9 +151,27 @@ export function MissionSummaryModal({
                 {formatDate(summary.plannedStart)} – {formatDate(summary.plannedEnd)}
               </p>
             </div>
-            <span className={`rounded-full px-2.5 py-1 text-[11px] font-bold ${statusChip[status]}`}>
-              {statusLabel[status]}
-            </span>
+            <div className="flex flex-col items-end gap-2">
+              <span className={`rounded-full px-2.5 py-1 text-[11px] font-bold ${statusChip[status]}`}>
+                {statusLabel[status]}
+              </span>
+              <button
+                type="button"
+                className="rounded-full border border-[#0000BF]/25 bg-white px-3 py-1.5 text-[11px] font-bold text-[#0000BF] shadow-sm hover:bg-[#0000BF]/5"
+                onClick={printBotAllowance}
+              >
+                พิมพ์รายการเบี้ยเลี้ยง ธปท.
+                {botAllowanceCount ? ` (${botAllowanceCount})` : ""}
+              </button>
+              <button
+                type="button"
+                className="rounded-full border border-amber-500/30 bg-white px-3 py-1.5 text-[11px] font-bold text-amber-800 shadow-sm hover:bg-amber-50"
+                onClick={printPoliceAllowance}
+              >
+                พิมพ์ค่าตอบแทนบุคคลภายนอก
+                {policeAllowanceCount ? ` (${policeAllowanceCount})` : ""}
+              </button>
+            </div>
           </div>
 
           <div className="mt-4 grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
@@ -201,6 +260,40 @@ export function MissionSummaryModal({
                         {formatBaht(p.compensationRate)} ฿
                       </span>
                     </div>
+                  </li>
+                );
+              })}
+            </ul>
+          </Section>
+        ) : null}
+
+        {policeStations.length > 0 ? (
+          <Section title={`สถานีตำรวจ (${policeStations.length})`} accent="border-sky-100">
+            <ul className="max-h-40 divide-y divide-sky-50 overflow-y-auto">
+              {policeStations.map((s) => {
+                const amt = Number(s.amount);
+                const vendor = (s.vendorCode ?? "").trim();
+                return (
+                  <li
+                    key={s.policeStationId}
+                    className="flex items-center gap-2 py-1 text-xs"
+                    title={[s.name, vendor ? `Vendor ${vendor}` : null, s.note?.trim() || null]
+                      .filter(Boolean)
+                      .join(" · ")}
+                  >
+                    <p className="min-w-0 flex-1 truncate font-semibold text-sky-900">
+                      {s.name}
+                      {vendor ? (
+                        <span className="ml-1.5 font-normal text-slate-500">· {vendor}</span>
+                      ) : null}
+                    </p>
+                    {Number.isFinite(amt) && amt > 0 ? (
+                      <span className="shrink-0 tabular-nums font-bold text-sky-800">
+                        {formatBaht(amt)} ฿
+                      </span>
+                    ) : (
+                      <span className="shrink-0 text-slate-400">—</span>
+                    )}
                   </li>
                 );
               })}
@@ -345,6 +438,31 @@ export function MissionSummaryModal({
         </button>
       </ModalFormBody>
     </Modal>
+      {typeof document !== "undefined"
+        ? createPortal(
+            <>
+              <MissionBotAllowancePrintSheet
+                title={summary.title}
+                code={summary.code}
+                plannedStart={summary.plannedStart}
+                plannedEnd={summary.plannedEnd}
+                routeLabel={routeLabel}
+                personnel={personnel}
+              />
+              <MissionPoliceAllowancePrintSheet
+                title={summary.title}
+                code={summary.code}
+                plannedStart={summary.plannedStart}
+                plannedEnd={summary.plannedEnd}
+                routeLabel={routeLabel}
+                personnel={personnel}
+                policeStations={policeStations}
+              />
+            </>,
+            document.body,
+          )
+        : null}
+    </>
   );
 }
 

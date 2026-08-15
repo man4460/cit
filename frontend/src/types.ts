@@ -67,9 +67,15 @@ export interface Personnel {
   photoUrl: string | null;
   fullName: string;
   idNumber: string;
+  employeeCode?: string | null;
   rank: string | null;
   position: string | null;
   phone: string | null;
+  gradeLevel?: string | null;
+  perDiemRate?: number | string | null;
+  vehicleTravelAllowance?: number | string | null;
+  policeStationId?: string | null;
+  policeStation?: { id: string; name: string; vendorCode?: string | null } | null;
   personnelCategoryId: string | null;
   personnelCategory: PersonnelCategory | null;
   organizationUnitTypeId: string | null;
@@ -206,12 +212,20 @@ export function vehicleDisplayLabel(v: Pick<Vehicle, "brand" | "model" | "brandM
   return s || v.brandModel;
 }
 
+export type RouteMasterStatus = "ACTIVE" | "INACTIVE";
+
 export interface RouteMaster {
   id: string;
   name: string | null;
   startLocation: string;
   endLocation: string;
   distanceKm: string;
+  /** ค่าตอบแทนบุคคลภายนอกมาตรฐาน (บาท) */
+  externalPersonnelCompensation?: string | null;
+  /** จำนวนวันภารกิจมาตรฐาน */
+  missionDays?: number | null;
+  /** ACTIVE = ใช้งาน, INACTIVE = เลิกใช้ */
+  status?: RouteMasterStatus;
 }
 
 export interface FireExtinguisher {
@@ -765,6 +779,14 @@ export interface MissionDetail {
   }>;
   destinations: Array<{ address: string; cargoValue: string; containerCount: number; sortOrder: number }>;
   expenses: Array<{ expenseTypeId: string; amount: string }>;
+  policeStations?: Array<{
+    id?: string;
+    policeStationId: string;
+    amount: string;
+    note?: string | null;
+    sortOrder?: number;
+    policeStation?: { id: string; name: string; vendorCode?: string | null };
+  }>;
   attachments?: MissionAttachmentRow[];
 }
 
@@ -797,8 +819,26 @@ export interface MissionSummary {
     personnelId: string;
     fullName: string;
     rank: string | null;
+    position?: string | null;
+    idNumber?: string | null;
+    employeeCode?: string | null;
+    gradeLevel?: string | null;
+    perDiemRate?: string | null;
+    vehicleTravelAllowance?: string | null;
+    personnelCategoryName?: string | null;
+    policeStationId?: string | null;
+    policeStationName?: string | null;
+    policeStationVendorCode?: string | null;
     roleName: string;
     compensationRate: string;
+  }>;
+  policeStations?: Array<{
+    policeStationId: string;
+    name: string;
+    vendorCode?: string | null;
+    amount: string;
+    note?: string | null;
+    sortOrder?: number;
   }>;
   vehicles?: Array<{
     vehicleId: string;

@@ -38,9 +38,21 @@ model Personnel {
   photoUrl String?
   fullName String
   idNumber String  @unique
+  /// รหัสพนักงาน (ใช้ในแบบฟอร์มเบี้ยเลี้ยง ธปท.)
+  employeeCode String?
   rank     String?
   position String?
   phone    String?
+  /// ระดับชั้น (เช่น 4–7 ตามแบบฟอร์ม ธปท.)
+  gradeLevel String?
+  /// อัตราเบี้ยเลี้ยง (บาท/วัน) — ใช้คำนวณค่าตอบแทนภารกิจประเภท ธปท.
+  perDiemRate Decimal?
+  /// เงินช่วยเหลือยานพาหนะไป-กลับ (บาท/ครั้งภารกิจ)
+  vehicleTravelAllowance Decimal?
+
+  /// สถานี / สังกัดตำรวจ (ใช้จัดกลุ่มในแบบพิมพ์ค่าตอบแทนตำรวจ)
+  policeStationId String?
+  policeStation   PoliceStationMaster? @relation(fields: [policeStationId], references: [id], onDelete: SetNull)
 
   personnelCategoryId String?
   personnelCategory   PersonnelCategory? @relation(fields: [personnelCategoryId], references: [id], onDelete: SetNull)
@@ -600,14 +612,25 @@ model ArmorMonthlyInspection {
 
 // --- Route master data ---
 
+enum RouteMasterStatus {
+  ACTIVE
+  INACTIVE
+}
+
 model RouteMaster {
-  id            String   @id @default(uuid())
-  name          String?
-  startLocation String
-  endLocation   String
-  distanceKm    Decimal
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
+  id                             String            @id @default(uuid())
+  name                           String?
+  startLocation                  String
+  endLocation                    String
+  distanceKm                     Decimal
+  /// ค่าตอบแทนบุคคลภายนอกมาตรฐานของเส้นทาง (บาท) — ใช้เติมอัตโนมัติในภารกิจ
+  externalPersonnelCompensation  Decimal?
+  /// จำนวนวันภารกิจมาตรฐาน — ใช้คำนวณเบี้ยเลี้ยง ธปท. อัตโนมัติ
+  missionDays                    Int?
+  /// ใช้งาน | เลิกใช้
+  status                         RouteMasterStatus @default(ACTIVE)
+  createdAt                      DateTime          @default(now())
+  updatedAt                      DateTime          @updatedAt
 
   missions Mission[]
 }
@@ -657,6 +680,20 @@ model MissionExpenseTypeMaster {
   expenses MissionExpense[]
 }
 
+/// สถานีตำรวจ / สังกัด (master) — ใช้ในภารกิจและแบบพิมพ์ค่าตอบแทนตำรวจ
+model PoliceStationMaster {
+  id         String   @id @default(uuid())
+  name       String   @unique
+  /// รหัส Vendor / รหัสหน่วยงาน (ถ้ามี)
+  vendorCode String?
+  sortOrder  Int      @default(0)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  personnel Personnel[]
+  missions  MissionPoliceStation[]
+}
+
 model Mission {
   id           String        @id @default(uuid())
   code         String?       @unique
@@ -674,11 +711,27 @@ model Mission {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  personnel    MissionPersonnel[]
-  vehicles     MissionVehicle[]
-  destinations MissionDestination[]
-  expenses     MissionExpense[]
-  attachments  MissionAttachment[]
+  personnel      MissionPersonnel[]
+  vehicles       MissionVehicle[]
+  destinations   MissionDestination[]
+  expenses       MissionExpense[]
+  attachments    MissionAttachment[]
+  policeStations MissionPoliceStation[]
+}
+
+/// สถานีตำรวจที่เกี่ยวในภารกิจ (อาจมีจำนวนเงินจ่ายให้หน่วยงาน)
+model MissionPoliceStation {
+  id              String              @id @default(uuid())
+  missionId       String
+  mission         Mission             @relation(fields: [missionId], references: [id], onDelete: Cascade)
+  policeStationId String
+  policeStation   PoliceStationMaster @relation(fields: [policeStationId], references: [id], onDelete: Restrict)
+  /// จำนวนเงินจ่ายให้สถานี/หน่วยงาน (บาท) — 0 = แค่ระบุว่าเกี่ยว
+  amount          Decimal             @default(0)
+  note            String?
+  sortOrder       Int                 @default(0)
+
+  @@unique([missionId, policeStationId])
 }
 
 /// ไฟล์แนบภารกิจ (อัปโหลดได้หลายไฟล์)

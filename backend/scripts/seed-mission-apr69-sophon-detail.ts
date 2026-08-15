@@ -23,6 +23,7 @@ import {
 } from "../src/lib/missionRoleFromSource.js";
 import { seedMissionMasterData } from "../src/lib/seedMissionMasters.js";
 import { seedPersonnelMasterData } from "../src/lib/seedPersonnelMasters.js";
+import { buildTripPersonnelLinks } from "../src/lib/seedMissionTripHelpers.js";
 
 const prisma = new PrismaClient();
 
@@ -47,6 +48,9 @@ type FarabRow = {
   lastName: string;
   position: string;
   total: number;
+  gradeLevel?: string;
+  perDiemRate?: number;
+  vehicleTravelAllowance?: number;
 };
 
 type PoliceRow = {
@@ -57,6 +61,7 @@ type PoliceRow = {
   idNumber: string;
   amount: number;
   unit: string;
+  group?: string;
   isPerson: boolean;
 };
 
@@ -97,6 +102,11 @@ for r in range(7, ws.max_row + 1):
         seq_n = int(seq)
     except Exception:
         continue
+    special = float(ws.cell(r, 8).value or 0)
+    perdiem_total = float(ws.cell(r, 9).value or 0)
+    travel = float(ws.cell(r, 10).value or 0)
+    days = max(1, int(round(special / 1400))) if special > 0 else 1
+    perdiem_day = (perdiem_total / days) if days else perdiem_total
     farab.append({
         "seq": seq_n,
         "empCode": str(ws.cell(r, 2).value or "").strip(),
@@ -104,6 +114,9 @@ for r in range(7, ws.max_row + 1):
         "firstName": str(ws.cell(r, 4).value or "").strip(),
         "lastName": str(ws.cell(r, 5).value or "").strip(),
         "position": str(ws.cell(r, 6).value or "").strip(),
+        "gradeLevel": str(ws.cell(r, 7).value or "").strip(),
+        "perDiemRate": perdiem_day,
+        "vehicleTravelAllowance": travel,
         "total": float(ws.cell(r, 11).value or 0),
     })
 
@@ -112,13 +125,15 @@ wb = openpyxl.load_workbook(police_path, data_only=True)
 ws = wb.active
 police = []
 unit = ""
+group = ""
 for r in range(1, ws.max_row + 1):
     a = ws.cell(r, 1).value
     b = ws.cell(r, 2).value
     c = ws.cell(r, 3).value
     if isinstance(a, str) and a.strip() and not str(a).strip().isdigit() and a.strip() not in ("ลำดับ", "รวมเงินทั้งหมด"):
         if "กอง" in a or "สถานี" in a:
-            unit = a.strip()
+            group = a.strip()
+            unit = group
         continue
     if a == "ลำดับ" or b == "ยศ":
         continue
@@ -138,19 +153,22 @@ for r in range(1, ws.max_row + 1):
         is_person = False
     if first and not last and len(id_digits) < 12:
         is_person = False
-    # แถวยศเป็นชื่อหน่วยงาน (vendor)
     if ("กอง" in rank or "สถานี" in rank) and not last:
         is_person = False
+        if not first:
+            first = rank
     police.append({
         "seq": seq_n,
-        "rank": rank,
+        "rank": rank if is_person else "",
         "firstName": first,
         "lastName": last,
         "idNumber": id_digits or str(idraw or "").strip(),
         "amount": amount,
         "unit": u,
+        "group": group or u,
         "isPerson": is_person,
     })
+
 
 # --- น้ำมัน: ใช้ชีตทะเบียนน้ำมัน (เฉพาะทริปนี้) ไม่ใช่ทะเบียนควบคุมสะสม ---
 wb = openpyxl.load_workbook(expense_path, data_only=True)
@@ -301,69 +319,16 @@ async function main() {
     return r.id;
   };
 
-  const orgFarab = await ensureOrg("ฝ่ายรักษาความปลอดภัย", 0);
-  const orgPolice = await ensureOrg("ตำรวจ / ประสาน", 2);
   const vehicles = await prisma.vehicle.findMany({ select: { id: true, licensePlate: true } });
 
-  const personnelLinks: {
-    personnelId: string;
-    personnelRoleId: string;
-    compensationRate: Prisma.Decimal;
-  }[] = [];
-  const seenPersonnel = new Set<string>();
-  let reusedCount = 0;
-  let createdCount = 0;
-
-  for (const row of data.farab) {
-    const fullName = `${row.firstName} ${row.lastName}`.replace(/\s+/g, " ").trim();
-    const idNumber = row.empCode || `SEED-FARAB-APR69-${row.seq}`;
-    const { id: personnelId, reused } = await ensurePersonnel({
-      fullName,
-      idNumber,
-      rank: row.rank,
-      position: row.position,
-      orgUnitId: orgFarab,
+  const { personnelLinks, missionStationLinks, reusedCount, createdCount, policePayTotal } =
+    await buildTripPersonnelLinks(prisma, {
+      farab: data.farab,
+      police: data.police,
+      roleId,
+      idPrefix: "APR69S",
     });
-    if (reused) reusedCount++;
-    else createdCount++;
-    if (seenPersonnel.has(personnelId)) {
-      console.warn(`  ข้ามซ้ำในทริปนี้: ${fullName}`);
-      continue;
-    }
-    seenPersonnel.add(personnelId);
-    personnelLinks.push({
-      personnelId,
-      personnelRoleId: roleId(missionRoleFromFarabPosition(row.position)),
-      compensationRate: new Prisma.Decimal(row.total),
-    });
-    console.log(`  ฝรภ. ${row.seq}. ${row.rank} ${fullName} · ${row.total}${reused ? " (มีอยู่แล้ว)" : " (สร้างใหม่)"}`);
-  }
-
-  for (const row of data.police.filter((p) => p.isPerson)) {
-    const fullName = `${row.firstName} ${row.lastName}`.replace(/\s+/g, " ").trim();
-    const idNumber =
-      row.idNumber.length >= 12 ? row.idNumber : `SEED-POLICE-APR69-${row.seq}-${row.idNumber}`;
-    const { id: personnelId, reused } = await ensurePersonnel({
-      fullName,
-      idNumber,
-      rank: row.rank,
-      position: row.unit,
-      orgUnitId: orgPolice,
-    });
-    if (reused) reusedCount++;
-    else createdCount++;
-    if (seenPersonnel.has(personnelId)) {
-      console.warn(`  ข้ามซ้ำในทริปนี้: ${fullName}`);
-      continue;
-    }
-    seenPersonnel.add(personnelId);
-    personnelLinks.push({
-      personnelId,
-      personnelRoleId: roleId(missionRoleFromPoliceUnit(row.unit)),
-      compensationRate: new Prisma.Decimal(row.amount),
-    });
-    console.log(`  ตร. ${row.seq}. ${row.rank} ${fullName} · ${row.amount}${reused ? " (มีอยู่แล้ว)" : " (สร้างใหม่)"}`);
-  }
+  console.log(`ค่าตอบแทนตำรวจจากไฟล์รวม ${policePayTotal.toLocaleString("th-TH")} บาท`);
 
   const fuelByVehicle = new Map<
     string,
@@ -411,6 +376,7 @@ async function main() {
   await prisma.$transaction(async (tx) => {
     await tx.missionPersonnel.deleteMany({ where: { missionId: mission.id } });
     await tx.missionVehicle.deleteMany({ where: { missionId: mission.id } });
+    await tx.missionPoliceStation.deleteMany({ where: { missionId: mission.id } });
 
     if (fuelExpenseType) {
       await tx.missionExpense.deleteMany({
@@ -432,12 +398,13 @@ async function main() {
       data: {
         personnel: { create: personnelLinks },
         vehicles: { create: vehicleLinks },
+        policeStations: { create: missionStationLinks },
       },
     });
   });
 
   console.log(
-    `\nอัปเดต ${MISSION_CODE}: บุคคล ${personnelLinks.length} · รถ/น้ำมัน ${vehicleLinks.length} คัน · ค่าน้ำมัน ${data.fuelTotalBaht.toLocaleString("th-TH")} บาท`,
+    `\nอัปเดต ${MISSION_CODE}: บุคคล ${personnelLinks.length} · สถานี/หน่วยงาน ${missionStationLinks.length} · รถ/น้ำมัน ${vehicleLinks.length} คัน · ค่าน้ำมัน ${data.fuelTotalBaht.toLocaleString("th-TH")} บาท`,
   );
   console.log(`บุคลากร: ใช้ของเดิม ${reusedCount} · สร้างใหม่ ${createdCount} (ไม่ซ้ำในทะเบียน)`);
   console.log("หมายเหตุ: หมวดค่าใช้จ่ายอื่นจากสถิติ Trip คงไว้ · ค่าตอบแทนผูกที่อัตราบุคลากรรายคน");
