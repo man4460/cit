@@ -274,6 +274,7 @@ export function Dashboard() {
     <div className="overview-a4-print">
       <PageHeaderBar
         title={`สถิติภารกิจ — พ.ศ. ${selectedYear + 543}`}
+        count={filteredYearStatItems.length}
         filter={{
           value: listFilter,
           onChange: setListFilter,

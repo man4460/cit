@@ -34,13 +34,13 @@ model OrganizationUnitType {
 }
 
 model Personnel {
-  id        String  @id @default(uuid())
-  photoUrl  String?
-  fullName  String
-  idNumber  String  @unique
-  rank      String?
-  position  String?
-  phone     String?
+  id       String  @id @default(uuid())
+  photoUrl String?
+  fullName String
+  idNumber String  @unique
+  rank     String?
+  position String?
+  phone    String?
 
   personnelCategoryId String?
   personnelCategory   PersonnelCategory? @relation(fields: [personnelCategoryId], references: [id], onDelete: SetNull)
@@ -51,18 +51,18 @@ model Personnel {
   insuranceCompany      String?
   insurancePolicyNumber String?
   insuranceExpiry       DateTime?
-  insuranceNotes        String? @db.Text
+  insuranceNotes        String?   @db.Text
 
-  remarks   String? @db.Text
+  remarks   String?  @db.Text
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  beneficiaries         PersonnelBeneficiary[]
-  missionAssignments    MissionPersonnel[]
-  assetsAudited         Asset[]                @relation("AssetAuditor")
-  inspections               AssetInspection[]
-  armorMonthlyInspections   ArmorMonthlyInspection[]
-  trainingEnrollments       TrainingEnrollment[]
+  beneficiaries           PersonnelBeneficiary[]
+  missionAssignments      MissionPersonnel[]
+  assetsAudited           Asset[]                  @relation("AssetAuditor")
+  inspections             AssetInspection[]
+  armorMonthlyInspections ArmorMonthlyInspection[]
+  trainingEnrollments     TrainingEnrollment[]
 }
 
 // --- ทะเบียนการอบรม ---
@@ -83,16 +83,16 @@ model TrainingCourse {
 }
 
 model TrainingEnrollment {
-  id                 String               @id @default(uuid())
-  personnelId        String
-  personnel          Personnel            @relation(fields: [personnelId], references: [id], onDelete: Cascade)
-  trainingCourseId   String
-  trainingCourse     TrainingCourse       @relation(fields: [trainingCourseId], references: [id], onDelete: Restrict)
-  trainingStartDate  DateTime
-  trainingEndDate    DateTime
-  status             TrainingResultStatus @default(PASSED)
-  createdAt          DateTime             @default(now())
-  updatedAt          DateTime             @updatedAt
+  id                String               @id @default(uuid())
+  personnelId       String
+  personnel         Personnel            @relation(fields: [personnelId], references: [id], onDelete: Cascade)
+  trainingCourseId  String
+  trainingCourse    TrainingCourse       @relation(fields: [trainingCourseId], references: [id], onDelete: Restrict)
+  trainingStartDate DateTime
+  trainingEndDate   DateTime
+  status            TrainingResultStatus @default(PASSED)
+  createdAt         DateTime             @default(now())
+  updatedAt         DateTime             @updatedAt
 }
 
 model PersonnelBeneficiary {
@@ -142,13 +142,13 @@ model WorkCategoryGroup {
 }
 
 model VehicleStatus {
-  id        String   @id @default(uuid())
-  name      String   @unique
-  sortOrder Int      @default(0)
+  id                    String   @id @default(uuid())
+  name                  String   @unique
+  sortOrder             Int      @default(0)
   /// true = ไม่นับในยอดตรวจ/ดูแล (จำหน่าย ส่งคืน ฯลฯ)
-  excludesFromFleetCare Boolean @default(false)
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  excludesFromFleetCare Boolean  @default(false)
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
 
   vehicles Vehicle[]
 }
@@ -185,10 +185,10 @@ model Vehicle {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  documents       VehicleDocument[]
-  maintenanceLogs MaintenanceLog[]
-  fuelLogs        FuelConsumptionLog[]
-  missionVehicles MissionVehicle[]
+  documents         VehicleDocument[]
+  maintenanceLogs   MaintenanceLog[]
+  fuelLogs          FuelConsumptionLog[]
+  missionVehicles   MissionVehicle[]
   weeklyInspections VehicleWeeklyInspection[]
   dispositionLogs   VehicleDispositionLog[]
 }
@@ -200,24 +200,24 @@ enum DispositionKind {
 }
 
 model VehicleDispositionLog {
-  id             String          @id @default(uuid())
-  vehicleId      String
-  vehicle        Vehicle         @relation(fields: [vehicleId], references: [id], onDelete: Cascade)
-  kind           DispositionKind
-  statusName     String
-  licensePlate   String
-  brandModel     String
-  note           String?
-  actorUserId    String?
-  actorUsername  String?
-  recordedAt     DateTime        @default(now())
+  id            String          @id @default(uuid())
+  vehicleId     String
+  vehicle       Vehicle         @relation(fields: [vehicleId], references: [id], onDelete: Cascade)
+  kind          DispositionKind
+  statusName    String
+  licensePlate  String
+  brandModel    String
+  note          String?
+  actorUserId   String?
+  actorUsername String?
+  recordedAt    DateTime        @default(now())
 }
 
 /// บันทึกตรวจยานพาหนะประจำสัปดาห์ (หนึ่งแถวต่อคัน ต่อวันอ้างอิงสัปดาห์)
 model VehicleWeeklyInspection {
-  id        String   @id @default(uuid())
-  vehicleId String
-  vehicle   Vehicle  @relation(fields: [vehicleId], references: [id], onDelete: Cascade)
+  id             String   @id @default(uuid())
+  vehicleId      String
+  vehicle        Vehicle  @relation(fields: [vehicleId], references: [id], onDelete: Cascade)
   /// วันอ้างอิงสัปดาห์ (เก็บเป็น UTC เที่ยงของวันที่เลือก ให้ unique ต่อคัน)
   inspectionDate DateTime
 
@@ -255,7 +255,7 @@ model MaintenanceLog {
   vehicleId String
   vehicle   Vehicle  @relation(fields: [vehicleId], references: [id], onDelete: Cascade)
   date      DateTime
-  detail    String  @db.Text
+  detail    String   @db.Text
   cost      Decimal
   createdAt DateTime @default(now())
 }
@@ -287,9 +287,11 @@ model DocumentType {
 model LibraryDocument {
   id             String        @id @default(uuid())
   title          String
-  details        String   @db.Text
-  /** ข้อความถอดจากไฟล์ (PDF / รูป OCR / ข้อความล้วน) */
-  extractedText  String?  @db.LongText
+  details        String        @db.Text
+  /**
+   * ข้อความถอดจากไฟล์ (PDF / รูป OCR / ข้อความล้วน)
+   */
+  extractedText  String?       @db.LongText
   documentTypeId String?
   documentType   DocumentType? @relation(fields: [documentTypeId], references: [id], onDelete: Restrict)
   fileUrl        String?
@@ -316,7 +318,9 @@ model FireExtinguisher {
   updatedAt      DateTime  @updatedAt
 }
 
-/** ตู้สายดับเพลิง / โฮสต์อัคคีภัย (จาก FireHost.csv) */
+/**
+ * ตู้สายดับเพลิง / โฮสต์อัคคีภัย (จาก FireHost.csv)
+ */
 model FireHost {
   id        String   @id @default(uuid())
   code      String   @unique
@@ -329,7 +333,9 @@ model FireHost {
   updatedAt DateTime @updatedAt
 }
 
-/** เสื้อเกราะกันกระสุน (จาก bulletproof_vest.csv) */
+/**
+ * เสื้อเกราะกันกระสุน (จาก bulletproof_vest.csv)
+ */
 model BulletproofVest {
   id              String    @id @default(uuid())
   code            String    @unique
@@ -349,12 +355,14 @@ model BulletproofVest {
   updatedAt       DateTime  @updatedAt
 }
 
-/** อาวุธปืน (จาก Gun.csv) */
+/**
+ * อาวุธปืน (จาก Gun.csv)
+ */
 model Firearm {
   id           String    @id @default(uuid())
   code         String    @unique
   costCenter   String?
-  brand        String     @db.VarChar(512)
+  brand        String    @db.VarChar(512)
   serial       String?
   registerNo   String?
   registerCard String?
@@ -371,7 +379,9 @@ model Firearm {
   updatedAt    DateTime  @updatedAt
 }
 
-/** กระสุนปืน — สต๊อกรายล็อตตามวันจัดซื้อ (อายุ 5 ปี) */
+/**
+ * กระสุนปืน — สต๊อกรายล็อตตามวันจัดซื้อ (อายุ 5 ปี)
+ */
 model Ammunition {
   id           String     @id @default(uuid())
   sourceKey    String     @unique
@@ -449,13 +459,13 @@ model AssetAffiliation {
 
 /// สถานะครุภัณฑ์
 model AssetItemStatus {
-  id        String   @id @default(uuid())
-  name      String   @unique
-  sortOrder Int      @default(0)
+  id                    String   @id @default(uuid())
+  name                  String   @unique
+  sortOrder             Int      @default(0)
   /// true = ไม่นับในยอดตรวจ/ดูแล (จำหน่าย ส่งคืน ฯลฯ)
-  excludesFromFleetCare Boolean @default(false)
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  excludesFromFleetCare Boolean  @default(false)
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
 
   assets Asset[]
 }
@@ -478,23 +488,23 @@ model Asset {
   deviceModel String?
 
   /// ลำดับในทะเบียน (เช่น ทะเบียนควบคุมยุทธภัณฑ์)
-  registryLineNo Int?
+  registryLineNo   Int?
   /// ระดับการป้องกัน (เช่น 2)
-  armorLevel          String?
+  armorLevel       String?
   /// แบบ (เช่น สวมทับใน)
-  armorWearStyle      String?
+  armorWearStyle   String?
   /// รุ่น (เช่น CONCEAL)
-  armorModel          String?
+  armorModel       String?
   /// หมายเลขชิ้น (เช่น 001)
-  armorUnitNumber     String?
+  armorUnitNumber  String?
   /// เลขที่หนังสืออนุญาต
-  permitDocumentNo    String?
+  permitDocumentNo String?
   /// วันหมดอายุใบอนุญาต (แยกจากวันหมดอายุตามทะเบียนครุภัณฑ์)
-  permitExpiresAt     DateTime?
+  permitExpiresAt  DateTime?
   /// วันจัดซื้อ
-  purchasedAt         DateTime?
+  purchasedAt      DateTime?
   /// วันหมดอายุ (ตามทะเบียน)
-  armorExpiresAt      DateTime?
+  armorExpiresAt   DateTime?
 
   assetCategoryId String?
   assetCategory   AssetCategory? @relation(fields: [assetCategoryId], references: [id], onDelete: SetNull)
@@ -516,10 +526,10 @@ model Asset {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  documents                 AssetDocument[]
-  inspections               AssetInspection[]
-  dispositionLogs           AssetDispositionLog[]
-  armorMonthlyInspections   ArmorMonthlyInspection[]
+  documents               AssetDocument[]
+  inspections             AssetInspection[]
+  dispositionLogs         AssetDispositionLog[]
+  armorMonthlyInspections ArmorMonthlyInspection[]
 }
 
 model AssetDispositionLog {
@@ -549,23 +559,23 @@ model AssetDocument {
 }
 
 model AssetInspection {
-  id            String    @id @default(uuid())
-  assetId       String
-  asset         Asset     @relation(fields: [assetId], references: [id], onDelete: Cascade)
-  personnelId   String?
-  personnel     Personnel? @relation(fields: [personnelId], references: [id], onDelete: SetNull)
-  status        String    @default("OK")
-  notes         String?   @db.Text
-  inspectedAt   DateTime  @default(now())
+  id          String     @id @default(uuid())
+  assetId     String
+  asset       Asset      @relation(fields: [assetId], references: [id], onDelete: Cascade)
+  personnelId String?
+  personnel   Personnel? @relation(fields: [personnelId], references: [id], onDelete: SetNull)
+  status      String     @default("OK")
+  notes       String?    @db.Text
+  inspectedAt DateTime   @default(now())
 }
 
 /// ตรวจสอบสภาพเสื้อเกราะ / ยุทธภัณฑ์ป้องกัน — บันทึกรายเดือน (เดือนละหนึ่งแถวต่อครุภัณฑ์)
 model ArmorMonthlyInspection {
-  id       String @id @default(uuid())
-  assetId  String
-  asset    Asset  @relation(fields: [assetId], references: [id], onDelete: Cascade)
+  id      String @id @default(uuid())
+  assetId String
+  asset   Asset  @relation(fields: [assetId], references: [id], onDelete: Cascade)
   /// ปี-เดือน เช่น 2026-04
-  monthYm  String
+  monthYm String
 
   outerShell         VehicleWeeklyCheckResult?
   strapsFasteners    VehicleWeeklyCheckResult?
@@ -573,7 +583,7 @@ model ArmorMonthlyInspection {
   cleanlinessStorage VehicleWeeklyCheckResult?
   overallReadiness   VehicleWeeklyCheckResult?
 
-  remarks       String? @db.Text
+  remarks       String?    @db.Text
   inspectorName String?
   personnelId   String?
   personnel     Personnel? @relation(fields: [personnelId], references: [id], onDelete: SetNull)
@@ -682,9 +692,9 @@ model MissionAttachment {
 }
 
 model MissionPersonnel {
-  id          String   @id @default(uuid())
+  id          String    @id @default(uuid())
   missionId   String
-  mission     Mission  @relation(fields: [missionId], references: [id], onDelete: Cascade)
+  mission     Mission   @relation(fields: [missionId], references: [id], onDelete: Cascade)
   personnelId String
   personnel   Personnel @relation(fields: [personnelId], references: [id], onDelete: Cascade)
 
@@ -698,11 +708,11 @@ model MissionPersonnel {
 }
 
 model MissionVehicle {
-  id        String   @id @default(uuid())
+  id        String  @id @default(uuid())
   missionId String
-  mission   Mission  @relation(fields: [missionId], references: [id], onDelete: Cascade)
+  mission   Mission @relation(fields: [missionId], references: [id], onDelete: Cascade)
   vehicleId String
-  vehicle   Vehicle  @relation(fields: [vehicleId], references: [id], onDelete: Cascade)
+  vehicle   Vehicle @relation(fields: [vehicleId], references: [id], onDelete: Cascade)
 
   vehicleRoleId String
   vehicleRole   MissionVehicleRoleMaster @relation(fields: [vehicleRoleId], references: [id], onDelete: Restrict)
@@ -715,25 +725,25 @@ model MissionVehicle {
 }
 
 model MissionDestination {
-  id             String   @id @default(uuid())
+  id             String  @id @default(uuid())
   missionId      String
-  mission        Mission  @relation(fields: [missionId], references: [id], onDelete: Cascade)
-  sortOrder      Int      @default(0)
+  mission        Mission @relation(fields: [missionId], references: [id], onDelete: Cascade)
+  sortOrder      Int     @default(0)
   address        String
-  cargoValue     Decimal  @default(0)
-  containerCount Int      @default(0)
+  cargoValue     Decimal @default(0)
+  containerCount Int     @default(0)
 }
 
 model MissionExpense {
-  id          String   @id @default(uuid())
-  missionId   String
-  mission     Mission  @relation(fields: [missionId], references: [id], onDelete: Cascade)
+  id        String  @id @default(uuid())
+  missionId String
+  mission   Mission @relation(fields: [missionId], references: [id], onDelete: Cascade)
 
   expenseTypeId String
   expenseType   MissionExpenseTypeMaster @relation(fields: [expenseTypeId], references: [id], onDelete: Restrict)
 
   amount      Decimal
-  description String? @db.Text
+  description String?  @db.Text
   incurredAt  DateTime @default(now())
 }
 
@@ -761,12 +771,12 @@ enum BudgetFundingType {
 }
 
 model BudgetFiscalYear {
-  id        String                  @id @default(uuid())
-  yearBe    Int                     @unique
-  status    BudgetFiscalYearStatus  @default(ACTIVE)
-  notes     String?                 @db.Text
-  createdAt DateTime                @default(now())
-  updatedAt DateTime                @updatedAt
+  id        String                 @id @default(uuid())
+  yearBe    Int                    @unique
+  status    BudgetFiscalYearStatus @default(ACTIVE)
+  notes     String?                @db.Text
+  createdAt DateTime               @default(now())
+  updatedAt DateTime               @updatedAt
 
   lines BudgetYearLine[]
 }
@@ -784,19 +794,19 @@ model BudgetDocumentCategory {
 
 /// เอกสารประกอบงบตาม bucket (ปี 2569 / 2570 / …)
 model BudgetDocument {
-  id           String   @id @default(uuid())
+  id           String                  @id @default(uuid())
   /// "2569" | "2570" | …
   bucketKey    String
   title        String
-  notes        String?  @db.Text
+  notes        String?                 @db.Text
   categoryId   String?
   category     BudgetDocumentCategory? @relation(fields: [categoryId], references: [id], onDelete: Restrict)
   fileUrl      String
   mimeType     String?
   originalName String?
-  sortOrder    Int      @default(0)
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
+  sortOrder    Int                     @default(0)
+  createdAt    DateTime                @default(now())
+  updatedAt    DateTime                @updatedAt
 
   @@index([bucketKey])
   @@index([categoryId])
@@ -843,25 +853,25 @@ model BudgetAccount {
 }
 
 model BudgetYearLine {
-  id               String             @id @default(uuid())
+  id               String            @id @default(uuid())
   fiscalYearId     String
-  fiscalYear       BudgetFiscalYear   @relation(fields: [fiscalYearId], references: [id], onDelete: Cascade)
+  fiscalYear       BudgetFiscalYear  @relation(fields: [fiscalYearId], references: [id], onDelete: Cascade)
   accountId        String
-  account          BudgetAccount      @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  account          BudgetAccount     @relation(fields: [accountId], references: [id], onDelete: Cascade)
   /// ANNUAL = งบประจำปีนั้น · COMMITMENT = งบผูกพันของปีอ้างอิง
-  fundingType      BudgetFundingType  @default(ANNUAL)
-  allocatedAmount  Decimal            @default(0)
-  carryInAmount    Decimal            @default(0)
+  fundingType      BudgetFundingType @default(ANNUAL)
+  allocatedAmount  Decimal           @default(0)
+  carryInAmount    Decimal           @default(0)
   /// ยอดผูกพันสำรอง (ใช้เมื่อ fundingType=ANNUAL และมีคอลัมน์คู่ขนาน) — รายการ COMMITMENT ใส่ยอดใน allocatedAmount
-  commitmentAmount Decimal            @default(0)
+  commitmentAmount Decimal           @default(0)
   buyerName        String?
   requestingUnit   String?
   quantity         String?
   /// ลิงก์เอกสารประกอบ (URL)
-  documentUrl      String?            @db.Text
-  notes            String?            @db.Text
-  createdAt        DateTime           @default(now())
-  updatedAt        DateTime           @updatedAt
+  documentUrl      String?           @db.Text
+  notes            String?           @db.Text
+  createdAt        DateTime          @default(now())
+  updatedAt        DateTime          @updatedAt
 
   snapshots    BudgetSpendSnapshot[]
   transactions BudgetTransaction[]
@@ -968,18 +978,18 @@ enum WorkTaskStatus {
 }
 
 model WorkTask {
-  id          String         @id @default(uuid())
+  id          String          @id @default(uuid())
   title       String
-  notionUrl   String?        @db.Text
-  description String?        @db.Text
+  notionUrl   String?         @db.Text
+  description String?         @db.Text
   startsAt    DateTime?
   endsAt      DateTime?
   location    String?
   recordedBy  String?
-  status      WorkTaskStatus @default(TODO)
-  sortOrder   Int            @default(0)
-  createdAt   DateTime       @default(now())
-  updatedAt   DateTime       @updatedAt
+  status      WorkTaskStatus  @default(TODO)
+  sortOrder   Int             @default(0)
+  createdAt   DateTime        @default(now())
+  updatedAt   DateTime        @updatedAt
   photos      WorkTaskPhoto[]
 }
 
@@ -997,34 +1007,313 @@ model WorkTaskPhoto {
 // --- เหตุการณ์ไม่ปกติ (Security Incident Report) ---
 
 model SecurityIncident {
-  id                   String    @id @default(uuid())
-  externalId           Int       @unique
-  title                String    @db.Text
-  location             String?
-  incidentAt           DateTime?
-  timeOfIncident       DateTime?
-  incidentType         String?
-  impactLevel          String?   @db.Text
-  statusResolved       Boolean   @default(false)
-  impactTypes          String?   @db.Text
-  damageValue          String?   @db.Text
-  cause                String?   @db.LongText
-  details              String?   @db.LongText
-  actionExecuted       String?   @db.LongText
-  preventiveSolutions  String?   @db.LongText
-  commanderOrder       String?   @db.LongText
-  linkBotShare         String?   @db.Text
-  reportingOfficer     String?   @db.Text
-  createdBy            String?
-  sourceCreatedAt      DateTime?
-  sourceModifiedBy     String?
-  sourceModifiedAt     DateTime?
-  attachmentsCount     Int       @default(0)
-  createdAt            DateTime  @default(now())
-  updatedAt            DateTime  @updatedAt
+  id                  String    @id @default(uuid())
+  externalId          Int       @unique
+  title               String    @db.Text
+  location            String?
+  incidentAt          DateTime?
+  timeOfIncident      DateTime?
+  incidentType        String?
+  impactLevel         String?   @db.Text
+  statusResolved      Boolean   @default(false)
+  impactTypes         String?   @db.Text
+  damageValue         String?   @db.Text
+  cause               String?   @db.LongText
+  details             String?   @db.LongText
+  actionExecuted      String?   @db.LongText
+  preventiveSolutions String?   @db.LongText
+  commanderOrder      String?   @db.LongText
+  linkBotShare        String?   @db.Text
+  reportingOfficer    String?   @db.Text
+  createdBy           String?
+  sourceCreatedAt     DateTime?
+  sourceModifiedBy    String?
+  sourceModifiedAt    DateTime?
+  attachmentsCount    Int       @default(0)
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
 
   @@index([incidentAt])
   @@index([incidentType])
   @@index([location])
   @@index([statusResolved])
+}
+
+// --- สืบสวนและประมวลข่าว (Investigation & Intelligence) ---
+
+enum InvestigationCategoryKind {
+  STRATEGIC
+  BAU
+}
+
+enum InvestigationCaseStatus {
+  DRAFT
+  PENDING_APPROVAL
+  OPEN
+  IN_PROGRESS
+  PENDING_EXTERNAL
+  REPORT_SUBMITTED
+  CLOSED
+  ARCHIVED
+  REJECTED
+}
+
+/// ตำแหน่งตามสายงานสืบสวน — ใช้จัดลำดับการอนุมัติ
+enum InvestigationOrgRole {
+  DIRECTOR
+  DEPUTY_DIRECTOR
+  ASSISTANT_DIRECTOR
+  INVESTIGATOR
+}
+
+enum InvestigationIssueStatus {
+  OPEN
+  IN_PROGRESS
+  DONE
+  DROPPED
+}
+
+enum InvestigationDocumentKind {
+  EVIDENCE
+  REPORT
+  ATTACHMENT
+}
+
+enum InvestigationApprovalStage {
+  CASE_OPEN
+  FINAL_REPORT
+}
+
+enum InvestigationApprovalDecision {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+enum MailOutboxStatus {
+  QUEUED
+  SENT
+  FAILED
+}
+
+model InvestigationCategory {
+  id          String  @id @default(uuid())
+  /// ชื่อหลักภาษาไทย (แฟ้มคดี / หมวดย่อย)
+  name        String
+  /// ชื่อรองภาษาอังกฤษ — แสดงเป็น subtitle ใต้ชื่อไทย
+  nameEn      String?
+  /// รหัสแฟ้มหลัก เช่น FILE-1 (เฉพาะแฟ้มหลัก ไม่ใช้กับหมวดย่อย)
+  code        String? @unique
+  /// ขอบเขตของแฟ้ม (เก็บเอกสารประเภทใดบ้าง)
+  description String? @db.Text
+
+  kind   InvestigationCategoryKind @default(BAU)
+  /// ทีมแนะนำเริ่มต้น (ไม่บังคับ) — คดีมอบหมายทีมใดก็ได้ทีละเคส
+  teamId String?
+  team   InvestigationTeam?        @relation(fields: [teamId], references: [id], onDelete: SetNull)
+
+  /// null = แฟ้มหลัก · มีค่า = หมวดย่อยภายใต้แฟ้มนั้น
+  parentId String?
+  parent   InvestigationCategory?  @relation("CategoryTree", fields: [parentId], references: [id], onDelete: Cascade)
+  children InvestigationCategory[] @relation("CategoryTree")
+
+  sortOrder Int      @default(0)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  cases    InvestigationCase[] @relation("CaseMainCategory")
+  subCases InvestigationCase[] @relation("CaseSubCategory")
+
+  @@index([parentId])
+  @@index([teamId])
+  @@index([parentId, sortOrder])
+}
+
+model InvestigationTeam {
+  id           String   @id @default(uuid())
+  name         String   @unique
+  code         String?
+  description  String?  @db.Text
+  sortOrder    Int      @default(0)
+  active       Boolean  @default(true)
+  /// หัวหน้าทีม — อ้าง InvestigationMember.id (ไม่ผูก FK เพื่อเลี่ยง cycle)
+  leadMemberId String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  members    InvestigationMember[]
+  cases      InvestigationCase[]
+  categories InvestigationCategory[]
+}
+
+model InvestigationMember {
+  id            String               @id @default(uuid())
+  teamId        String?
+  team          InvestigationTeam?   @relation(fields: [teamId], references: [id], onDelete: SetNull)
+  /// บัญชีผู้ใช้ระบบ (ถ้ามี) — ใช้จับคู่กล่องงานรออนุมัติ
+  userId        String?
+  /// ทะเบียนกำลังพล (ถ้ามี)
+  personnelId   String?
+  fullName      String
+  position      String?
+  orgRole       InvestigationOrgRole @default(INVESTIGATOR)
+  /// 1=จนท.สืบสวน 2=ผช.ผอ. 3=รอง ผอ. 4=ผอ. — ลำดับเสนอตามสายงาน
+  approvalLevel Int                  @default(1)
+  email         String?
+  phone         String?
+  active        Boolean              @default(true)
+  sortOrder     Int                  @default(0)
+  createdAt     DateTime             @default(now())
+  updatedAt     DateTime             @updatedAt
+
+  approvals      InvestigationApproval[]
+  assignedIssues InvestigationIssue[]    @relation("IssueAssignee")
+  ledCases       InvestigationCase[]     @relation("CaseLead")
+  requestedCases InvestigationCase[]     @relation("CaseRequester")
+
+  @@index([teamId, approvalLevel])
+  @@index([userId])
+}
+
+model InvestigationCase {
+  id                  String                  @id @default(uuid())
+  caseNumber          String                  @unique
+  title               String
+  summary             String?                 @db.Text
+  categoryId          String
+  category            InvestigationCategory   @relation("CaseMainCategory", fields: [categoryId], references: [id], onDelete: Restrict)
+  /// หมวดย่อยภายใต้แฟ้มหลัก (ถ้ามี)
+  subCategoryId       String?
+  subCategory         InvestigationCategory?  @relation("CaseSubCategory", fields: [subCategoryId], references: [id], onDelete: SetNull)
+  teamId              String?
+  team                InvestigationTeam?      @relation(fields: [teamId], references: [id], onDelete: SetNull)
+  leadMemberId        String?
+  leadMember          InvestigationMember?    @relation("CaseLead", fields: [leadMemberId], references: [id], onDelete: SetNull)
+  requestedByMemberId String?
+  requestedByMember   InvestigationMember?    @relation("CaseRequester", fields: [requestedByMemberId], references: [id], onDelete: SetNull)
+  status              InvestigationCaseStatus @default(DRAFT)
+  priority            Int                     @default(2)
+  slaDueAt            DateTime?
+  openedAt            DateTime                @default(now())
+  closedAt            DateTime?
+  ownerUserId         String?
+  tags                String?                 @db.Text
+
+  /// ขั้นการอนุมัติที่กำลังดำเนินอยู่ (null = ไม่มีสายอนุมัติค้าง)
+  approvalStage     InvestigationApprovalStage?
+  conclusion        String?                     @db.Text
+  recommendation    String?                     @db.Text
+  reportSubmittedAt DateTime?
+  approvedAt        DateTime?
+  archivedAt        DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  issues    InvestigationIssue[]
+  documents InvestigationDocument[]
+  approvals InvestigationApproval[]
+  events    InvestigationCaseEvent[]
+
+  @@index([categoryId, status])
+  @@index([teamId, status])
+  @@index([slaDueAt])
+  @@index([openedAt])
+}
+
+model InvestigationIssue {
+  id               String                   @id @default(uuid())
+  caseId           String
+  case             InvestigationCase        @relation(fields: [caseId], references: [id], onDelete: Cascade)
+  title            String
+  detail           String?                  @db.Text
+  status           InvestigationIssueStatus @default(OPEN)
+  assigneeMemberId String?
+  assignee         InvestigationMember?     @relation("IssueAssignee", fields: [assigneeMemberId], references: [id], onDelete: SetNull)
+  dueAt            DateTime?
+  /// ผลการสืบสวนของประเด็นนี้
+  finding          String?                  @db.Text
+  sortOrder        Int                      @default(0)
+  createdAt        DateTime                 @default(now())
+  updatedAt        DateTime                 @updatedAt
+
+  documents InvestigationDocument[]
+
+  @@index([caseId, status])
+}
+
+model InvestigationDocument {
+  id               String                    @id @default(uuid())
+  caseId           String
+  case             InvestigationCase         @relation(fields: [caseId], references: [id], onDelete: Cascade)
+  issueId          String?
+  issue            InvestigationIssue?       @relation(fields: [issueId], references: [id], onDelete: SetNull)
+  storedFilename   String
+  originalName     String?
+  mimeType         String?
+  kind             InvestigationDocumentKind @default(ATTACHMENT)
+  title            String?
+  sortOrder        Int                       @default(0)
+  uploadedByUserId String?
+  createdAt        DateTime                  @default(now())
+
+  @@index([caseId, sortOrder])
+}
+
+model InvestigationApproval {
+  id               String                        @id @default(uuid())
+  caseId           String
+  case             InvestigationCase             @relation(fields: [caseId], references: [id], onDelete: Cascade)
+  stage            InvestigationApprovalStage
+  /// ลำดับในสายงาน เริ่ม 1
+  sequence         Int
+  approverMemberId String?
+  approver         InvestigationMember?          @relation(fields: [approverMemberId], references: [id], onDelete: SetNull)
+  approverName     String?
+  approverEmail    String?
+  orgRole          InvestigationOrgRole
+  decision         InvestigationApprovalDecision @default(PENDING)
+  comment          String?                       @db.Text
+  decidedAt        DateTime?
+  decidedByUserId  String?
+  /// sha256 ของ token ในลิงก์อีเมล — เก็บเฉพาะ hash
+  tokenHash        String?                       @unique
+  tokenExpiresAt   DateTime?
+  notifiedAt       DateTime?
+  createdAt        DateTime                      @default(now())
+  updatedAt        DateTime                      @updatedAt
+
+  @@index([caseId, stage, sequence])
+  @@index([approverMemberId, decision])
+}
+
+model InvestigationCaseEvent {
+  id          String            @id @default(uuid())
+  caseId      String
+  case        InvestigationCase @relation(fields: [caseId], references: [id], onDelete: Cascade)
+  type        String
+  message     String            @db.Text
+  actorUserId String?
+  actorName   String?
+  createdAt   DateTime          @default(now())
+
+  @@index([caseId, createdAt])
+}
+
+model MailOutbox {
+  id          String           @id @default(uuid())
+  to          String
+  cc          String?
+  subject     String
+  body        String           @db.Text
+  provider    String           @default("outbox")
+  status      MailOutboxStatus @default(QUEUED)
+  error       String?          @db.Text
+  sentAt      DateTime?
+  relatedType String?
+  relatedId   String?
+  createdAt   DateTime         @default(now())
+
+  @@index([status, createdAt])
+  @@index([relatedType, relatedId])
 }

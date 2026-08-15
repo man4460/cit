@@ -575,6 +575,7 @@ export function BudgetYearPage() {
     <div className="space-y-4">
       <PageHeaderBar
         title={title}
+        count={filteredMajors.length}
         filter={{
           value: filter,
           onChange: setFilter,

@@ -314,6 +314,264 @@ export interface NameMasterRow {
   name: string;
   sortOrder: number;
   excludesFromFleetCare?: boolean;
+  /** หมวดคดีสืบสวน: STRATEGIC | BAU */
+  kind?: "STRATEGIC" | "BAU" | string;
+  /** แฟ้มคดีสืบสวน: รหัสแฟ้ม / ขอบเขต / ทีมเจ้าของ */
+  code?: string | null;
+  description?: string | null;
+  teamId?: string | null;
+  team?: { id: string; name: string; code: string | null } | null;
+}
+
+export type InvestigationCategoryKind = "STRATEGIC" | "BAU";
+
+export interface InvestigationCategory {
+  id: string;
+  name: string;
+  /** ชื่อรองภาษาอังกฤษ */
+  nameEn: string | null;
+  /** รหัสแฟ้มคดี เช่น FILE-1 (เฉพาะแฟ้มหลัก) */
+  code: string | null;
+  /** ขอบเขตของแฟ้ม — เก็บเอกสารประเภทใดบ้าง */
+  description: string | null;
+  kind: InvestigationCategoryKind;
+  /** ทีมแนะนำ (ไม่บังคับ) */
+  teamId: string | null;
+  team?: { id: string; name: string; code: string | null; sortOrder: number } | null;
+  /** null = แฟ้มหลัก */
+  parentId?: string | null;
+  children?: InvestigationCategory[];
+  _count?: { cases?: number; children?: number; subCases?: number };
+  sortOrder: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export type InvestigationCaseStatus =
+  | "DRAFT"
+  | "PENDING_APPROVAL"
+  | "OPEN"
+  | "IN_PROGRESS"
+  | "PENDING_EXTERNAL"
+  | "REPORT_SUBMITTED"
+  | "CLOSED"
+  | "ARCHIVED"
+  | "REJECTED";
+
+/** ตำแหน่งตามสายงานสืบสวน เรียงลำดับการเสนอจากล่างขึ้นบน */
+export type InvestigationOrgRole =
+  | "INVESTIGATOR"
+  | "ASSISTANT_DIRECTOR"
+  | "DEPUTY_DIRECTOR"
+  | "DIRECTOR";
+
+export type InvestigationApprovalStage = "CASE_OPEN" | "FINAL_REPORT";
+export type InvestigationApprovalDecision = "PENDING" | "APPROVED" | "REJECTED";
+export type InvestigationIssueStatus = "OPEN" | "IN_PROGRESS" | "DONE" | "DROPPED";
+export type InvestigationDocumentKind = "EVIDENCE" | "REPORT" | "ATTACHMENT";
+
+export interface InvestigationTeam {
+  id: string;
+  name: string;
+  code: string | null;
+  description: string | null;
+  sortOrder: number;
+  active: boolean;
+  leadMemberId: string | null;
+  members?: InvestigationMember[];
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface InvestigationMember {
+  id: string;
+  teamId: string | null;
+  team?: InvestigationTeam | null;
+  userId: string | null;
+  personnelId: string | null;
+  fullName: string;
+  position: string | null;
+  orgRole: InvestigationOrgRole;
+  approvalLevel: number;
+  email: string | null;
+  phone: string | null;
+  active: boolean;
+  sortOrder: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface InvestigationIssue {
+  id: string;
+  caseId: string;
+  title: string;
+  detail: string | null;
+  status: InvestigationIssueStatus;
+  assigneeMemberId: string | null;
+  assignee?: InvestigationMember | null;
+  dueAt: string | null;
+  finding: string | null;
+  sortOrder: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface InvestigationDocument {
+  id: string;
+  caseId: string;
+  issueId: string | null;
+  storedFilename: string;
+  fileUrl: string;
+  originalName: string | null;
+  mimeType: string | null;
+  kind: InvestigationDocumentKind;
+  title: string | null;
+  sortOrder: number;
+  createdAt: string;
+}
+
+export interface InvestigationApproval {
+  id: string;
+  caseId: string;
+  case?: InvestigationCase | null;
+  stage: InvestigationApprovalStage;
+  sequence: number;
+  approverMemberId: string | null;
+  approver?: InvestigationMember | null;
+  approverName: string | null;
+  approverEmail: string | null;
+  orgRole: InvestigationOrgRole;
+  decision: InvestigationApprovalDecision;
+  comment: string | null;
+  decidedAt: string | null;
+  tokenExpiresAt: string | null;
+  notifiedAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface InvestigationCaseEvent {
+  id: string;
+  caseId: string;
+  type: string;
+  message: string;
+  actorUserId: string | null;
+  actorName: string | null;
+  createdAt: string;
+}
+
+export interface InvestigationCase {
+  id: string;
+  caseNumber: string;
+  title: string;
+  summary: string | null;
+  categoryId: string;
+  category?: InvestigationCategory | null;
+  subCategoryId: string | null;
+  subCategory?: InvestigationCategory | null;
+  teamId: string | null;
+  team?: InvestigationTeam | null;
+  leadMemberId: string | null;
+  leadMember?: InvestigationMember | null;
+  requestedByMemberId: string | null;
+  requestedByMember?: InvestigationMember | null;
+  status: InvestigationCaseStatus;
+  priority: number;
+  slaDueAt: string | null;
+  openedAt: string;
+  closedAt: string | null;
+  ownerUserId: string | null;
+  tags: string | null;
+  approvalStage: InvestigationApprovalStage | null;
+  conclusion: string | null;
+  recommendation: string | null;
+  reportSubmittedAt: string | null;
+  approvedAt: string | null;
+  archivedAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface InvestigationCaseDetail extends InvestigationCase {
+  issues: InvestigationIssue[];
+  documents: InvestigationDocument[];
+  approvals: InvestigationApproval[];
+  events: InvestigationCaseEvent[];
+}
+
+export interface InvestigationStats {
+  total: number;
+  draft: number;
+  pendingApproval: number;
+  open: number;
+  inProgress: number;
+  pendingExternal: number;
+  reportSubmitted: number;
+  closed: number;
+  archived: number;
+  rejected: number;
+  active: number;
+  slaBreached: number;
+  strategic: { total: number; active: number };
+  bau: { total: number; active: number };
+  byPillar: Record<string, number>;
+  byCategory: Array<{
+    id: string;
+    name: string;
+    nameEn: string | null;
+    code: string | null;
+    kind: InvestigationCategoryKind;
+    teamId: string | null;
+    teamName: string | null;
+    childrenCount: number;
+    count: number;
+    activeCount: number;
+  }>;
+  byTeam: Array<{ id: string; name: string; code: string | null; count: number; activeCount: number }>;
+  categories: InvestigationCategory[];
+  teams: InvestigationTeam[];
+  recent: InvestigationCase[];
+}
+
+/** ข้อมูลที่หน้าอนุมัติผ่านลิงก์อีเมลได้รับ (ไม่ต้องล็อกอิน) */
+export interface InvestigationApprovalLink {
+  approvalId: string;
+  stage: InvestigationApprovalStage;
+  stageLabel: string;
+  sequence: number;
+  approverName: string | null;
+  orgRole: InvestigationOrgRole;
+  orgRoleLabel: string;
+  expiresAt: string | null;
+  case: {
+    id: string;
+    caseNumber: string;
+    title: string;
+    summary: string | null;
+    conclusion: string | null;
+    recommendation: string | null;
+    status: InvestigationCaseStatus;
+    priority: number;
+    slaDueAt: string | null;
+    openedAt: string;
+    categoryName: string | null;
+    teamName: string | null;
+    issues: Array<{
+      id: string;
+      title: string;
+      detail: string | null;
+      status: InvestigationIssueStatus;
+      finding: string | null;
+    }>;
+  };
+  previousComments: Array<{
+    sequence: number;
+    approverName: string | null;
+    orgRoleLabel: string;
+    decision: InvestigationApprovalDecision;
+    comment: string | null;
+    decidedAt: string | null;
+  }>;
 }
 
 export type DispositionKind = "DISPOSED" | "RETURNED";

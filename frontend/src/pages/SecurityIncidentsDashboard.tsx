@@ -197,6 +197,7 @@ export function SecurityIncidentsDashboard() {
     <div className="overview-a4-print">
       <PageHeaderBar
         title={`สถิติเหตุการณ์ไม่ปกติ — ${scopeLabel}`}
+        count={summaryItems.length}
         filter={{
           value: listFilter,
           onChange: setListFilter,

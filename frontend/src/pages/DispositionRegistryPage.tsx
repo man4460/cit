@@ -256,6 +256,12 @@ export function DispositionRegistryPage() {
     <div>
       <PageHeaderBar
         title="ทะเบียนจำหน่าย / ส่งคืน"
+        count={
+          filteredVehiclesRetired.length +
+          filteredVehicleLog.length +
+          filteredAssetsRetired.length +
+          filteredAssetLog.length
+        }
         filter={{
           value: listFilter,
           onChange: setListFilter,

@@ -197,7 +197,14 @@ export function ModuleDocumentsModal({ open, categoryName, canEdit = true, onClo
     ? form.mode === "create"
       ? "เพิ่มเอกสาร"
       : "แก้ไขเอกสาร"
-    : `เอกสาร · ${categoryName}`;
+    : (
+        <>
+          เอกสาร · {categoryName}
+          <span className="ml-1.5 text-[11px] font-bold tabular-nums text-slate-500">
+            ({filtered.length.toLocaleString("th-TH")})
+          </span>
+        </>
+      );
 
   return (
     <Modal open={open} onClose={handleClose} title={modalTitle} size="wide">

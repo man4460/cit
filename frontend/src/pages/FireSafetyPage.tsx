@@ -830,6 +830,7 @@ export function FireSafetyPage() {
     <div>
       <PageHeaderBar
         title="อัคคีภัย"
+        count={listTotal}
         filter={{
           value: listFilter,
           onChange: setListFilter,

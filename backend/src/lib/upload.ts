@@ -139,6 +139,12 @@ export type PersistUploadOptions = {
   module: string;
   userId?: string | null;
   kind?: string;
+  /** slug หมวด เช่น budget / armor — ใช้แยกโฟลเดอร์และชื่อไฟล์ */
+  categorySlug?: string;
+  /** ชื่อหมวดภาษาไทย สำหรับประกอบชื่อที่แสดง */
+  categoryLabel?: string;
+  /** ชื่อรายการที่ผู้ใช้ตั้ง — ใช้เป็นชื่อแสดงแทนชื่อไฟล์เดิม */
+  displayTitle?: string;
   /** บังคับประมวลผลเป็นรูป (ย่อ/JPEG) — ถ้าไม่ใช่รูปจะ error */
   forceImage?: boolean;
   /** อนุญาต PDF ด้วย (เอกสาร) */
@@ -160,7 +166,7 @@ export type PersistedUpload = {
 
 /**
  * บันทึกไฟล์จาก multer memoryStorage:
- * พาธ `/uploads/{module}/{user}/{module}-{user}-[{kind}-]{ts}-{rand}.{ext}`
+ * พาธ `/uploads/{module}/[{category}/]{user}/{module}-[{category}-]{user}-[{kind}-]{ts}-{rand}.{ext}`
  * รูปจะถูกย่อขอบยาวไม่เกิน 1600 และบีบ JPEG
  */
 export async function persistUpload(
@@ -174,6 +180,9 @@ export async function persistUpload(
   const userId = opts.userId?.trim() || "system";
   const moduleSeg = resolveModuleUploadSegment(opts.module);
   const userSeg = resolveUserUploadSegment(userId);
+  const categorySlug = opts.categorySlug?.trim()
+    ? resolveModuleUploadSegment(opts.categorySlug)
+    : "";
   const rawType = (file.mimetype || "").trim().toLowerCase();
   const looksPdf = rawType === "application/pdf" || isPdfBuffer(buf);
   const looksImage =
@@ -234,16 +243,26 @@ export async function persistUpload(
     ownerUserId: userId,
     ext,
     kind: opts.kind,
+    categorySlug: categorySlug || undefined,
   });
 
-  const dir = path.join(uploadDir, moduleSeg, userSeg);
+  const dir = categorySlug
+    ? path.join(uploadDir, moduleSeg, categorySlug, userSeg)
+    : path.join(uploadDir, moduleSeg, userSeg);
   ensureUploadDir();
   fs.mkdirSync(dir, { recursive: true });
   const full = path.join(dir, storedFileName);
   fs.writeFileSync(full, outBuf);
 
-  const relativePath = `${moduleSeg}/${userSeg}/${storedFileName}`;
-  const displayName = suggestUploadDisplayName(originalDecoded) || normalizeUploadDisplayName(originalDecoded);
+  const relativePath = categorySlug
+    ? `${moduleSeg}/${categorySlug}/${userSeg}/${storedFileName}`
+    : `${moduleSeg}/${userSeg}/${storedFileName}`;
+
+  const fromOriginal = suggestUploadDisplayName(originalDecoded) || normalizeUploadDisplayName(originalDecoded);
+  const fromTitle = normalizeUploadDisplayName(opts.displayTitle ?? "");
+  const label = (opts.categoryLabel ?? "").trim();
+  const baseName = fromTitle || fromOriginal || storedFileName;
+  const displayName = normalizeUploadDisplayName(label ? `[${label}] ${baseName}` : baseName) || baseName;
 
   return {
     relativePath,

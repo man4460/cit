@@ -392,6 +392,7 @@ export function AssetsPage() {
     <div>
       <PageHeaderBar
         title="วัสดุทั่วไป"
+        count={filteredRows.length}
         filter={{
           value: listFilter,
           onChange: setListFilter,

@@ -167,6 +167,12 @@ export const NavIcons = {
       <path strokeLinecap="round" strokeLinejoin="round" d="M4 4h6v6H4V4zm10 0h6v6h-6V4zM4 14h6v6H4v-6zm10 3h3v3h-3v-3zm3-3h3v2h-2v1h-1v-3zm-3 0h2v2h-2V14z" />
     </Svg>
   ),
+  search: (p: IconProps) => (
+    <Svg {...p}>
+      <circle cx="11" cy="11" r="6.5" />
+      <path strokeLinecap="round" strokeLinejoin="round" d="M16.5 16.5L21 21" />
+    </Svg>
+  ),
 } as const;
 
 export type NavIconKey = keyof typeof NavIcons;
@@ -229,6 +235,13 @@ export const GROUP_TONES: Record<string, NavTone> = {
     ring: "ring-indigo-500/25",
     bar: "from-indigo-500 via-violet-500 to-fuchsia-500",
   },
+  investigation: {
+    icon: "search",
+    text: "text-cyan-800",
+    chip: "bg-cyan-500/12 text-cyan-800 ring-cyan-500/25",
+    ring: "ring-cyan-500/25",
+    bar: "from-cyan-600 via-sky-500 to-indigo-500",
+  },
   admin: {
     icon: "admin",
     text: "text-slate-700",
@@ -276,6 +289,30 @@ const ITEM_VISUALS: ({ match: RegExp } & ItemVisual)[] = [
   { match: /^\/weapons/, icon: "gun", tone: "text-slate-700", chip: "bg-slate-500/12 text-slate-700 ring-slate-500/25" },
   { match: /fire-safety/, icon: "fire", tone: "text-rose-600", chip: "bg-rose-500/12 text-rose-600 ring-rose-500/25" },
   { match: /^\/documents/, icon: "folder", tone: "text-indigo-600", chip: "bg-indigo-500/12 text-indigo-600 ring-indigo-500/25" },
+  {
+    match: /^\/investigation\/cases/,
+    icon: "folder",
+    tone: "text-cyan-700",
+    chip: "bg-cyan-500/12 text-cyan-700 ring-cyan-500/25",
+  },
+  {
+    match: /^\/investigation\/approvals/,
+    icon: "shield",
+    tone: "text-amber-700",
+    chip: "bg-amber-500/12 text-amber-700 ring-amber-500/25",
+  },
+  {
+    match: /^\/investigation\/teams/,
+    icon: "users",
+    tone: "text-cyan-700",
+    chip: "bg-cyan-500/12 text-cyan-700 ring-cyan-500/25",
+  },
+  {
+    match: /^\/investigation/,
+    icon: "search",
+    tone: "text-cyan-700",
+    chip: "bg-cyan-500/12 text-cyan-700 ring-cyan-500/25",
+  },
   { match: /^\/admin/, icon: "user", tone: "text-[#4d47b6]", chip: "bg-[#4d47b6]/12 text-[#4d47b6] ring-[#4d47b6]/25" },
   {
     match: /audit-trail/,

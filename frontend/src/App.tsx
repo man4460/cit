@@ -30,6 +30,13 @@ import { SecurityIncidentsPage } from "./pages/SecurityIncidentsPage";
 import { SecurityIncidentsDashboard } from "./pages/SecurityIncidentsDashboard";
 import { BudgetOverviewPage } from "./pages/budget/BudgetOverviewPage";
 import { BudgetYearPage } from "./pages/budget/BudgetYearPage";
+import { InvestigationDashboardPage } from "./pages/investigation/InvestigationDashboardPage";
+import { InvestigationCasesPage } from "./pages/investigation/InvestigationCasesPage";
+import { InvestigationCaseDetailPage } from "./pages/investigation/InvestigationCaseDetailPage";
+import { InvestigationCaseReportPage } from "./pages/investigation/InvestigationCaseReportPage";
+import { InvestigationApprovalsPage } from "./pages/investigation/InvestigationApprovalsPage";
+import { InvestigationTeamsPage } from "./pages/investigation/InvestigationTeamsPage";
+import { ApprovalLinkPage } from "./pages/ApprovalLinkPage";
 
 export default function App() {
   return (
@@ -37,6 +44,8 @@ export default function App() {
       <AuthProvider>
         <Routes>
           <Route path="/login" element={<LoginPage />} />
+          {/* อนุมัติผ่านลิงก์อีเมล — ไม่ต้องเข้าสู่ระบบ */}
+          <Route path="/approve/:token" element={<ApprovalLinkPage />} />
           <Route element={<ProtectedRoute />}>
             <Route element={<Shell />}>
               <Route index element={<Dashboard />} />
@@ -58,6 +67,12 @@ export default function App() {
               <Route path="activities" element={<ActivitiesPage />} />
               <Route path="security-incidents/dashboard" element={<SecurityIncidentsDashboard />} />
               <Route path="security-incidents" element={<SecurityIncidentsPage />} />
+              <Route path="investigation" element={<InvestigationDashboardPage />} />
+              <Route path="investigation/cases" element={<InvestigationCasesPage />} />
+              <Route path="investigation/cases/:caseId" element={<InvestigationCaseDetailPage />} />
+              <Route path="investigation/cases/:caseId/report" element={<InvestigationCaseReportPage />} />
+              <Route path="investigation/approvals" element={<InvestigationApprovalsPage />} />
+              <Route path="investigation/teams" element={<InvestigationTeamsPage />} />
               <Route path="budget" element={<Navigate to="/budget/overview/2569" replace />} />
               <Route path="budget/overview/:yearBe" element={<BudgetOverviewPage />} />
               <Route path="budget/requests" element={<Navigate to="/budget/overview/2570" replace />} />

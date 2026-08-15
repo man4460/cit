@@ -257,6 +257,7 @@ export function RadiosPage() {
     <div>
       <PageHeaderBar
         title="วิทยุสื่อสาร"
+        count={filtered.length}
         filter={{
           value: listFilter,
           onChange: setListFilter,

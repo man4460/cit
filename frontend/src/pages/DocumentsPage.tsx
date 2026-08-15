@@ -198,6 +198,7 @@ export function DocumentsPage() {
     <div>
       <PageHeaderBar
         title="คลังเอกสาร"
+        count={filteredRows.length}
         filter={{
           value: listFilter,
           onChange: setListFilter,
@@ -225,11 +226,11 @@ export function DocumentsPage() {
                 setSearchParams(next, { replace: true });
               }}
             >
-              <option value="">ทั้งหมด</option>
-              <option value="none">ไม่ระบุ</option>
+              <option value="">ทั้งหมด ({rows.length})</option>
+              <option value="none">ไม่ระบุ ({rows.filter((d) => !d.documentTypeId).length})</option>
               {types.map((t) => (
                 <option key={t.id} value={t.id}>
-                  {t.name}
+                  {t.name} ({rows.filter((d) => d.documentTypeId === t.id).length})
                 </option>
               ))}
             </select>

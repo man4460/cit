@@ -47,10 +47,14 @@ import { bulletproofVestsRouter } from "./routes/bulletproofVests.js";
 import { auditLogsRouter } from "./routes/auditLogs.js";
 import { securityIncidentsRouter } from "./routes/securityIncidents.js";
 import { budgetRouter } from "./routes/budget.js";
+import { investigationRouter } from "./routes/investigation.js";
+import { investigationApprovalRouter } from "./routes/investigationApproval.js";
 import { seedDocumentMasterData } from "./lib/seedDocumentMasters.js";
 import { seedFireExtinguisherData } from "./lib/seedFireExtinguishers.js";
 import { seedWeaponData } from "./lib/seedWeapons.js";
 import { seedBulletproofVestData } from "./lib/seedBulletproofVests.js";
+import { seedInvestigationCategories } from "./lib/seedInvestigationCategories.js";
+import { seedInvestigationTeams } from "./lib/seedInvestigationTeams.js";
 
 const app = express();
 const port = Number(process.env.PORT) || 4000;
@@ -70,6 +74,8 @@ app.get("/api/health", (_req, res) => {
 });
 
 app.use("/api/auth", authRouter);
+/** อนุมัติผ่านลิงก์อีเมล — เข้าถึงได้โดยไม่ต้องล็อกอิน (ตรวจสิทธิ์ด้วย token) */
+app.use("/api/investigation-approval", investigationApprovalRouter);
 
 const secured = express.Router();
 secured.use(authMiddleware);
@@ -107,6 +113,7 @@ secured.use("/admin/users", adminUsersRouter);
 secured.use("/audit-logs", auditLogsRouter);
 secured.use("/security-incidents", securityIncidentsRouter);
 secured.use("/budget", budgetRouter);
+secured.use("/investigation", investigationRouter);
 
 app.use("/api", secured);
 
@@ -159,6 +166,8 @@ void ensureBootstrapAdmin()
   .then(() => seedFireExtinguisherData())
   .then(() => seedWeaponData())
   .then(() => seedBulletproofVestData())
+  .then(() => seedInvestigationTeams())
+  .then(() => seedInvestigationCategories())
   .then(() => {
     app.listen(port, host, () => {
       const hint = host === "0.0.0.0" ? "ทุก interface (LAN ใช้ http://<IP-เครื่องนี้>:" + port + ")" : host;

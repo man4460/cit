@@ -6,7 +6,7 @@ export type ModalFrameSize = "sm" | "form" | "wide" | "viewer";
 type ModalProps = {
   open: boolean;
   onClose: () => void;
-  title: string;
+  title: React.ReactNode;
   children: React.ReactNode;
   size?: ModalFrameSize;
   overlayZClass?: string;

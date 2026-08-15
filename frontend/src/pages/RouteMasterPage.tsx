@@ -168,6 +168,7 @@ export function RouteMasterPage() {
     <div>
       <PageHeaderBar
         title="เส้นทางภารกิจ"
+        count={filteredRows.length}
         filter={{
           value: listFilter,
           onChange: setListFilter,

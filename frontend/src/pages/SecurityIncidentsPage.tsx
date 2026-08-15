@@ -176,6 +176,7 @@ export function SecurityIncidentsPage() {
     <div>
       <PageHeaderBar
         title="เหตุการณ์ไม่ปกติ"
+        count={filtered.length}
         filter={{
           value: listFilter,
           onChange: setListFilter,

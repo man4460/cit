@@ -655,6 +655,7 @@ export function WeaponsPage() {
     <div>
       <PageHeaderBar
         title="อาวุธปืนและกระสุน"
+        count={tab === "ammo" ? filteredAmmo.length : filteredGuns.length}
         filter={{
           value: listFilter,
           onChange: setListFilter,

@@ -18,6 +18,7 @@ export function ReportsHubPage() {
     <div className="overview-a4-print">
       <PageHeaderBar
         title="รายงาน"
+        count={filteredReports.length}
         filter={{
           value: listFilter,
           onChange: setListFilter,

@@ -56,6 +56,17 @@ export const navGroups: NavGroup[] = [
     ],
   },
   {
+    id: "investigation",
+    titleTh: "สืบสวนและประมวลข่าว",
+    titleEn: "Investigation & Intelligence",
+    items: [
+      { to: "/investigation", label: "แดชบอร์ด", end: true },
+      { to: "/investigation/cases", label: "ทะเบียนคดี" },
+      { to: "/investigation/approvals", label: "รออนุมัติ" },
+      { to: "/investigation/teams", label: "ทีมสืบสวน" },
+    ],
+  },
+  {
     id: "budget",
     titleTh: "งบประมาณ",
     titleEn: "Budget",

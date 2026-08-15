@@ -3,10 +3,18 @@ import { runLibraryDocumentExtract } from "../lib/libraryDocumentExtract.js";
 import { prisma } from "../lib/prisma.js";
 import { routeParam } from "../lib/routeParam.js";
 import { persistUpload, upload } from "../lib/upload.js";
+import { documentCategorySlugFromName } from "../lib/upload/documentCategorySlug.js";
 
 export const libraryDocumentsRouter = Router();
 
 const includeType = { documentType: true };
+
+async function resolveDocumentType(raw: unknown): Promise<{ id: string; name: string } | null> {
+  const s = raw == null ? "" : String(raw).trim();
+  if (!s) return null;
+  const t = await prisma.documentType.findUnique({ where: { id: s } });
+  return t ? { id: t.id, name: t.name } : null;
+}
 
 libraryDocumentsRouter.get("/", async (req, res, next) => {
   try {
@@ -44,20 +52,13 @@ libraryDocumentsRouter.get("/:id", async (req, res, next) => {
   }
 });
 
-async function resolveDocumentTypeId(raw: unknown): Promise<string | null> {
-  const s = raw == null ? "" : String(raw).trim();
-  if (!s) return null;
-  const t = await prisma.documentType.findUnique({ where: { id: s } });
-  return t ? s : null;
-}
-
 libraryDocumentsRouter.post("/", upload.single("file"), async (req, res, next) => {
   try {
     const title = String(req.body.title ?? "").trim();
     if (!title) return res.status(400).json({ error: "กรอกชื่อรายการ" });
     const details = String(req.body.details ?? "");
-    const documentTypeId = await resolveDocumentTypeId(req.body.documentTypeId);
-    if (req.body.documentTypeId && String(req.body.documentTypeId).trim() && !documentTypeId) {
+    const docType = await resolveDocumentType(req.body.documentTypeId);
+    if (req.body.documentTypeId && String(req.body.documentTypeId).trim() && !docType) {
       return res.status(400).json({ error: "ประเภทเอกสารไม่ถูกต้อง" });
     }
     const file = req.file;
@@ -66,10 +67,14 @@ libraryDocumentsRouter.post("/", upload.single("file"), async (req, res, next) =
     let originalName: string | null = null;
     if (file) {
       try {
+        const categoryLabel = docType?.name ?? null;
         const saved = await persistUpload(file, {
           module: "library",
           userId: req.auth?.userId,
           kind: "doc",
+          categorySlug: documentCategorySlugFromName(categoryLabel),
+          categoryLabel: categoryLabel ?? undefined,
+          displayTitle: title,
           allowPdf: true,
           allowOfficeDocs: true,
         });
@@ -84,7 +89,7 @@ libraryDocumentsRouter.post("/", upload.single("file"), async (req, res, next) =
       data: {
         title,
         details,
-        documentTypeId,
+        documentTypeId: docType?.id ?? null,
         fileUrl,
         mimeType,
         originalName,
@@ -107,29 +112,43 @@ libraryDocumentsRouter.post("/", upload.single("file"), async (req, res, next) =
 libraryDocumentsRouter.put("/:id", upload.single("file"), async (req, res, next) => {
   try {
     const id = routeParam(req.params.id);
-    const existing = await prisma.libraryDocument.findUnique({ where: { id } });
+    const existing = await prisma.libraryDocument.findUnique({
+      where: { id },
+      include: includeType,
+    });
     if (!existing) return res.status(404).json({ error: "ไม่พบ" });
 
     const data: Record<string, unknown> = {};
+    let nextTitle = existing.title;
     if (req.body.title !== undefined) {
       const t = String(req.body.title).trim();
       if (!t) return res.status(400).json({ error: "ชื่อรายการต้องไม่ว่าง" });
       data.title = t;
+      nextTitle = t;
     }
     if (req.body.details !== undefined) data.details = String(req.body.details);
+
+    let docType =
+      existing.documentTypeId && existing.documentType
+        ? { id: existing.documentTypeId, name: existing.documentType.name }
+        : null;
     if (req.body.documentTypeId !== undefined) {
-      const documentTypeId = await resolveDocumentTypeId(req.body.documentTypeId);
-      if (req.body.documentTypeId && String(req.body.documentTypeId).trim() && !documentTypeId) {
+      docType = await resolveDocumentType(req.body.documentTypeId);
+      if (req.body.documentTypeId && String(req.body.documentTypeId).trim() && !docType) {
         return res.status(400).json({ error: "ประเภทเอกสารไม่ถูกต้อง" });
       }
-      data.documentTypeId = documentTypeId;
+      data.documentTypeId = docType?.id ?? null;
     }
     if (req.file) {
       try {
+        const categoryLabel = docType?.name ?? null;
         const saved = await persistUpload(req.file, {
           module: "library",
           userId: req.auth?.userId,
           kind: "doc",
+          categorySlug: documentCategorySlugFromName(categoryLabel),
+          categoryLabel: categoryLabel ?? undefined,
+          displayTitle: nextTitle,
           allowPdf: true,
           allowOfficeDocs: true,
         });
@@ -148,9 +167,9 @@ libraryDocumentsRouter.put("/:id", upload.single("file"), async (req, res, next)
       include: includeType,
     });
     if (req.file) {
-      const id = row.id;
+      const updatedId = row.id;
       setImmediate(() => {
-        void runLibraryDocumentExtract(id);
+        void runLibraryDocumentExtract(updatedId);
       });
     }
     res.json(row);

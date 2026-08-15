@@ -558,6 +558,7 @@ export function MissionsPage() {
     <div>
       <PageHeaderBar
         title="ภารกิจ"
+        count={filteredMissions.length}
         filter={{
           value: listFilter,
           onChange: setListFilter,

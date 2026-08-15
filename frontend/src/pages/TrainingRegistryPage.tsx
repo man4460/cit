@@ -354,6 +354,7 @@ export function TrainingRegistryPage() {
     <div>
       <PageHeaderBar
         title="ทะเบียนการอบรม"
+        count={filteredEnrollments.length}
         filter={{
           value: listFilter,
           onChange: setListFilter,

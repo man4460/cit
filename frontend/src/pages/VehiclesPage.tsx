@@ -386,6 +386,7 @@ export function VehiclesPage() {
     <div>
       <PageHeaderBar
         title="ยานพาหนะ"
+        count={filteredRows.length}
         filter={{
           value: listFilter,
           onChange: setListFilter,

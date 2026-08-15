@@ -160,6 +160,7 @@ export function AdminPage() {
     <div>
       <PageHeaderBar
         title="จัดการผู้ใช้"
+        count={filteredRows.length}
         filter={{
           value: listFilter,
           onChange: setListFilter,

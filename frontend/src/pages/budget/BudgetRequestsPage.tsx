@@ -154,6 +154,7 @@ export function BudgetRequestsPage() {
     <div className="space-y-4">
       <PageHeaderBar
         title="คำขอปีถัดไป"
+        count={detailItems.length}
         filter={{
           value: filter,
           onChange: setFilter,

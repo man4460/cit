@@ -21,6 +21,8 @@ export type PageFilterConfig = {
 type Props = {
   /** ว่าง/ไม่ส่ง = ไม่แสดงหัวข้อ เหลือแค่แถบเครื่องมือ */
   title?: string;
+  /** จำนวนแถวที่แสดง — พิมพ์ต่อท้ายหัวข้อแบบตัวเล็ก */
+  count?: number | null;
   subtitle?: ReactNode;
   /** แท็บสลับหมวด (เช่น ยานพาหนะ / ครุภัณฑ์) */
   segments?: ReactNode;
@@ -44,6 +46,7 @@ function ToolDivider() {
 /** หัวหน้า + ปุ่มเมนูทั้งหมดในแถวเดียวกัน */
 export function PageHeaderBar({
   title,
+  count,
   subtitle,
   segments,
   masters,
@@ -60,12 +63,17 @@ export function PageHeaderBar({
   const hasTools = Boolean(segments || masters || extras || beforeFilter || primary || filter);
   const showTitle = Boolean(title?.trim());
   const visual = itemVisual(pathname);
+  const showCount = typeof count === "number" && Number.isFinite(count);
+  const countLabel = showCount ? count.toLocaleString("th-TH") : "";
 
   return (
     <div className={className}>
       {filter?.printTitle ? (
         <h2 className="mb-2 hidden text-base font-bold text-black print:mb-1.5 print:block print:text-[12pt] print:leading-tight">
           {filter.printTitle}
+          {showCount ? (
+            <span className="ml-1.5 text-[10pt] font-semibold text-slate-600">({countLabel})</span>
+          ) : null}
         </h2>
       ) : null}
       <div
@@ -81,7 +89,14 @@ export function PageHeaderBar({
               <NavGlyph name={visual.icon} className="h-5 w-5 sm:h-[1.35rem] sm:w-[1.35rem]" />
             </span>
             <div className="min-w-0">
-              <h1 className={`text-xl font-black tracking-tight sm:text-2xl ${visual.tone}`}>{title}</h1>
+              <h1 className={`text-xl font-black tracking-tight sm:text-2xl ${visual.tone}`}>
+                {title}
+                {showCount ? (
+                  <span className="ml-1.5 align-middle text-[11px] font-bold tabular-nums text-slate-500 sm:text-xs">
+                    ({countLabel})
+                  </span>
+                ) : null}
+              </h1>
               {subtitle ? <div className="mt-0.5 text-sm text-slate-600">{subtitle}</div> : null}
             </div>
           </div>

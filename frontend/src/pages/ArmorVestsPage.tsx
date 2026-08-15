@@ -347,6 +347,7 @@ export function ArmorVestsPage() {
     <div>
       <PageHeaderBar
         title="เสื้อเกราะ"
+        count={filtered.length}
         filter={{
           value: listFilter,
           onChange: setListFilter,

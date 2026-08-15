@@ -65,6 +65,7 @@ export function BudgetAccountsPage() {
     <div className="space-y-4">
       <PageHeaderBar
         title="ทะเบียนบัญชีงบ"
+        count={filtered.length}
         filter={{
           value: filter,
           onChange: setFilter,

@@ -122,6 +122,7 @@ export function BudgetSpendPage() {
     <div className="space-y-4">
       <PageHeaderBar
         title="ติดตามใช้จ่าย"
+        count={filtered.length}
         filter={{
           value: filter,
           onChange: setFilter,

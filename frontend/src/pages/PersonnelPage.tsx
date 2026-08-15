@@ -507,6 +507,7 @@ export function PersonnelPage() {
     <div>
       <PageHeaderBar
         title="บุคลากร"
+        count={filteredPersonnel.length}
         filter={{
           value: listFilter,
           onChange: setListFilter,

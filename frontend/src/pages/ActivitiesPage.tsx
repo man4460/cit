@@ -217,6 +217,7 @@ export function ActivitiesPage() {
     <div>
       <PageHeaderBar
         title="กิจกรรม"
+        count={filteredItems.length}
         filter={{
           value: listFilter,
           onChange: setListFilter,

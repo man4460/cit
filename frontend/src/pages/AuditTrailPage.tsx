@@ -274,6 +274,7 @@ export function AuditTrailPage() {
     <div>
       <PageHeaderBar
         title="ความเคลื่อนไหว"
+        count={total}
         filter={{
           value: listFilter,
           onChange: (v) => {
