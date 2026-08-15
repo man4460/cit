@@ -18,8 +18,13 @@ frontend/dist/
 backend/backups/
 *.sql
 
-# ไฟล์อัปโหลดจากผู้ใช้
+# ไฟล์อัปโหลดจากผู้ใช้ / เอกสารแนบ (ห้ามขึ้น Git)
 backend/uploads/
+uploads/
+
+# โฟลเดอร์ data ทั้งโปรเจกต์ (ห้ามขึ้น Git)
+data/
+**/data/
 
 # Logs & OS
 *.log
