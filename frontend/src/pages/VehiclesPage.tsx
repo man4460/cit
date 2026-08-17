@@ -12,6 +12,8 @@ import { PageHeaderBar } from "../components/PageHeaderBar";
 import { ModuleDocumentsModal } from "../components/ModuleDocumentsModal";
 import { PrintA4Table } from "../components/PrintA4Table";
 import { MODULE_DOCUMENT_CATEGORIES } from "../lib/moduleDocumentCategories";
+import type { LoadOptions } from "../lib/loadOptions";
+import { setLoadBusy } from "../lib/loadOptions";
 import { rowMatchesFilter } from "../lib/searchNormalize";
 import {
   brandGradientFillClass,
@@ -190,8 +192,8 @@ export function VehiclesPage() {
     };
   }, [rows, retiredRows]);
 
-  const loadLists = useCallback(async () => {
-    setLoading(true);
+  const loadLists = useCallback(async (opts?: LoadOptions) => {
+    setLoadBusy(setLoading, opts, true);
     try {
       const [v, retired, log, t, w, s] = await Promise.all([
         apiJson<Vehicle[]>("/api/vehicles"),
@@ -208,7 +210,7 @@ export function VehiclesPage() {
       setWorkGroups(w);
       setStatuses(s);
     } finally {
-      setLoading(false);
+      setLoadBusy(setLoading, opts, false);
     }
   }, []);
 
@@ -241,7 +243,7 @@ export function VehiclesPage() {
             });
           }),
         );
-        await loadLists();
+        await loadLists({ silent: true });
       } catch {
         batch.forEach((v) => purchaseSyncAttempted.current.delete(v.id));
       }
@@ -352,11 +354,11 @@ export function VehiclesPage() {
       if (editingId) {
         await apiJson(`/api/vehicles/${editingId}`, { method: "PUT", body });
         closeVehicleModal();
-        await loadLists();
+        await loadLists({ silent: true });
       } else {
         const created = await apiJson<Vehicle>("/api/vehicles", { method: "POST", body });
         closeVehicleModal();
-        await loadLists();
+        await loadLists({ silent: true });
         setPhotoVehicleId(created.id);
         setPhotoPlate(created.licensePlate);
         setPhotoOpen(true);
@@ -370,7 +372,7 @@ export function VehiclesPage() {
     if (!confirm(`ลบยานพาหนะทะเบียน «${v.licensePlate}» ? รูปและประวัติที่เกี่ยวข้องจะถูกลบด้วย`)) return false;
     try {
       await apiJson(`/api/vehicles/${v.id}`, { method: "DELETE" });
-      await loadLists();
+      await loadLists({ silent: true });
       return true;
     } catch (err) {
       alert(err instanceof Error ? err.message : "ลบไม่สำเร็จ");

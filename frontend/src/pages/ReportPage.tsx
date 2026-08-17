@@ -14,6 +14,8 @@ import { ARMOR_MONTHLY_TOPICS } from "../lib/armorMonthlyTopics";
 import { VEHICLE_WEEKLY_TOPICS, type VehicleWeeklyTopicKey } from "../lib/vehicleWeeklyTopics";
 import { toolbarLinkBtnClass } from "../lib/uiTokens";
 import { REPORT_TYPES } from "./reportsConfig";
+import type { LoadOptions } from "../lib/loadOptions";
+import { setLoadBusy } from "../lib/loadOptions";
 import {
   vehicleDisplayLabel,
   type ArmorMonthlyInspection,
@@ -139,8 +141,8 @@ function WeeklyInspectionReportView({ reportTitle }: { reportTitle: string }) {
   const [saving, setSaving] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
 
-  const load = useCallback(async () => {
-    setLoading(true);
+  const load = useCallback(async (opts?: LoadOptions) => {
+    setLoadBusy(setLoading, opts, true);
     setErr(null);
     try {
       const res = await apiJson<VehicleWeeklyInspectionReportResponse>(
@@ -214,7 +216,7 @@ function WeeklyInspectionReportView({ reportTitle }: { reportTitle: string }) {
         }),
       });
       closeEdit();
-      await load();
+      await load({ silent: true });
     } catch (e) {
       setErr(e instanceof Error ? e.message : "บันทึกไม่สำเร็จ");
     } finally {
@@ -231,7 +233,7 @@ function WeeklyInspectionReportView({ reportTitle }: { reportTitle: string }) {
         method: "DELETE",
       });
       if (editing?.id === row.id) closeEdit();
-      await load();
+      await load({ silent: true });
     } catch (e) {
       setErr(e instanceof Error ? e.message : "ลบไม่สำเร็จ");
     } finally {
@@ -488,8 +490,8 @@ function ArmorMonthlyReportView({ reportTitle }: { reportTitle: string }) {
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState<string | null>(null);
 
-  const load = useCallback(async () => {
-    setLoading(true);
+  const load = useCallback(async (opts?: LoadOptions) => {
+    setLoadBusy(setLoading, opts, true);
     setErr(null);
     try {
       const res = await apiJson<ArmorMonthlyReportResponse>(

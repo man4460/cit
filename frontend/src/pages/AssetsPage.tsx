@@ -16,6 +16,8 @@ import { parsePermitExpiryIsoFromNotes, stripPermitExpiryPhraseFromNotes } from 
 import { rowMatchesFilter } from "../lib/searchNormalize";
 import { isRadioAsset } from "../lib/radioAsset";
 import { isArmorAsset } from "../lib/armorAsset";
+import type { LoadOptions } from "../lib/loadOptions";
+import { setLoadBusy } from "../lib/loadOptions";
 import {
   toolbarLinkBtnClass,
   toolbarMasterBtnClass,
@@ -161,8 +163,8 @@ export function AssetsPage() {
     [rows, detailAssetId],
   );
 
-  const load = useCallback(async () => {
-    setLoading(true);
+  const load = useCallback(async (opts?: LoadOptions) => {
+    setLoadBusy(setLoading, opts, true);
     try {
       const [a, c, r, f, s, p] = await Promise.all([
         apiJson<Asset[]>("/api/assets"),
@@ -212,7 +214,7 @@ export function AssetsPage() {
             });
           }),
         );
-        await load();
+        await load({ silent: true });
       } catch {
         batch.forEach((a) => permitSyncAttempted.current.delete(a.id));
       }
@@ -351,14 +353,14 @@ export function AssetsPage() {
       if (editingId) {
         await apiJson(`/api/assets/${editingId}`, { method: "PUT", body: JSON.stringify(body) });
         closeModal();
-        await load();
+        await load({ silent: true });
       } else {
         const created = await apiJson<Asset>("/api/assets", {
           method: "POST",
           body: JSON.stringify(body),
         });
         closeModal();
-        await load();
+        await load({ silent: true });
         setPhotoAssetId(created.id);
         setPhotoLabel(created.itemName);
         setPhotoOpen(true);
@@ -372,7 +374,7 @@ export function AssetsPage() {
     if (!confirm(`ลบวัสดุ «${a.itemName}» (${a.serialNumber}) ? รูปและ QR เดิมจะถูกลบ`)) return false;
     try {
       await apiJson(`/api/assets/${a.id}`, { method: "DELETE" });
-      await load();
+      await load({ silent: true });
       return true;
     } catch (err) {
       alert(err instanceof Error ? err.message : "ลบไม่สำเร็จ");

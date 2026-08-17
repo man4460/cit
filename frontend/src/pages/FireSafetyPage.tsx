@@ -11,6 +11,8 @@ import { rowMatchesFilter } from "../lib/searchNormalize";
 import { listCardAccentClass, brandGradientFillClass, toolbarLinkBtnClass, toolbarMasterBtnClass, toolbarMasterGroupClass, toolbarPrimaryBtnClass } from "../lib/uiTokens";
 import { ListPagination } from "../components/ListPagination";
 import type { FireExtinguisher, FireHost } from "../types";
+import type { LoadOptions } from "../lib/loadOptions";
+import { setLoadBusy } from "../lib/loadOptions";
 
 const PAGE_SIZE = 25; // 5 คอลัมน์ × 5 แถว
 const fireGridClass = "grid grid-cols-2 gap-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5";
@@ -512,8 +514,8 @@ export function FireSafetyPage() {
   const [hostForm, setHostForm] = useState(emptyHostForm);
   const [saving, setSaving] = useState(false);
 
-  const load = useCallback(async () => {
-    setLoading(true);
+  const load = useCallback(async (opts?: LoadOptions) => {
+    setLoadBusy(setLoading, opts, true);
     try {
       const [e, h] = await Promise.all([
         apiJson<FireExtinguisher[]>("/api/fire-extinguishers"),
@@ -774,7 +776,7 @@ export function FireSafetyPage() {
         await apiJson("/api/fire-extinguishers", { method: "POST", body });
       }
       closeModal();
-      await load();
+      await load({ silent: true });
     } catch (err) {
       alert(err instanceof Error ? err.message : "บันทึกไม่สำเร็จ");
     } finally {
@@ -798,7 +800,7 @@ export function FireSafetyPage() {
         await apiJson("/api/fire-hosts", { method: "POST", body });
       }
       closeHostModal();
-      await load();
+      await load({ silent: true });
     } catch (err) {
       alert(err instanceof Error ? err.message : "บันทึกไม่สำเร็จ");
     } finally {
@@ -810,7 +812,7 @@ export function FireSafetyPage() {
     if (!confirm(`ลบถังดับเพลิง «${r.code}» ?`)) return;
     try {
       await apiJson(`/api/fire-extinguishers/${r.id}`, { method: "DELETE" });
-      await load();
+      await load({ silent: true });
     } catch (err) {
       alert(err instanceof Error ? err.message : "ลบไม่สำเร็จ");
     }
@@ -820,7 +822,7 @@ export function FireSafetyPage() {
     if (!confirm(`ลบรายการ «${r.code}» ?`)) return;
     try {
       await apiJson(`/api/fire-hosts/${r.id}`, { method: "DELETE" });
-      await load();
+      await load({ silent: true });
     } catch (err) {
       alert(err instanceof Error ? err.message : "ลบไม่สำเร็จ");
     }

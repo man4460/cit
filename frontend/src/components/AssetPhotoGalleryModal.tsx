@@ -2,6 +2,8 @@ import { useCallback, useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 import { apiJson } from "../api/client";
 import type { AssetDetail } from "../types";
+import type { LoadOptions } from "../lib/loadOptions";
+import { setLoadBusy } from "../lib/loadOptions";
 
 export function AssetPhotoGalleryModal({
   assetId,
@@ -18,16 +20,16 @@ export function AssetPhotoGalleryModal({
   const [loading, setLoading] = useState(false);
   const [index, setIndex] = useState(0);
 
-  const load = useCallback(async () => {
+  const load = useCallback(async (opts?: LoadOptions) => {
     if (!assetId || !open) return;
-    setLoading(true);
+    setLoadBusy(setLoading, opts, true);
     try {
       const a = await apiJson<AssetDetail>(`/api/assets/${assetId}`);
       setDetail(a);
     } catch {
       setDetail(null);
     } finally {
-      setLoading(false);
+      setLoadBusy(setLoading, opts, false);
     }
   }, [assetId, open]);
 

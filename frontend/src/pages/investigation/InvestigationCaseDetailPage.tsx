@@ -4,6 +4,8 @@ import { apiFormJson, apiJson } from "../../api/client";
 import { Modal, ModalFormActions, ModalFormBody, ModalFormSection } from "../../components/Modal";
 import { PageHeaderBar } from "../../components/PageHeaderBar";
 import { useAuth } from "../../context/AuthContext";
+import type { LoadOptions } from "../../lib/loadOptions";
+import { setLoadBusy } from "../../lib/loadOptions";
 import {
   CASE_EVENT_LABEL_TH,
   DECISION_LABEL_TH,
@@ -107,8 +109,8 @@ export function InvestigationCaseDetailPage() {
   const [decideOn, setDecideOn] = useState<InvestigationApproval | null>(null);
   const [decideComment, setDecideComment] = useState("");
 
-  const load = useCallback(async () => {
-    setLoading(true);
+  const load = useCallback(async (opts?: LoadOptions) => {
+    setLoadBusy(setLoading, opts, true);
     setErr(null);
     try {
       const [detail, memberRows] = await Promise.all([
@@ -167,7 +169,7 @@ export function InvestigationCaseDetailPage() {
     setErr(null);
     try {
       await fn();
-      await load();
+      await load({ silent: true });
       return true;
     } catch (e) {
       setErr(e instanceof Error ? e.message : fallback);

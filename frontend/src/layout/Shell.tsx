@@ -214,7 +214,7 @@ export function Shell() {
   );
 
   return (
-    <div className="app-shell flex min-h-screen min-h-[100dvh] flex-col">
+    <div className="app-shell flex h-[100dvh] max-h-[100dvh] min-h-0 flex-col overflow-hidden print:h-auto print:max-h-none print:overflow-visible">
       {mobileOpen && (
         <button
           type="button"
@@ -315,7 +315,7 @@ export function Shell() {
         </div>
       </header>
 
-      <div className="flex min-h-0 min-w-0 flex-1 flex-col lg:flex-row">
+      <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden print:overflow-visible lg:flex-row">
         <aside
           id="app-sidebar-mobile"
           className={`no-print app-glass-panel fixed inset-y-0 left-0 z-50 flex w-[min(20rem,calc(100vw-2.5rem))] max-w-[20rem] flex-col border-r border-white/50 p-4 pb-[max(1rem,env(safe-area-inset-bottom))] shadow-[0_20px_50px_-20px_rgba(68,49,127,0.28)] transition-transform duration-200 ease-out motion-reduce:transition-none lg:hidden ${
@@ -338,8 +338,8 @@ export function Shell() {
 
         <aside
           id="app-sidebar-desktop"
-          className={`no-print app-glass-panel relative hidden shrink-0 flex-col border-r border-white/50 transition-[width] duration-200 ease-out motion-reduce:transition-none lg:flex lg:self-stretch ${
-            collapsed ? "w-0 overflow-hidden border-transparent p-0" : "w-64 p-3 pt-3"
+          className={`no-print app-glass-panel relative hidden min-h-0 shrink-0 flex-col overflow-hidden border-r border-white/50 transition-[width] duration-200 ease-out motion-reduce:transition-none lg:flex lg:self-stretch ${
+            collapsed ? "w-0 border-transparent p-0" : "w-64 p-3 pt-3"
           }`}
           aria-hidden={collapsed}
         >
@@ -347,7 +347,7 @@ export function Shell() {
         </aside>
 
         <main
-          className={`min-w-0 flex-1 px-3 pb-4 print:max-w-none print:p-0 sm:px-5 sm:pb-6 lg:px-6 lg:pb-8 ${
+          className={`min-h-0 min-w-0 flex-1 overflow-y-auto overflow-x-hidden overscroll-y-contain px-3 pb-4 print:max-w-none print:overflow-visible print:p-0 sm:px-5 sm:pb-6 lg:px-6 lg:pb-8 ${
             moduleHeaderCollapsed ? "pt-2 sm:pt-2 lg:pt-2" : "pt-4 sm:pt-6 lg:pt-8"
           }`}
           style={{ paddingBottom: "max(1rem, env(safe-area-inset-bottom, 0px))" }}

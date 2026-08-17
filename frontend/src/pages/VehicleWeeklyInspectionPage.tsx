@@ -10,6 +10,8 @@ import { mondayOfWeekContaining } from "../lib/inspectionWeek";
 import { VEHICLE_WEEKLY_TOPICS } from "../lib/vehicleWeeklyTopics";
 import { toolbarLinkBtnClass, toolbarMasterGroupClass } from "../lib/uiTokens";
 import { vehicleDisplayLabel, type VehicleWeeklyCheckResult, type VehicleWeeklyInspectionMatrixResponse } from "../types";
+import type { LoadOptions } from "../lib/loadOptions";
+import { setLoadBusy } from "../lib/loadOptions";
 
 type RowDraft = {
   airConditioning: VehicleWeeklyCheckResult | null;
@@ -106,8 +108,8 @@ export function VehicleWeeklyInspectionPage() {
   const [savingId, setSavingId] = useState<string | null>(null);
   const [err, setErr] = useState<string | null>(null);
 
-  const load = useCallback(async () => {
-    setLoading(true);
+  const load = useCallback(async (opts?: LoadOptions) => {
+    setLoadBusy(setLoading, opts, true);
     setErr(null);
     try {
       const data = await apiJson<VehicleWeeklyInspectionMatrixResponse>(
@@ -182,7 +184,7 @@ export function VehicleWeeklyInspectionPage() {
           remarks: d.remarks.trim() || null,
         }),
       });
-      await load();
+      await load({ silent: true });
     } catch (e) {
       setErr(e instanceof Error ? e.message : "บันทึกไม่สำเร็จ");
     } finally {

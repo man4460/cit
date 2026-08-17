@@ -3,6 +3,8 @@ import { Link } from "react-router-dom";
 import { apiJson } from "../../api/client";
 import { PageHeaderBar } from "../../components/PageHeaderBar";
 import { KIND_LABEL_TH, STATUS_LABEL_TH, isStrategicKind, teamShortName } from "../../lib/investigationLabels";
+import type { LoadOptions } from "../../lib/loadOptions";
+import { setLoadBusy } from "../../lib/loadOptions";
 import {
   listCardAccentClass,
   listCardClass,
@@ -131,8 +133,8 @@ export function InvestigationDashboardPage() {
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState<string | null>(null);
 
-  const load = useCallback(async () => {
-    setLoading(true);
+  const load = useCallback(async (opts?: LoadOptions) => {
+    setLoadBusy(setLoading, opts, true);
     setErr(null);
     try {
       const data = await apiJson<InvestigationStats>("/api/investigation/stats");

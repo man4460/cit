@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useState } from "react";
 import { useParams } from "react-router-dom";
 import { apiUrl } from "../api/client";
+import type { LoadOptions } from "../lib/loadOptions";
+import { setLoadBusy } from "../lib/loadOptions";
 import {
   DECISION_LABEL_TH,
   ISSUE_STATUS_LABEL_TH,
@@ -49,8 +51,8 @@ export function ApprovalLinkPage() {
   const [busy, setBusy] = useState(false);
   const [done, setDone] = useState<"APPROVED" | "REJECTED" | null>(null);
 
-  const load = useCallback(async () => {
-    setLoading(true);
+  const load = useCallback(async (opts?: LoadOptions) => {
+    setLoadBusy(setLoading, opts, true);
     setErr(null);
     try {
       setData(await fetchLink(token));

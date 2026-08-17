@@ -2,6 +2,8 @@ import { useCallback, useEffect, useState } from "react";
 import { apiFormJson, apiJson } from "../api/client";
 import { Modal, ModalFormActions, ModalFormBody } from "./Modal";
 import type { AssetDetail } from "../types";
+import type { LoadOptions } from "../lib/loadOptions";
+import { setLoadBusy } from "../lib/loadOptions";
 
 export function AssetPermitModal({
   assetId,
@@ -20,16 +22,16 @@ export function AssetPermitModal({
   const [loading, setLoading] = useState(false);
   const inputId = assetId ? `asset-permit-${assetId}` : "asset-permit-none";
 
-  const load = useCallback(async () => {
+  const load = useCallback(async (opts?: LoadOptions) => {
     if (!assetId || !open) return;
-    setLoading(true);
+    setLoadBusy(setLoading, opts, true);
     try {
       const a = await apiJson<AssetDetail>(`/api/assets/${assetId}`);
       setDetail(a);
     } catch {
       setDetail(null);
     } finally {
-      setLoading(false);
+      setLoadBusy(setLoading, opts, false);
     }
   }, [assetId, open]);
 
@@ -53,7 +55,7 @@ export function AssetPermitModal({
       fd.append("file", file);
       await apiFormJson(`/api/assets/${assetId}/permit`, fd);
       if (el) el.value = "";
-      await load();
+      await load({ silent: true });
       onUpdated();
     } catch (err) {
       alert(err instanceof Error ? err.message : "อัปโหลดไม่สำเร็จ");
@@ -64,7 +66,7 @@ export function AssetPermitModal({
     if (!assetId || !permit || !confirm("ลบใบอนุญาต?")) return;
     try {
       await apiJson(`/api/assets/${assetId}/documents/${permit.id}`, { method: "DELETE" });
-      await load();
+      await load({ silent: true });
       onUpdated();
     } catch (err) {
       alert(err instanceof Error ? err.message : "ลบไม่สำเร็จ");

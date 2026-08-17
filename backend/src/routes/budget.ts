@@ -88,8 +88,16 @@ type LineWithRelations = {
     isSummary: boolean;
   };
   snapshots: { id: string; asOfDate: Date; spentAmount: Prisma.Decimal; source: string; notes: string | null }[];
-  transactions: { amount: Prisma.Decimal }[];
+  transactions: { amount: Prisma.Decimal; occurredAt: Date }[];
 };
+
+/** เทียบแค่วันที่ (ไม่เอาเวลา) — snapshot ณ 31 ก.ค. รวมการใช้ถึงวันนั้นแล้ว */
+function ymdLocal(d: Date): string {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
+}
 
 function enrichLine(line: LineWithRelations) {
   const allocated = num(line.allocatedAmount);
@@ -97,8 +105,12 @@ function enrichLine(line: LineWithRelations) {
   const totalBudget = allocated + carryIn;
   const latestSnap = line.snapshots[0] ?? null;
   const snapshotSpent = latestSnap ? num(latestSnap.spentAmount) : null;
-  const transactionTotal = line.transactions.reduce((s, t) => s + num(t.amount), 0);
-  /** snapshot = ยอดตัดจากไฟล์/ERP · transactions = รายการที่กรอกในระบบ บวกเพิ่ม */
+  const snapYmd = latestSnap ? ymdLocal(latestSnap.asOfDate) : null;
+  /** มี snapshot แล้ว: นับเฉพาะรายการหลังวันตัดยอด (เช่น ตรวจรับ OS เดือนถัดไป) — กันบวกซ้ำกับไฟล์ ERP */
+  const transactionTotal = line.transactions.reduce((s, t) => {
+    if (snapYmd && ymdLocal(t.occurredAt) <= snapYmd) return s;
+    return s + num(t.amount);
+  }, 0);
   const spent = (snapshotSpent ?? 0) + transactionTotal;
   const remaining = totalBudget - spent;
   const pctUsed = totalBudget > 0 ? spent / totalBudget : null;
@@ -141,7 +153,7 @@ const lineInclude = {
   account: { include: { category: { select: { id: true, name: true } } } },
   fiscalYear: { select: { yearBe: true } },
   snapshots: { orderBy: { asOfDate: "desc" as const }, take: 1 },
-  transactions: { select: { amount: true } },
+  transactions: { select: { amount: true, occurredAt: true } },
 };
 
 /** สร้างบรรทัดปีว่างให้บัญชีหัวข้อหลักครบทุกปี — เพื่อให้ลิงก์ย่อยโชว์ได้ทุกหน้าปี */

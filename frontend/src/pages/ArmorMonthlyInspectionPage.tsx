@@ -8,6 +8,8 @@ import { useAuth } from "../context/AuthContext";
 import { currentUserLabel } from "../lib/currentUserLabel";
 import { ARMOR_MONTHLY_TOPICS } from "../lib/armorMonthlyTopics";
 import { toolbarLinkBtnClass, toolbarMasterGroupClass } from "../lib/uiTokens";
+import type { LoadOptions } from "../lib/loadOptions";
+import { setLoadBusy } from "../lib/loadOptions";
 import type {
   ArmorMonthlyCheckKey,
   ArmorMonthlyInspection,
@@ -105,8 +107,8 @@ export function ArmorMonthlyInspectionPage() {
   const [savingId, setSavingId] = useState<string | null>(null);
   const [err, setErr] = useState<string | null>(null);
 
-  const load = useCallback(async () => {
-    setLoading(true);
+  const load = useCallback(async (opts?: LoadOptions) => {
+    setLoadBusy(setLoading, opts, true);
     setErr(null);
     try {
       const data = await apiJson<ArmorMonthlyMatrixResponse>(
@@ -181,7 +183,7 @@ export function ArmorMonthlyInspectionPage() {
           remarks: d.remarks.trim() || null,
         }),
       });
-      await load();
+      await load({ silent: true });
     } catch (e) {
       setErr(e instanceof Error ? e.message : "บันทึกไม่สำเร็จ");
     } finally {

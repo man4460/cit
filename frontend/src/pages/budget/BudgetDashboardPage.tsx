@@ -4,6 +4,8 @@ import { PageHeaderBar } from "../../components/PageHeaderBar";
 import { apiJson } from "../../api/client";
 import { toolbarLinkBtnClass } from "../../lib/uiTokens";
 import { formatBaht, formatPct, pctToneClass, type BudgetKind } from "./budgetFormat";
+import type { LoadOptions } from "../../lib/loadOptions";
+import { setLoadBusy } from "../../lib/loadOptions";
 
 type KindRow = {
   kind: BudgetKind;
@@ -190,8 +192,8 @@ export function BudgetDashboardPage() {
   const [loading, setLoading] = useState(true);
   const [showBaht, setShowBaht] = useState(false);
 
-  const load = useCallback(async () => {
-    setLoading(true);
+  const load = useCallback(async (opts?: LoadOptions) => {
+    setLoadBusy(setLoading, opts, true);
     setErr(null);
     try {
       const res = await apiJson<ExecutivePayload>("/api/budget/executive");

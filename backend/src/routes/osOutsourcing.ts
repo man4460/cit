@@ -723,7 +723,7 @@ osOutsourcingRouter.post(
         : contract.monthlyAmount != null
           ? num(contract.monthlyAmount)
           : NaN;
-    if (!Number.isFinite(amount) || amount < 0) return res.status(400).json({ error: "ระบุยอดตรวจรับ" });
+    if (!Number.isFinite(amount)) return res.status(400).json({ error: "ระบุยอดตรวจรับ" });
 
     if (!contract.areaGroup.budgetAccountId)
       return res.status(400).json({
@@ -929,7 +929,7 @@ osOutsourcingRouter.patch("/acceptances/:id", requireAdmin, async (req, res, nex
 
     if (req.body?.acceptedAmount !== undefined && req.body?.acceptedAmount !== null && req.body?.acceptedAmount !== "") {
       const amount = Number(req.body.acceptedAmount);
-      if (!Number.isFinite(amount) || amount < 0) return res.status(400).json({ error: "ยอดตรวจรับไม่ถูกต้อง" });
+      if (!Number.isFinite(amount)) return res.status(400).json({ error: "ยอดตรวจรับไม่ถูกต้อง" });
       data.acceptedAmount = amount;
       nextAmount = amount;
     }

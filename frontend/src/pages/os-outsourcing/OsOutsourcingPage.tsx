@@ -6,6 +6,8 @@ import { ModuleDocumentsModal } from "../../components/ModuleDocumentsModal";
 import { PageHeaderBar } from "../../components/PageHeaderBar";
 import { useAuth } from "../../context/AuthContext";
 import { MODULE_DOCUMENT_CATEGORIES } from "../../lib/moduleDocumentCategories";
+import type { LoadOptions } from "../../lib/loadOptions";
+import { setLoadBusy } from "../../lib/loadOptions";
 import {
   brandGradientFillClass,
   listCardAccentClass,
@@ -109,6 +111,47 @@ function monthInRange(monthYm: string, startIso: string, endIso: string) {
   return me >= start && ms <= end;
 }
 
+function upsertContractInGroups(groups: OsAreaGroup[], contract: OsContract): OsAreaGroup[] {
+  return groups.map((g) => {
+    if (g.id !== contract.areaGroupId) return g;
+    const list = g.contracts ?? [];
+    const idx = list.findIndex((c) => c.id === contract.id);
+    const contracts =
+      idx >= 0 ? list.map((c, i) => (i === idx ? contract : c)) : [...list, contract];
+    return { ...g, contracts };
+  });
+}
+
+function removeContractFromGroups(groups: OsAreaGroup[], contractId: string, groupId: string): OsAreaGroup[] {
+  return groups.map((g) =>
+    g.id !== groupId ? g : { ...g, contracts: (g.contracts ?? []).filter((c) => c.id !== contractId) },
+  );
+}
+
+function bumpContractAcceptanceCount(
+  groups: OsAreaGroup[],
+  contractId: string,
+  delta: number,
+): OsAreaGroup[] {
+  return groups.map((g) => ({
+    ...g,
+    contracts: (g.contracts ?? []).map((c) =>
+      c.id !== contractId
+        ? c
+        : {
+            ...c,
+            _count: { acceptances: Math.max(0, (c._count?.acceptances ?? 0) + delta) },
+          },
+    ),
+  }));
+}
+
+function upsertAcceptance(list: OsMonthlyAcceptance[], row: OsMonthlyAcceptance): OsMonthlyAcceptance[] {
+  const idx = list.findIndex((a) => a.id === row.id);
+  if (idx >= 0) return list.map((a, i) => (i === idx ? row : a));
+  return [...list, row].sort((a, b) => a.monthYm.localeCompare(b.monthYm));
+}
+
 export function OsOutsourcingPage() {
   const { user } = useAuth();
   const isAdmin = user?.role === "ADMIN";
@@ -139,8 +182,8 @@ export function OsOutsourcingPage() {
   const attachTargetIdRef = useRef<string | null>(null);
   const contractAttachInputRef = useRef<HTMLInputElement>(null);
 
-  const loadGroups = useCallback(async () => {
-    setLoading(true);
+  const loadGroups = useCallback(async (opts?: LoadOptions) => {
+    setLoadBusy(setLoading, opts, true);
     setErr(null);
     try {
       const rows = await apiJson<OsAreaGroup[]>("/api/os-outsourcing/groups");
@@ -149,7 +192,7 @@ export function OsOutsourcingPage() {
     } catch (e) {
       setErr(e instanceof Error ? e.message : "โหลดกลุ่มไม่สำเร็จ");
     } finally {
-      setLoading(false);
+      setLoadBusy(setLoading, opts, false);
     }
   }, []);
 
@@ -176,11 +219,12 @@ export function OsOutsourcingPage() {
     [contracts, selectedContractId],
   );
 
-  const loadAcceptances = useCallback(async () => {
+  const loadAcceptances = useCallback(async (opts?: LoadOptions) => {
     if (!selectedContractId) {
       setAcceptances([]);
       return;
     }
+    if (!opts?.silent) setErr(null);
     try {
       const rows = await apiJson<OsMonthlyAcceptance[]>(
         `/api/os-outsourcing/contracts/${selectedContractId}/acceptances?year=${yearCe}`,
@@ -255,19 +299,20 @@ export function OsOutsourcingPage() {
         active: contractForm.active,
       };
       if (editingContract) {
-        await apiJson(`/api/os-outsourcing/contracts/${editingContract.id}`, {
+        const updated = await apiJson<OsContract>(`/api/os-outsourcing/contracts/${editingContract.id}`, {
           method: "PATCH",
           body: JSON.stringify(body),
         });
+        setGroups((prev) => upsertContractInGroups(prev, updated));
       } else {
         const created = await apiJson<OsContract>("/api/os-outsourcing/contracts", {
           method: "POST",
           body: JSON.stringify(body),
         });
+        setGroups((prev) => upsertContractInGroups(prev, created));
         setSelectedContractId(created.id);
       }
       setContractModalOpen(false);
-      await loadGroups();
     } catch (ex) {
       setErr(ex instanceof Error ? ex.message : "บันทึกสัญญาไม่สำเร็จ");
     } finally {
@@ -281,8 +326,8 @@ export function OsOutsourcingPage() {
     try {
       await apiJson(`/api/os-outsourcing/contracts/${c.id}`, { method: "DELETE" });
       if (selectedContractId === c.id) setSelectedContractId("");
-      await loadGroups();
-      await loadAcceptances();
+      setGroups((prev) => removeContractFromGroups(prev, c.id, c.areaGroupId));
+      setAcceptances((prev) => (selectedContractId === c.id ? [] : prev));
     } catch (ex) {
       setErr(ex instanceof Error ? ex.message : "ลบสัญญาไม่สำเร็จ");
     }
@@ -317,15 +362,16 @@ export function OsOutsourcingPage() {
     e.preventDefault();
     if (!selectedContractId || !acceptModal) return;
     const amount = Number(acceptAmount);
-    if (!Number.isFinite(amount) || amount < 0) {
+    if (!Number.isFinite(amount)) {
       setErr("ยอดตรวจรับไม่ถูกต้อง");
       return;
     }
     setSaving(true);
     setErr(null);
     try {
+      let saved: OsMonthlyAcceptance;
       if (acceptModal.mode === "edit" && acceptModal.id) {
-        await apiJson(`/api/os-outsourcing/acceptances/${acceptModal.id}`, {
+        saved = await apiJson<OsMonthlyAcceptance>(`/api/os-outsourcing/acceptances/${acceptModal.id}`, {
           method: "PATCH",
           body: JSON.stringify({
             acceptedAmount: amount,
@@ -338,12 +384,15 @@ export function OsOutsourcingPage() {
         fd.append("acceptedAmount", String(amount));
         if (acceptRemarks.trim()) fd.append("remarks", acceptRemarks.trim());
         if (acceptFile) fd.append("file", acceptFile);
-        await apiFormJson(`/api/os-outsourcing/contracts/${selectedContractId}/acceptances`, fd);
+        saved = await apiFormJson<OsMonthlyAcceptance>(
+          `/api/os-outsourcing/contracts/${selectedContractId}/acceptances`,
+          fd,
+        );
+        setGroups((prev) => bumpContractAcceptanceCount(prev, selectedContractId, 1));
       }
+      setAcceptances((prev) => upsertAcceptance(prev, saved));
       setAcceptModal(null);
       setAcceptFile(null);
-      await loadAcceptances();
-      await loadGroups();
     } catch (ex) {
       setErr(ex instanceof Error ? ex.message : acceptModal.mode === "edit" ? "แก้ไขไม่สำเร็จ" : "ตรวจรับไม่สำเร็จ");
     } finally {
@@ -360,8 +409,8 @@ export function OsOutsourcingPage() {
     setErr(null);
     try {
       await apiJson(`/api/os-outsourcing/acceptances/${a.id}`, { method: "DELETE" });
-      await loadAcceptances();
-      await loadGroups();
+      setAcceptances((prev) => prev.filter((row) => row.id !== a.id));
+      setGroups((prev) => bumpContractAcceptanceCount(prev, a.contractId, -1));
     } catch (ex) {
       setErr(ex instanceof Error ? ex.message : "ยกเลิกไม่สำเร็จ");
     }
@@ -432,8 +481,8 @@ export function OsOutsourcingPage() {
     try {
       const fd = new FormData();
       fd.append("file", file);
-      await apiFormJson<OsContract>(`/api/os-outsourcing/contracts/${selectedContractId}/documents`, fd);
-      await loadGroups();
+      const updated = await apiFormJson<OsContract>(`/api/os-outsourcing/contracts/${selectedContractId}/documents`, fd);
+      setGroups((prev) => upsertContractInGroups(prev, updated));
     } catch (ex) {
       setErr(ex instanceof Error ? ex.message : "แนบเอกสารสัญญาไม่สำเร็จ");
     } finally {
@@ -446,10 +495,10 @@ export function OsOutsourcingPage() {
     if (!confirm(`ลบเอกสาร «${title}» จากสัญญาและคลังเอกสาร?`)) return;
     setErr(null);
     try {
-      await apiJson<OsContract>(`/api/os-outsourcing/contracts/${selectedContractId}/documents/${linkId}`, {
+      const updated = await apiJson<OsContract>(`/api/os-outsourcing/contracts/${selectedContractId}/documents/${linkId}`, {
         method: "DELETE",
       });
-      await loadGroups();
+      setGroups((prev) => upsertContractInGroups(prev, updated));
     } catch (ex) {
       setErr(ex instanceof Error ? ex.message : "ลบเอกสารสัญญาไม่สำเร็จ");
     }
@@ -784,14 +833,20 @@ export function OsOutsourcingPage() {
                         <div className="mt-3 flex items-end justify-between gap-2">
                           <div>
                             <p className="text-[10px] font-semibold uppercase tracking-wide text-slate-400">ยอด (บาท)</p>
-                            <p className="mt-0.5 text-base font-black tabular-nums text-[#1e1b4b]">{amountDisplay}</p>
+                            <p
+                              className={`mt-0.5 text-base font-black tabular-nums ${
+                                row && row.acceptedAmount < 0 ? "text-rose-700" : "text-[#1e1b4b]"
+                              }`}
+                            >
+                              {amountDisplay}
+                            </p>
                             {row?.remarks ? (
                               <p className="mt-1 line-clamp-2 text-[10px] text-slate-500">{row.remarks}</p>
                             ) : null}
                           </div>
                           {row?.budgetTransactionId ? (
                             <span className="rounded-md bg-[#0000BF] px-1.5 py-0.5 text-[10px] font-bold text-white">
-                              หักงบแล้ว
+                              {row.acceptedAmount < 0 ? "คืนงบแล้ว" : "หักงบแล้ว"}
                             </span>
                           ) : null}
                         </div>
@@ -1029,12 +1084,12 @@ export function OsOutsourcingPage() {
               <input
                 required
                 type="number"
-                min={0}
                 step="0.01"
                 className="mt-1 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-slate-900"
                 value={acceptAmount}
                 onChange={(e) => setAcceptAmount(e.target.value)}
               />
+              <p className="mt-1 text-[11px] text-slate-500">ใส่ยอดติดลบได้ เช่น ปรับลดหรือคืนงบเดือนนั้น</p>
             </label>
             {acceptModal?.mode === "create" ? (
               <label className="mt-3 block">

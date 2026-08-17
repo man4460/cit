@@ -6,6 +6,8 @@ import { Modal, ModalFormBody } from "../components/Modal";
 import { PageHeaderBar } from "../components/PageHeaderBar";
 import { toolbarLinkBtnClass } from "../lib/uiTokens";
 import type { AuditLogEntry } from "../types";
+import type { LoadOptions } from "../lib/loadOptions";
+import { setLoadBusy } from "../lib/loadOptions";
 
 const PAGE_SIZE = 25;
 
@@ -160,8 +162,8 @@ export function AuditTrailPage() {
     }
   }, []);
 
-  const load = useCallback(async () => {
-    setLoading(true);
+  const load = useCallback(async (opts?: LoadOptions) => {
+    setLoadBusy(setLoading, opts, true);
     setErr(null);
     try {
       const qs = new URLSearchParams();

@@ -4,6 +4,8 @@ import { apiJson } from "../../api/client";
 import { Modal, ModalFormActions, ModalFormBody, ModalFormSection } from "../../components/Modal";
 import { PageHeaderBar } from "../../components/PageHeaderBar";
 import { useAuth } from "../../context/AuthContext";
+import type { LoadOptions } from "../../lib/loadOptions";
+import { setLoadBusy } from "../../lib/loadOptions";
 import {
   ORG_ROLE_LABEL_TH,
   PRIORITY_LABEL_TH,
@@ -42,8 +44,8 @@ export function InvestigationApprovalsPage() {
   const [decideOn, setDecideOn] = useState<InvestigationApproval | null>(null);
   const [comment, setComment] = useState("");
 
-  const load = useCallback(async () => {
-    setLoading(true);
+  const load = useCallback(async (opts?: LoadOptions) => {
+    setLoadBusy(setLoading, opts, true);
     setErr(null);
     try {
       const data = await apiJson<InvestigationApproval[]>("/api/investigation/approvals/inbox");
@@ -84,7 +86,7 @@ export function InvestigationApprovalsPage() {
       });
       setDecideOn(null);
       setComment("");
-      await load();
+      await load({ silent: true });
     } catch (e) {
       setErr(e instanceof Error ? e.message : "บันทึกผลพิจารณาไม่สำเร็จ");
     } finally {

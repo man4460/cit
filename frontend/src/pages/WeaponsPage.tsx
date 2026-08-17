@@ -8,6 +8,8 @@ import { PickableDateInput } from "../components/PickableDateInput";
 import { PrintA4Table } from "../components/PrintA4Table";
 import { MODULE_DOCUMENT_CATEGORIES } from "../lib/moduleDocumentCategories";
 import { rowMatchesFilter } from "../lib/searchNormalize";
+import type { LoadOptions } from "../lib/loadOptions";
+import { setLoadBusy } from "../lib/loadOptions";
 import {
   brandGradientFillClass,
   listCardAccentClass,
@@ -272,8 +274,8 @@ export function WeaponsPage() {
   const [zeroLots, setZeroLots] = useState<Ammunition[] | null>(null);
   const [saving, setSaving] = useState(false);
 
-  const load = useCallback(async () => {
-    setLoading(true);
+  const load = useCallback(async (opts?: LoadOptions) => {
+    setLoadBusy(setLoading, opts, true);
     try {
       const [g, a] = await Promise.all([
         apiJson<Firearm[]>("/api/firearms"),
@@ -541,7 +543,7 @@ export function WeaponsPage() {
       else await apiJson("/api/firearms", { method: "POST", body });
       setModalOpen(false);
       setEditingId(null);
-      await load();
+      await load({ silent: true });
     } catch (err) {
       alert(err instanceof Error ? err.message : "บันทึกไม่สำเร็จ");
     } finally {
@@ -579,7 +581,7 @@ export function WeaponsPage() {
       }
       setAmmoModalOpen(false);
       setEditingId(null);
-      await load();
+      await load({ silent: true });
     } catch (err) {
       alert(err instanceof Error ? err.message : "บันทึกไม่สำเร็จ");
     } finally {
@@ -603,7 +605,7 @@ export function WeaponsPage() {
         }),
       });
       setWithdrawOpen(false);
-      await load();
+      await load({ silent: true });
     } catch (err) {
       alert(err instanceof Error ? err.message : "เบิกไม่สำเร็จ");
     } finally {
@@ -615,7 +617,7 @@ export function WeaponsPage() {
     if (!confirm(`ลบอาวุธปืน «${r.code}» ?`)) return;
     try {
       await apiJson(`/api/firearms/${r.id}`, { method: "DELETE" });
-      await load();
+      await load({ silent: true });
     } catch (err) {
       alert(err instanceof Error ? err.message : "ลบไม่สำเร็จ");
     }
@@ -625,7 +627,7 @@ export function WeaponsPage() {
     if (!confirm(`ลบกระสุน «${r.code} · ${r.kind}» ?`)) return;
     try {
       await apiJson(`/api/ammunition/${r.id}`, { method: "DELETE" });
-      await load();
+      await load({ silent: true });
     } catch (err) {
       alert(err instanceof Error ? err.message : "ลบไม่สำเร็จ");
     }

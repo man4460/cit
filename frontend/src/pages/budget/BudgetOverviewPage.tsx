@@ -6,6 +6,8 @@ import { BudgetStatCard, BUDGET_STAT_TONES } from "../../components/BudgetStatCa
 import { FitSingleLine } from "../../components/FitSingleLine";
 import { apiJson } from "../../api/client";
 import { toolbarLinkBtnClass } from "../../lib/uiTokens";
+import type { LoadOptions } from "../../lib/loadOptions";
+import { setLoadBusy } from "../../lib/loadOptions";
 import {
   formatBaht,
   formatPct,
@@ -46,8 +48,8 @@ export function BudgetOverviewPage() {
   const [kindFilter, setKindFilter] = useState<BudgetKind>("EXPENSE");
   const [selected, setSelected] = useState<BudgetMajor | null>(null);
 
-  const load = useCallback(async (y: number) => {
-    setLoading(true);
+  const load = useCallback(async (y: number, opts?: LoadOptions) => {
+    setLoadBusy(setLoading, opts, true);
     setErr(null);
     try {
       const res = await apiJson<{ lines: BudgetYearLineRow[] }>(`/api/budget/lines?bucket=${y}`);
@@ -55,7 +57,7 @@ export function BudgetOverviewPage() {
     } catch (e) {
       setErr(e instanceof Error ? e.message : "โหลดไม่สำเร็จ");
     } finally {
-      setLoading(false);
+      setLoadBusy(setLoading, opts, false);
     }
   }, []);
 

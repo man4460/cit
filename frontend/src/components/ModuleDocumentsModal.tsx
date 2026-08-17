@@ -3,6 +3,8 @@ import { Link } from "react-router-dom";
 import { apiFormJson, apiJson } from "../api/client";
 import { documentsLibraryPathForCategory } from "../lib/moduleDocumentCategories";
 import { rowMatchesFilter } from "../lib/searchNormalize";
+import type { LoadOptions } from "../lib/loadOptions";
+import { setLoadBusy } from "../lib/loadOptions";
 import {
   mediaUrl,
   toolbarLinkBtnClass,
@@ -69,8 +71,8 @@ export function ModuleDocumentsModal({ open, categoryName, canEdit = true, onClo
   const [filter, setFilter] = useState("");
   const [form, setForm] = useState<FormState | null>(null);
 
-  const load = useCallback(async () => {
-    setLoading(true);
+  const load = useCallback(async (opts?: LoadOptions) => {
+    setLoadBusy(setLoading, opts, true);
     setErr(null);
     try {
       const types = await apiJson<DocumentType[]>("/api/document-types");
@@ -88,7 +90,7 @@ export function ModuleDocumentsModal({ open, categoryName, canEdit = true, onClo
     } catch (e) {
       setErr(e instanceof Error ? e.message : "โหลดเอกสารไม่สำเร็จ");
     } finally {
-      setLoading(false);
+      setLoadBusy(setLoading, opts, false);
     }
   }, [categoryName]);
 
@@ -174,7 +176,7 @@ export function ModuleDocumentsModal({ open, categoryName, canEdit = true, onClo
         await apiFormJson<LibraryDocument>("/api/library-documents", fd, "POST");
       }
       setForm(null);
-      await load();
+      await load({ silent: true });
     } catch (e) {
       setErr(e instanceof Error ? e.message : "บันทึกไม่สำเร็จ");
     } finally {
@@ -187,7 +189,7 @@ export function ModuleDocumentsModal({ open, categoryName, canEdit = true, onClo
     setErr(null);
     try {
       await apiJson(`/api/library-documents/${doc.id}`, { method: "DELETE" });
-      await load();
+      await load({ silent: true });
     } catch (e) {
       setErr(e instanceof Error ? e.message : "ลบไม่สำเร็จ");
     }

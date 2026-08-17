@@ -4,6 +4,8 @@ import { apiJson } from "../../api/client";
 import { InvestigationFilesModal } from "../../components/InvestigationFilesModal";
 import { Modal, ModalFormActions, ModalFormBody, ModalFormSection } from "../../components/Modal";
 import { PageHeaderBar } from "../../components/PageHeaderBar";
+import type { LoadOptions } from "../../lib/loadOptions";
+import { setLoadBusy } from "../../lib/loadOptions";
 import {
   KIND_LABEL_TH,
   ORG_ROLE_LABEL_TH,
@@ -112,8 +114,8 @@ export function InvestigationCasesPage() {
     return cats;
   }, []);
 
-  const load = useCallback(async () => {
-    setLoading(true);
+  const load = useCallback(async (opts?: LoadOptions) => {
+    setLoadBusy(setLoading, opts, true);
     setErr(null);
     try {
       const qs = new URLSearchParams();
@@ -248,7 +250,7 @@ export function InvestigationCasesPage() {
         });
         setFormOpen(false);
         setEditing(null);
-        await load();
+        await load({ silent: true });
       } else {
         const created = await apiJson<InvestigationCase>("/api/investigation/cases", {
           method: "POST",
@@ -269,7 +271,7 @@ export function InvestigationCasesPage() {
     setErr(null);
     try {
       await apiJson(`/api/investigation/cases/${c.id}`, { method: "DELETE" });
-      await load();
+      await load({ silent: true });
     } catch (ex) {
       setErr(ex instanceof Error ? ex.message : "ลบไม่สำเร็จ");
     }
@@ -377,7 +379,7 @@ export function InvestigationCasesPage() {
       <InvestigationFilesModal
         open={catModalOpen}
         onClose={() => setCatModalOpen(false)}
-        onChanged={() => void load()}
+        onChanged={() => void load({ silent: true })}
         teams={teams}
       />
 

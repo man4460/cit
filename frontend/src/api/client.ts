@@ -18,6 +18,19 @@ export function clearApiCache() {
   getCache.clear();
 }
 
+/** ล้าง cache GET เฉพาะ module ที่เกี่ยวข้องกับ path ที่เขียน (ไม่ล้างทั้งแอป) */
+export function invalidateApiCacheForMutation(path: string) {
+  const clean = path.split("?")[0];
+  const parts = clean.split("/").filter(Boolean);
+  const prefix = parts.length >= 2 ? `/${parts[0]}/${parts[1]}` : clean;
+  for (const key of [...getCache.keys()]) {
+    const keyPath = key.split("?")[0];
+    if (keyPath === clean || keyPath.startsWith(`${prefix}/`) || keyPath === prefix) {
+      getCache.delete(key);
+    }
+  }
+}
+
 /** ล้าง cache แล้วให้หน้าปัจจุบันโหลดข้อมูลใหม่ */
 export function refreshAppData() {
   clearApiCache();
@@ -70,7 +83,7 @@ export async function apiJson<T>(path: string, init?: RequestInit): Promise<T> {
     },
   });
   if (res.status === 204) {
-    if (method !== "GET") clearApiCache();
+    if (method !== "GET") invalidateApiCacheForMutation(path);
     return undefined as T;
   }
   const text = await res.text();
@@ -88,7 +101,7 @@ export async function apiJson<T>(path: string, init?: RequestInit): Promise<T> {
     window.dispatchEvent(new Event("afo:auth"));
   }
   if (!res.ok) throw new Error(formatApiFailure(data, res.statusText));
-  if (method !== "GET") clearApiCache();
+  if (method !== "GET") invalidateApiCacheForMutation(path);
   else if (key) getCache.set(key, data);
   return data as T;
 }
@@ -106,7 +119,7 @@ export async function apiFormJson<T>(path: string, formData: FormData, method = 
   });
   const text = await res.text();
   if (res.status === 204) {
-    clearApiCache();
+    invalidateApiCacheForMutation(path);
     return undefined as T;
   }
   let data: { error?: string; details?: string } | null = null;
@@ -123,6 +136,6 @@ export async function apiFormJson<T>(path: string, formData: FormData, method = 
     window.dispatchEvent(new Event("afo:auth"));
   }
   if (!res.ok) throw new Error(formatApiFailure(data, res.statusText));
-  clearApiCache();
+  invalidateApiCacheForMutation(path);
   return data as T;
 }

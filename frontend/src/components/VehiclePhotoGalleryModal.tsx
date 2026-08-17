@@ -2,6 +2,8 @@ import { useCallback, useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 import { apiJson } from "../api/client";
 import type { VehicleDetail } from "../types";
+import type { LoadOptions } from "../lib/loadOptions";
+import { setLoadBusy } from "../lib/loadOptions";
 
 export function VehiclePhotoGalleryModal({
   vehicleId,
@@ -18,16 +20,16 @@ export function VehiclePhotoGalleryModal({
   const [loading, setLoading] = useState(false);
   const [index, setIndex] = useState(0);
 
-  const load = useCallback(async () => {
+  const load = useCallback(async (opts?: LoadOptions) => {
     if (!vehicleId || !open) return;
-    setLoading(true);
+    setLoadBusy(setLoading, opts, true);
     try {
       const v = await apiJson<VehicleDetail>(`/api/vehicles/${vehicleId}`);
       setDetail(v);
     } catch {
       setDetail(null);
     } finally {
-      setLoading(false);
+      setLoadBusy(setLoading, opts, false);
     }
   }, [vehicleId, open]);
 

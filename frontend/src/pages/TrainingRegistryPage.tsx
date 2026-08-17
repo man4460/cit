@@ -9,6 +9,8 @@ import { SearchableSelect, personnelSelectLabel } from "../components/Searchable
 import { rowMatchesFilter } from "../lib/searchNormalize";
 import { listCardAccentClass, listCardClass, toolbarMasterBtnClass, toolbarMasterGroupClass, toolbarPrimaryBtnClass } from "../lib/uiTokens";
 import type { Personnel, TrainingCourse, TrainingEnrollment, TrainingResultStatus } from "../types";
+import type { LoadOptions } from "../lib/loadOptions";
+import { setLoadBusy } from "../lib/loadOptions";
 
 type MasterRow = { id: string; name: string; sortOrder: number };
 
@@ -236,12 +238,12 @@ export function TrainingRegistryPage() {
     return { personnel: p, courses: c };
   }, []);
 
-  const load = useCallback(async () => {
-    setLoading(true);
+  const load = useCallback(async (opts?: LoadOptions) => {
+    setLoadBusy(setLoading, opts, true);
     try {
       await loadLists();
     } finally {
-      setLoading(false);
+      setLoadBusy(setLoading, opts, false);
     }
   }, [loadLists]);
 

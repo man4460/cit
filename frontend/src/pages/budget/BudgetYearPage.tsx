@@ -9,6 +9,8 @@ import { useAuth } from "../../context/AuthContext";
 import { MODULE_DOCUMENT_CATEGORIES } from "../../lib/moduleDocumentCategories";
 import { NavGlyph } from "../../lib/navVisuals";
 import { rowMatchesFilter } from "../../lib/searchNormalize";
+import type { LoadOptions } from "../../lib/loadOptions";
+import { setLoadBusy } from "../../lib/loadOptions";
 import {
   brandGradientFillClass,
   toolbarLinkBtnClass,
@@ -172,8 +174,8 @@ export function BudgetYearPage() {
     [requestsByAccount, isCommitment],
   );
 
-  const load = useCallback(async () => {
-    setLoading(true);
+  const load = useCallback(async (opts?: LoadOptions) => {
+    setLoadBusy(setLoading, opts, true);
     setErr(null);
     try {
       const [res, catRes, yearsRes] = await Promise.all([
@@ -311,7 +313,7 @@ export function BudgetYearPage() {
           occurredAt: txDate ? new Date(`${txDate}T12:00:00`).toISOString() : undefined,
         }),
       });
-      await load();
+      await load({ silent: true });
       const refreshed = (
         await apiJson<{ lines: BudgetYearLineRow[] }>(
           `/api/budget/lines?bucket=${bucket}&fundingType=${fundingType}`,
@@ -331,7 +333,7 @@ export function BudgetYearPage() {
     if (!window.confirm("ลบรายการใช้จ่ายนี้?")) return;
     try {
       await apiJson(`/api/budget/year-lines/${selected.id}/transactions/${txId}`, { method: "DELETE" });
-      await load();
+      await load({ silent: true });
       await openDetail(selected);
     } catch (e) {
       setErr(e instanceof Error ? e.message : "ลบไม่สำเร็จ");
@@ -469,7 +471,7 @@ export function BudgetYearPage() {
         }
       }
       setLineForm(null);
-      await load();
+      await load({ silent: true });
     } catch (e) {
       setErr(e instanceof Error ? e.message : "บันทึกไม่สำเร็จ");
     } finally {
@@ -499,7 +501,7 @@ export function BudgetYearPage() {
         });
       }
       setCatForm(null);
-      await load();
+      await load({ silent: true });
     } catch (e) {
       setErr(e instanceof Error ? e.message : "บันทึกหมวดไม่สำเร็จ");
     } finally {
@@ -514,7 +516,7 @@ export function BudgetYearPage() {
     setErr(null);
     try {
       await apiJson(`/api/budget/categories/${cat.id}`, { method: "DELETE" });
-      await load();
+      await load({ silent: true });
     } catch (e) {
       setErr(e instanceof Error ? e.message : "ลบหมวดไม่สำเร็จ");
     } finally {
@@ -530,7 +532,7 @@ export function BudgetYearPage() {
     try {
       await apiJson(`/api/budget/year-lines/${row.id}`, { method: "DELETE" });
       if (selected?.id === row.id) setSelected(null);
-      await load();
+      await load({ silent: true });
     } catch (e) {
       setErr(e instanceof Error ? e.message : "ลบไม่สำเร็จ");
     } finally {

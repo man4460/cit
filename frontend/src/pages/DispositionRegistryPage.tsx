@@ -5,6 +5,8 @@ import { Modal, ModalFormBody } from "../components/Modal";
 import { PageHeaderBar } from "../components/PageHeaderBar";
 import { useAuth } from "../context/AuthContext";
 import { rowMatchesFilter } from "../lib/searchNormalize";
+import type { LoadOptions } from "../lib/loadOptions";
+import { setLoadBusy } from "../lib/loadOptions";
 import {
   brandGradientFillClass,
   toolbarLinkBtnClass,
@@ -100,8 +102,8 @@ export function DispositionRegistryPage() {
   const [assetEntity, setAssetEntity] = useState<Asset | null>(null);
   const [assetLogRow, setAssetLogRow] = useState<AssetDispositionLogEntry | null>(null);
 
-  const load = useCallback(async () => {
-    setLoading(true);
+  const load = useCallback(async (opts?: LoadOptions) => {
+    setLoadBusy(setLoading, opts, true);
     setErrVehiclesRetired(null);
     setErrVehicleLog(null);
     setErrAssetsRetired(null);
@@ -120,7 +122,7 @@ export function DispositionRegistryPage() {
     setErrAssetsRetired(ar.ok ? null : ar.message);
     setAssetLog(al.ok ? al.data : []);
     setErrAssetLog(al.ok ? null : al.message);
-    setLoading(false);
+    setLoadBusy(setLoading, opts, false);
   }, []);
 
   useEffect(() => {
@@ -179,7 +181,7 @@ export function DispositionRegistryPage() {
     try {
       await apiJson(`/api/vehicles/${v.id}`, { method: "DELETE" });
       setVehicleEntity(null);
-      await load();
+      await load({ silent: true });
     } catch (e) {
       alert(e instanceof Error ? e.message : "ลบไม่สำเร็จ");
     }
@@ -191,7 +193,7 @@ export function DispositionRegistryPage() {
     try {
       await apiJson(`/api/assets/${a.id}`, { method: "DELETE" });
       setAssetEntity(null);
-      await load();
+      await load({ silent: true });
     } catch (e) {
       alert(e instanceof Error ? e.message : "ลบไม่สำเร็จ");
     }
@@ -203,7 +205,7 @@ export function DispositionRegistryPage() {
     try {
       await apiJson(`/api/vehicles/registry/disposition-log/${row.id}`, { method: "DELETE" });
       setVehicleLogRow(null);
-      await load();
+      await load({ silent: true });
     } catch (e) {
       alert(e instanceof Error ? e.message : "ลบไม่สำเร็จ");
     }
@@ -215,7 +217,7 @@ export function DispositionRegistryPage() {
     try {
       await apiJson(`/api/assets/registry/disposition-log/${row.id}`, { method: "DELETE" });
       setAssetLogRow(null);
-      await load();
+      await load({ silent: true });
     } catch (e) {
       alert(e instanceof Error ? e.message : "ลบไม่สำเร็จ");
     }

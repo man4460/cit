@@ -14,6 +14,8 @@ import { getScanUrlForToken } from "../lib/scanUrl";
 import { rowMatchesFilter } from "../lib/searchNormalize";
 import { listCardAccentClass, listCardClass, toolbarLinkBtnClass, toolbarPrimaryBtnClass } from "../lib/uiTokens";
 import type { Asset, NameMasterRow } from "../types";
+import type { LoadOptions } from "../lib/loadOptions";
+import { setLoadBusy } from "../lib/loadOptions";
 
 type DashKey = "" | "all" | "handheld" | "mobile";
 
@@ -111,8 +113,8 @@ export function RadiosPage() {
 
   const radioCategoryId = categories.find((c) => c.name === RADIO_CATEGORY_NAME)?.id ?? "";
 
-  const load = useCallback(async () => {
-    setLoading(true);
+  const load = useCallback(async (opts?: LoadOptions) => {
+    setLoadBusy(setLoading, opts, true);
     try {
       const [a, c, s] = await Promise.all([
         apiJson<Asset[]>("/api/assets"),
@@ -228,7 +230,7 @@ export function RadiosPage() {
       else await apiJson("/api/assets", { method: "POST", body });
       setModalOpen(false);
       setEditingId(null);
-      await load();
+      await load({ silent: true });
     } catch (err) {
       alert(err instanceof Error ? err.message : "บันทึกไม่สำเร็จ");
     } finally {
@@ -241,7 +243,7 @@ export function RadiosPage() {
     try {
       await apiJson(`/api/assets/${r.id}`, { method: "DELETE" });
       setDetail(null);
-      await load();
+      await load({ silent: true });
     } catch (err) {
       alert(err instanceof Error ? err.message : "ลบไม่สำเร็จ");
     }
@@ -381,7 +383,7 @@ export function RadiosPage() {
         itemLabel={photoLabel}
         open={photoOpen}
         onClose={() => { setPhotoOpen(false); setPhotoAssetId(null); }}
-        onUpdated={() => void load()}
+        onUpdated={() => void load({ silent: true })}
       />
 
       <div className="mt-6 print:hidden">

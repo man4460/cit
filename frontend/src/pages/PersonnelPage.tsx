@@ -10,6 +10,8 @@ import { botPerDiemDailyRate } from "../lib/botAllowancePrint";
 import { formatBaht } from "../lib/formatNumber";
 import { rowMatchesFilter } from "../lib/searchNormalize";
 import { prepareImageFileForUpload } from "../lib/prepareImageFileForUpload";
+import type { LoadOptions } from "../lib/loadOptions";
+import { setLoadBusy } from "../lib/loadOptions";
 import {
   brandGradientFillClass,
   listCardAccentClass,
@@ -315,8 +317,8 @@ export function PersonnelPage() {
     setCategories(c);
   }, []);
 
-  const load = useCallback(async () => {
-    setLoading(true);
+  const load = useCallback(async (opts?: LoadOptions) => {
+    setLoadBusy(setLoading, opts, true);
     try {
       await loadLists();
     } finally {
@@ -501,7 +503,7 @@ export function PersonnelPage() {
     if (!confirm(`ลบบุคลากร «${r.fullName}» ? การดำเนินการนี้ไม่สามารถย้อนกลับได้`)) return false;
     try {
       await apiJson(`/api/personnel/${r.id}`, { method: "DELETE" });
-      await load();
+      await load({ silent: true });
       return true;
     } catch (e) {
       alert(e instanceof Error ? e.message : "ลบไม่สำเร็จ");

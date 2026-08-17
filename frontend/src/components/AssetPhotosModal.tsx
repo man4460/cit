@@ -3,6 +3,8 @@ import { apiFormJson, apiJson } from "../api/client";
 import { prepareFilesForUpload } from "../lib/prepareImageFileForUpload";
 import { Modal, ModalFormActions, ModalFormBody } from "./Modal";
 import type { AssetDetail } from "../types";
+import type { LoadOptions } from "../lib/loadOptions";
+import { setLoadBusy } from "../lib/loadOptions";
 
 export function AssetPhotosModal({
   assetId,
@@ -21,16 +23,16 @@ export function AssetPhotosModal({
   const [loading, setLoading] = useState(false);
   const inputId = assetId ? `asset-photos-${assetId}` : "asset-photos-none";
 
-  const load = useCallback(async () => {
+  const load = useCallback(async (opts?: LoadOptions) => {
     if (!assetId || !open) return;
-    setLoading(true);
+    setLoadBusy(setLoading, opts, true);
     try {
       const a = await apiJson<AssetDetail>(`/api/assets/${assetId}`);
       setDetail(a);
     } catch {
       setDetail(null);
     } finally {
-      setLoading(false);
+      setLoadBusy(setLoading, opts, false);
     }
   }, [assetId, open]);
 
@@ -59,7 +61,7 @@ export function AssetPhotosModal({
       for (const f of prepared) fd.append("photos", f);
       await apiFormJson<unknown[]>(`/api/assets/${assetId}/photos`, fd);
       if (el) el.value = "";
-      await load();
+      await load({ silent: true });
       onUpdated();
     } catch (err) {
       alert(err instanceof Error ? err.message : "อัปโหลดไม่สำเร็จ");
@@ -70,7 +72,7 @@ export function AssetPhotosModal({
     if (!assetId || !confirm("ลบรูปนี้?")) return;
     try {
       await apiJson(`/api/assets/${assetId}/documents/${docId}`, { method: "DELETE" });
-      await load();
+      await load({ silent: true });
       onUpdated();
     } catch (err) {
       alert(err instanceof Error ? err.message : "ลบไม่สำเร็จ");

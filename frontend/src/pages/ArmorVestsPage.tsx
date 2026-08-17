@@ -11,6 +11,8 @@ import { MODULE_DOCUMENT_CATEGORIES } from "../lib/moduleDocumentCategories";
 import { rowMatchesFilter } from "../lib/searchNormalize";
 import { listCardAccentClass, listCardClass, toolbarLinkBtnClass, toolbarPrimaryBtnClass } from "../lib/uiTokens";
 import type { BulletproofVest } from "../types";
+import type { LoadOptions } from "../lib/loadOptions";
+import { setLoadBusy } from "../lib/loadOptions";
 
 type DashKey = "" | "all" | "expired" | "expiring" | "noDate";
 type LifeStatus = "ok" | "expiring" | "expired" | "unknown";
@@ -185,8 +187,8 @@ export function ArmorVestsPage() {
   const [form, setForm] = useState(emptyForm);
   const [saving, setSaving] = useState(false);
 
-  const load = useCallback(async () => {
-    setLoading(true);
+  const load = useCallback(async (opts?: LoadOptions) => {
+    setLoadBusy(setLoading, opts, true);
     try {
       setRows(await apiJson<BulletproofVest[]>("/api/bulletproof-vests"));
     } finally {
@@ -317,7 +319,7 @@ export function ArmorVestsPage() {
       else await apiJson("/api/bulletproof-vests", { method: "POST", body });
       setModalOpen(false);
       setEditingId(null);
-      await load();
+      await load({ silent: true });
     } catch (err) {
       alert(err instanceof Error ? err.message : "บันทึกไม่สำเร็จ");
     } finally {
@@ -330,7 +332,7 @@ export function ArmorVestsPage() {
     try {
       await apiJson(`/api/bulletproof-vests/${r.id}`, { method: "DELETE" });
       setDetail(null);
-      await load();
+      await load({ silent: true });
     } catch (err) {
       alert(err instanceof Error ? err.message : "ลบไม่สำเร็จ");
     }

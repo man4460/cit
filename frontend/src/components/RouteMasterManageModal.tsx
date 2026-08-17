@@ -3,6 +3,8 @@ import { apiJson } from "../api/client";
 import { brandGradientFillClass, toolbarMasterBtnClass, toolbarMasterGroupClass } from "../lib/uiTokens";
 import type { RouteMaster, RouteMasterStatus } from "../types";
 import { Modal, ModalFormActions, ModalFormBody } from "./Modal";
+import type { LoadOptions } from "../lib/loadOptions";
+import { setLoadBusy } from "../lib/loadOptions";
 
 function routeStatusLabel(status?: RouteMasterStatus) {
   return status === "INACTIVE" ? "เลิกใช้" : "ใช้งาน";
@@ -32,8 +34,8 @@ export function RouteMasterManageModal({
   const [missionDays, setMissionDays] = useState("");
   const [status, setStatus] = useState<RouteMasterStatus>("ACTIVE");
 
-  const load = useCallback(async () => {
-    setLoading(true);
+  const load = useCallback(async (opts?: LoadOptions) => {
+    setLoadBusy(setLoading, opts, true);
     setErr(null);
     try {
       setRows(await apiJson<RouteMaster[]>(`/api/route-master?status=${statusView}`));
@@ -106,7 +108,7 @@ export function RouteMasterManageModal({
       setFormOpen(false);
       onChanged();
       if (status !== statusView) setStatusView(status);
-      else await load();
+      else await load({ silent: true });
     } catch (e) {
       setErr(e instanceof Error ? e.message : "บันทึกไม่สำเร็จ");
     }
@@ -118,7 +120,7 @@ export function RouteMasterManageModal({
     try {
       await apiJson(`/api/route-master/${r.id}`, { method: "DELETE" });
       onChanged();
-      await load();
+      await load({ silent: true });
     } catch (e) {
       setErr(e instanceof Error ? e.message : "ลบไม่สำเร็จ");
     }

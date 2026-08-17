@@ -5,6 +5,8 @@ import { apiJson } from "../../api/client";
 import { rowMatchesFilter } from "../../lib/searchNormalize";
 import { toolbarMasterGroupClass } from "../../lib/uiTokens";
 import { kindLabel, type BudgetKind } from "./budgetFormat";
+import type { LoadOptions } from "../../lib/loadOptions";
+import { setLoadBusy } from "../../lib/loadOptions";
 
 type Account = {
   id: string;
@@ -26,8 +28,8 @@ export function BudgetAccountsPage() {
   const [err, setErr] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
 
-  const load = useCallback(async () => {
-    setLoading(true);
+  const load = useCallback(async (opts?: LoadOptions) => {
+    setLoadBusy(setLoading, opts, true);
     setErr(null);
     try {
       const q = new URLSearchParams();

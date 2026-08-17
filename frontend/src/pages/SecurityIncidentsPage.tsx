@@ -6,6 +6,8 @@ import { PageHeaderBar } from "../components/PageHeaderBar";
 import { rowMatchesFilter } from "../lib/searchNormalize";
 import { listCardAccentClass, listCardClass, brandGradientFillClass, toolbarLinkBtnClass, toolbarMasterBtnClass, toolbarMasterGroupClass } from "../lib/uiTokens";
 import type { SecurityIncident } from "../types";
+import type { LoadOptions } from "../lib/loadOptions";
+import { setLoadBusy } from "../lib/loadOptions";
 
 const PAGE_SIZE = 24; // 3 คอลัมน์ × 8 แถว
 
@@ -100,8 +102,8 @@ export function SecurityIncidentsPage() {
   const [locations, setLocations] = useState<string[]>([]);
   const [page, setPage] = useState(1);
 
-  const load = useCallback(async () => {
-    setLoading(true);
+  const load = useCallback(async (opts?: LoadOptions) => {
+    setLoadBusy(setLoading, opts, true);
     setErr(null);
     try {
       const [data, meta] = await Promise.all([

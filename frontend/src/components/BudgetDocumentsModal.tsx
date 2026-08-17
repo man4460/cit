@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { apiFormJson, apiJson } from "../api/client";
 import { rowMatchesFilter } from "../lib/searchNormalize";
+import type { LoadOptions } from "../lib/loadOptions";
+import { setLoadBusy } from "../lib/loadOptions";
 import {
   mediaUrl,
   toolbarLinkBtnClass,
@@ -87,8 +89,8 @@ export function BudgetDocumentsModal({ open, bucket, isAdmin, onClose }: Props) 
   const [catMgrOpen, setCatMgrOpen] = useState(false);
   const [form, setForm] = useState<FormState | null>(null);
 
-  const load = useCallback(async () => {
-    setLoading(true);
+  const load = useCallback(async (opts?: LoadOptions) => {
+    setLoadBusy(setLoading, opts, true);
     setErr(null);
     try {
       const [docsRes, cats] = await Promise.all([
@@ -205,7 +207,7 @@ export function BudgetDocumentsModal({ open, bucket, isAdmin, onClose }: Props) 
         await apiFormJson<BudgetDocumentRow>("/api/budget/documents", fd, "POST");
       }
       setForm(null);
-      await load();
+      await load({ silent: true });
     } catch (e) {
       setErr(e instanceof Error ? e.message : "บันทึกไม่สำเร็จ");
     } finally {
@@ -218,7 +220,7 @@ export function BudgetDocumentsModal({ open, bucket, isAdmin, onClose }: Props) 
     setErr(null);
     try {
       await apiJson(`/api/budget/documents/${doc.id}`, { method: "DELETE" });
-      await load();
+      await load({ silent: true });
     } catch (e) {
       setErr(e instanceof Error ? e.message : "ลบไม่สำเร็จ");
     }
@@ -470,7 +472,7 @@ export function BudgetDocumentsModal({ open, bucket, isAdmin, onClose }: Props) 
         apiPath="/api/budget/document-categories"
         open={catMgrOpen}
         onClose={() => setCatMgrOpen(false)}
-        onChanged={() => void load()}
+        onChanged={() => void load({ silent: true })}
       />
     </>
   );

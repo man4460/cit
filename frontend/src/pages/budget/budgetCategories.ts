@@ -414,7 +414,10 @@ export function rollupAllocated(row: BudgetYearLineRow, kids: BudgetYearLineRow[
 
 export function rollupSpent(row: BudgetYearLineRow, kids: BudgetYearLineRow[]): number {
   if (!kids.length) return row.spent;
-  return row.spent + kids.reduce((s, k) => s + k.spent, 0);
+  const kidsSpent = kids.reduce((s, k) => s + k.spent, 0);
+  /** มีย่อยแล้วใช้ยอดย่อย — snapshot หัวข้อหลักมักเป็นผลรวมกลุ่มอยู่แล้ว ห้ามบวกซ้ำ */
+  if (kidsSpent !== 0) return kidsSpent;
+  return row.spent;
 }
 
 export function rollupRequested(

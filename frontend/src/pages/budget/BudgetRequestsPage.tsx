@@ -6,6 +6,8 @@ import { apiJson } from "../../api/client";
 import { rowMatchesFilter } from "../../lib/searchNormalize";
 import { toolbarLinkBtnClass, toolbarMasterGroupClass } from "../../lib/uiTokens";
 import { formatBaht, formatPct, kindLabel, pctToneClass, type BudgetKind } from "./budgetFormat";
+import type { LoadOptions } from "../../lib/loadOptions";
+import { setLoadBusy } from "../../lib/loadOptions";
 
 type RequestItem = {
   id: string;
@@ -69,8 +71,8 @@ export function BudgetRequestsPage() {
   const [loading, setLoading] = useState(true);
   const [showBaht, setShowBaht] = useState(false);
 
-  const load = useCallback(async () => {
-    setLoading(true);
+  const load = useCallback(async (opts?: LoadOptions) => {
+    setLoadBusy(setLoading, opts, true);
     setErr(null);
     try {
       const [res, ex] = await Promise.all([

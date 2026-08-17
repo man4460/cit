@@ -6,6 +6,8 @@ import { apiJson } from "../../api/client";
 import { useAuth } from "../../context/AuthContext";
 import { rowMatchesFilter } from "../../lib/searchNormalize";
 import { toolbarMasterGroupClass, toolbarPrimaryBtnClass } from "../../lib/uiTokens";
+import type { LoadOptions } from "../../lib/loadOptions";
+import { setLoadBusy } from "../../lib/loadOptions";
 import {
   formatBaht,
   formatPct,
@@ -52,8 +54,8 @@ export function BudgetSpendPage() {
 
   const showSpendCols = bucket === "2569";
 
-  const load = useCallback(async () => {
-    setLoading(true);
+  const load = useCallback(async (opts?: LoadOptions) => {
+    setLoadBusy(setLoading, opts, true);
     setErr(null);
     try {
       const q = new URLSearchParams({ bucket });
@@ -98,7 +100,7 @@ export function BudgetSpendPage() {
       });
       setTxAmount("");
       setTxDesc("");
-      await load();
+      await load({ silent: true });
       const refreshed = (
         await apiJson<{ lines: BudgetYearLineRow[] }>(`/api/budget/lines?bucket=${bucket}`)
       ).lines.find((l) => l.id === selected.id);

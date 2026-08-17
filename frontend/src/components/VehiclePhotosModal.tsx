@@ -3,6 +3,8 @@ import { apiFormJson, apiJson } from "../api/client";
 import { prepareFilesForUpload } from "../lib/prepareImageFileForUpload";
 import { Modal, ModalFormActions, ModalFormBody } from "./Modal";
 import type { VehicleDetail, VehicleDocument } from "../types";
+import type { LoadOptions } from "../lib/loadOptions";
+import { setLoadBusy } from "../lib/loadOptions";
 
 export function VehiclePhotosModal({
   vehicleId,
@@ -22,16 +24,16 @@ export function VehiclePhotosModal({
   const [busyId, setBusyId] = useState<string | null>(null);
   const inputId = vehicleId ? `vehicle-photos-${vehicleId}` : "vehicle-photos-none";
 
-  const load = useCallback(async () => {
+  const load = useCallback(async (opts?: LoadOptions) => {
     if (!vehicleId || !open) return;
-    setLoading(true);
+    setLoadBusy(setLoading, opts, true);
     try {
       const v = await apiJson<VehicleDetail>(`/api/vehicles/${vehicleId}`);
       setDetail(v);
     } catch {
       setDetail(null);
     } finally {
-      setLoading(false);
+      setLoadBusy(setLoading, opts, false);
     }
   }, [vehicleId, open]);
 
@@ -64,7 +66,7 @@ export function VehiclePhotosModal({
       for (const f of prepared) fd.append("photos", f);
       await apiFormJson<unknown[]>(`/api/vehicles/${vehicleId}/photos`, fd);
       if (el) el.value = "";
-      await load();
+      await load({ silent: true });
       onUpdated();
     } catch (err) {
       alert(err instanceof Error ? err.message : "อัปโหลดไม่สำเร็จ");
@@ -75,7 +77,7 @@ export function VehiclePhotosModal({
     if (!vehicleId || !confirm("ลบรูปนี้?")) return;
     try {
       await apiJson(`/api/vehicles/${vehicleId}/documents/${docId}`, { method: "DELETE" });
-      await load();
+      await load({ silent: true });
       onUpdated();
     } catch (err) {
       alert(err instanceof Error ? err.message : "ลบไม่สำเร็จ");
@@ -87,7 +89,7 @@ export function VehiclePhotosModal({
     setBusyId(doc.id);
     try {
       await apiJson(`/api/vehicles/${vehicleId}/documents/${doc.id}/card-front`, { method: "POST" });
-      await load();
+      await load({ silent: true });
       onUpdated();
     } catch (err) {
       alert(err instanceof Error ? err.message : "ตั้งรูปหน้าการ์ดไม่สำเร็จ");

@@ -6,6 +6,8 @@ import { Modal, ModalFormActions, ModalFormBody, ModalFormSection } from "../com
 import { PageHeaderBar } from "../components/PageHeaderBar";
 import { PrintA4Table } from "../components/PrintA4Table";
 import { rowMatchesFilter } from "../lib/searchNormalize";
+import type { LoadOptions } from "../lib/loadOptions";
+import { setLoadBusy } from "../lib/loadOptions";
 import {
   listCardAccentClass,
   listCardClass,
@@ -65,8 +67,8 @@ export function DocumentsPage() {
   );
   const viewEmbedKind = useMemo(() => (viewing ? libraryEmbedKind(viewing) : "none"), [viewing]);
 
-  const load = useCallback(async () => {
-    setLoading(true);
+  const load = useCallback(async (opts?: LoadOptions) => {
+    setLoadBusy(setLoading, opts, true);
     try {
       const [docs, t] = await Promise.all([
         apiJson<LibraryDocument[]>("/api/library-documents"),
@@ -161,7 +163,7 @@ export function DocumentsPage() {
         await apiFormJson<LibraryDocument>("/api/library-documents", fd, "POST");
       }
       closeForm();
-      await load();
+      await load({ silent: true });
     } catch (err) {
       alert(err instanceof Error ? err.message : "บันทึกไม่สำเร็จ");
     } finally {
@@ -173,7 +175,7 @@ export function DocumentsPage() {
     if (!confirm(`ลบเอกสาร «${d.title}» ?`)) return;
     try {
       await apiJson(`/api/library-documents/${d.id}`, { method: "DELETE" });
-      await load();
+      await load({ silent: true });
     } catch (err) {
       alert(err instanceof Error ? err.message : "ลบไม่สำเร็จ");
     }
@@ -255,7 +257,7 @@ export function DocumentsPage() {
         apiPath="/api/document-types"
         open={typeModalOpen}
         onClose={() => setTypeModalOpen(false)}
-        onChanged={() => void load()}
+        onChanged={() => void load({ silent: true })}
       />
 
       <Modal open={!!viewing} onClose={closeView} title="ดูเอกสาร" size="viewer">

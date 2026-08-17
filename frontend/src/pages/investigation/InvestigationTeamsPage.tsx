@@ -5,6 +5,8 @@ import { Modal, ModalFormActions, ModalFormBody, ModalFormSection } from "../../
 import { PageHeaderBar } from "../../components/PageHeaderBar";
 import { ORG_ROLE_LABEL_TH, ORG_ROLE_ORDER } from "../../lib/investigationLabels";
 import { rowMatchesFilter } from "../../lib/searchNormalize";
+import type { LoadOptions } from "../../lib/loadOptions";
+import { setLoadBusy } from "../../lib/loadOptions";
 import {
   brandGradientFillClass,
   listCardAccentClass,
@@ -72,8 +74,8 @@ export function InvestigationTeamsPage() {
   const [editingMember, setEditingMember] = useState<InvestigationMember | null>(null);
   const [memberForm, setMemberForm] = useState<MemberForm>(emptyMemberForm);
 
-  const load = useCallback(async () => {
-    setLoading(true);
+  const load = useCallback(async (opts?: LoadOptions) => {
+    setLoadBusy(setLoading, opts, true);
     setErr(null);
     try {
       const [teamRows, memberRows, categoryRows] = await Promise.all([
@@ -183,7 +185,7 @@ export function InvestigationTeamsPage() {
       }
       setTeamModalOpen(false);
       setEditingTeam(null);
-      await load();
+      await load({ silent: true });
     } catch (ex) {
       setErr(ex instanceof Error ? ex.message : "บันทึกทีมไม่สำเร็จ");
     } finally {
@@ -196,7 +198,7 @@ export function InvestigationTeamsPage() {
     setErr(null);
     try {
       await apiJson(`/api/investigation/teams/${t.id}`, { method: "DELETE" });
-      await load();
+      await load({ silent: true });
     } catch (ex) {
       setErr(ex instanceof Error ? ex.message : "ลบทีมไม่สำเร็จ");
     }
@@ -259,7 +261,7 @@ export function InvestigationTeamsPage() {
       }
       setMemberModalOpen(false);
       setEditingMember(null);
-      await load();
+      await load({ silent: true });
     } catch (ex) {
       setErr(ex instanceof Error ? ex.message : "บันทึกบุคลากรไม่สำเร็จ");
     } finally {
@@ -272,7 +274,7 @@ export function InvestigationTeamsPage() {
     setErr(null);
     try {
       await apiJson(`/api/investigation/members/${m.id}`, { method: "DELETE" });
-      await load();
+      await load({ silent: true });
     } catch (ex) {
       setErr(ex instanceof Error ? ex.message : "ลบไม่สำเร็จ");
     }
