@@ -1267,6 +1267,7 @@ budgetRouter.get("/dashboard", async (req, res, next) => {
       fundingType: bf.fundingType,
       availableYears: years.map((y) => y.yearBe),
       buckets: [
+        { id: "2568", label: "ปี 2568" },
         { id: "2569", label: "ปี 2569" },
         { id: "2570", label: "ปี 2570" },
         { id: "commitment", label: "งบผูกพัน" },

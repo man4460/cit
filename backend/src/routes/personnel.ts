@@ -266,7 +266,7 @@ personnelRouter.post("/", upload.single("photo"), async (req, res, next) => {
           kind: "photo",
           forceImage: true,
         });
-        photoUrl = saved.fileUrl;
+        photoUrl = saved.publicPath;
       } catch (e) {
         return res.status(400).json({ error: e instanceof Error ? e.message : "อัปโหลดรูปไม่สำเร็จ" });
       }
@@ -403,7 +403,7 @@ personnelRouter.put("/:id", upload.single("photo"), async (req, res, next) => {
           kind: "photo",
           forceImage: true,
         });
-        data.photoUrl = saved.fileUrl;
+        data.photoUrl = saved.publicPath;
       } catch (e) {
         return res.status(400).json({ error: e instanceof Error ? e.message : "อัปโหลดรูปไม่สำเร็จ" });
       }

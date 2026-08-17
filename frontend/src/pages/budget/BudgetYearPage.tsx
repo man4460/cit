@@ -242,10 +242,9 @@ export function BudgetYearPage() {
       /** ยอด KPI ใช้แถวสรุปหมวดก่อน — ไม่บวกรายการย่อยซ้ำ */
       const allocated = sec != null ? sec.allocatedAmount : fromCi || fromMajors;
       const spent = sec?.spent ?? kindLines.filter((l) => !l.isSummary && l.ciCode).reduce((s, l) => s + l.spent, 0);
-      const requested =
-        sec != null
-          ? requestedOf(sec)
-          : ciLeafRequestedTotal(kindLines, requestedOf);
+      const sectionReq = sec != null ? requestedOf(sec) : 0;
+      const leafReq = ciLeafRequestedTotal(kindLines, requestedOf);
+      const requested = Math.round(sectionReq > 0 ? sectionReq : leafReq);
       return {
         kind,
         label: kindLabel(kind),
@@ -264,10 +263,12 @@ export function BudgetYearPage() {
     const allocated = fromSections != null ? fromSections : ciLeafAllocatedTotal(displayLines);
     const spent = kindStats.reduce((s, k) => s + k.spent, 0);
     const fromSectionReq = showRequestFields ? sectionRequestedTotal(displayLines, requestedOf) : null;
+    const leafReq = showRequestFields ? Math.round(ciLeafRequestedTotal(displayLines, requestedOf)) : 0;
+    /** ถ้าแถวสรุปหมวดมีคำขอเป็น 0 แต่รายการย่อยมี — ใช้ยอดรายการย่อย */
     const requested = showRequestFields
-      ? fromSectionReq != null
+      ? fromSectionReq != null && fromSectionReq > 0
         ? Math.round(fromSectionReq)
-        : Math.round(ciLeafRequestedTotal(displayLines, requestedOf))
+        : leafReq
       : 0;
     return {
       allocated: Math.round(allocated * 100) / 100,

@@ -177,7 +177,7 @@ tasksRouter.post("/:id/photos", upload.array("photos", 24), async (req, res, nex
         const row = await prisma.workTaskPhoto.create({
           data: {
             workTaskId: taskId,
-            fileUrl: saved.fileUrl,
+            fileUrl: saved.publicPath,
             mimeType: saved.mimeType,
             originalName: saved.displayName,
             sortOrder: order++,

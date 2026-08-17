@@ -31,6 +31,8 @@
     "seed:training:tactical-driving-2569": "tsx scripts/seed-training-tactical-driving-2569.ts",
     "seed:security-incidents": "tsx scripts/seed-security-incidents-from-csv.ts",
     "seed:budget": "tsx scripts/seed-budget-from-xlsx.ts",
+    "seed:budget:2568-approve": "tsx scripts/seed-budget-2568-from-approve-xls.ts",
+    "seed:budget:2569-approve": "tsx scripts/seed-budget-requests-2569-from-approve-xls.ts",
     "recalculate:route-distances": "tsx scripts/recalculate-route-distances.ts",
     "seed:vehicle-photos": "tsx scripts/seed-vehicle-photos.ts",
     "seed:vehicle-photos:real": "tsx scripts/seed-vehicle-photos-from-folder.ts",
@@ -65,7 +67,8 @@
     "pdf-parse": "^2.4.5",
     "sharp": "^0.35.3",
     "tesseract.js": "^7.0.0",
-    "uuid": "^11.1.0"
+    "uuid": "^11.1.0",
+    "xlsx": "^0.18.5"
   },
   "devDependencies": {
     "@types/bcrypt": "^5.0.2",

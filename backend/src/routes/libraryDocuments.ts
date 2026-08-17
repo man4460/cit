@@ -78,7 +78,7 @@ libraryDocumentsRouter.post("/", upload.single("file"), async (req, res, next) =
           allowPdf: true,
           allowOfficeDocs: true,
         });
-        fileUrl = saved.fileUrl;
+        fileUrl = saved.publicPath;
         mimeType = saved.mimeType;
         originalName = saved.displayName;
       } catch (e) {
@@ -152,7 +152,7 @@ libraryDocumentsRouter.put("/:id", upload.single("file"), async (req, res, next)
           allowPdf: true,
           allowOfficeDocs: true,
         });
-        data.fileUrl = saved.fileUrl;
+        data.fileUrl = saved.publicPath;
         data.mimeType = saved.mimeType;
         data.originalName = saved.displayName;
         data.extractedText = null;

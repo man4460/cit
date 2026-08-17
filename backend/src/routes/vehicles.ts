@@ -611,7 +611,7 @@ vehiclesRouter.post("/:id/photos", upload.array("photos", 24), async (req, res, 
         const row = await prisma.vehicleDocument.create({
           data: {
             vehicleId,
-            fileUrl: saved.fileUrl,
+            fileUrl: saved.publicPath,
             mimeType: saved.mimeType,
             originalName: saved.displayName,
             kind: "PHOTO",
@@ -643,7 +643,7 @@ vehiclesRouter.post("/:id/documents", upload.single("file"), async (req, res, ne
     const row = await prisma.vehicleDocument.create({
       data: {
         vehicleId: routeParam(req.params.id),
-        fileUrl: saved.fileUrl,
+        fileUrl: saved.publicPath,
         mimeType: saved.mimeType,
         originalName: saved.displayName,
         kind: "DOCUMENT",

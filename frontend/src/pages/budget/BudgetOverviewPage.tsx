@@ -36,7 +36,8 @@ function openDocumentUrl(url: string | null | undefined) {
 
 export function BudgetOverviewPage() {
   const { yearBe: yearParam } = useParams();
-  const yearBe = yearParam === "2570" ? 2570 : yearParam === "2569" ? 2569 : null;
+  const yearBe =
+    yearParam === "2570" ? 2570 : yearParam === "2569" ? 2569 : yearParam === "2568" ? 2568 : null;
 
   const [lines, setLines] = useState<BudgetYearLineRow[]>([]);
   const [err, setErr] = useState<string | null>(null);
@@ -109,8 +110,8 @@ export function BudgetOverviewPage() {
 
   if (!yearBe) return <Navigate to="/budget/overview/2569" replace />;
 
-  const isTrackingYear = yearBe === 2569;
   const isRequestYear = yearBe === 2570;
+  const isTrackingYear = yearBe != null && !isRequestYear;
   const detailTo = `/budget/year/${yearBe}`;
   const fmt = (n: number | null | undefined) => (showBaht ? formatBaht(n) : m(n));
   const unit = showBaht ? "บาท" : "ลบ.";

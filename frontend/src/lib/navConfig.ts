@@ -26,6 +26,7 @@ export const navGroups: NavGroup[] = [
         to: "/budget/overview/2569",
         label: "งบประมาณ",
         children: [
+          { to: "/budget/overview/2568", label: "ปี 2568", end: true },
           { to: "/budget/overview/2569", label: "ปี 2569", end: true },
           { to: "/budget/overview/2570", label: "ปี 2570", end: true },
         ],
@@ -72,6 +73,7 @@ export const navGroups: NavGroup[] = [
     titleTh: "งบประมาณ",
     titleEn: "Budget",
     items: [
+      { to: "/budget/year/2568", label: "ปี 2568" },
       { to: "/budget/year/2569", label: "ปี 2569" },
       { to: "/budget/year/2570", label: "ปี 2570" },
     ],

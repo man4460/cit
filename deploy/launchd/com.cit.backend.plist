@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>Label</key>
+	<string>com.cit.backend</string>
+	<key>UserName</key>
+	<string>mawell-03</string>
+	<key>GroupName</key>
+	<string>staff</string>
+	<key>WorkingDirectory</key>
+	<string>/Users/mawell-03/CIT/backend</string>
+	<key>ProgramArguments</key>
+	<array>
+		<string>/opt/homebrew/bin/node</string>
+		<string>dist/index.js</string>
+	</array>
+	<key>EnvironmentVariables</key>
+	<dict>
+		<key>PATH</key>
+		<string>/opt/homebrew/bin:/opt/homebrew/sbin:/usr/bin:/bin:/usr/sbin:/sbin</string>
+		<key>HOME</key>
+		<string>/Users/mawell-03</string>
+		<key>NODE_ENV</key>
+		<string>production</string>
+	</dict>
+	<key>RunAtLoad</key>
+	<true/>
+	<key>KeepAlive</key>
+	<true/>
+	<key>ThrottleInterval</key>
+	<integer>10</integer>
+	<key>StandardOutPath</key>
+	<string>/Users/mawell-03/CIT/deploy/logs/backend.out.log</string>
+	<key>StandardErrorPath</key>
+	<string>/Users/mawell-03/CIT/deploy/logs/backend.err.log</string>
+</dict>
+</plist>

@@ -9,6 +9,21 @@ function resolveFetchUrl(path: string): string {
 
 const TOKEN_KEY = "afo_token";
 
+/** cache GET ในหน่วยความจำ — อยู่จนรีเฟรชเบราว์เซอร์ / กดปุ่มรีเฟรชข้อมูล / มีการเขียนข้อมูล */
+const getCache = new Map<string, unknown>();
+
+export const DATA_REFRESH_EVENT = "afo:data-refresh";
+
+export function clearApiCache() {
+  getCache.clear();
+}
+
+/** ล้าง cache แล้วให้หน้าปัจจุบันโหลดข้อมูลใหม่ */
+export function refreshAppData() {
+  clearApiCache();
+  window.dispatchEvent(new Event(DATA_REFRESH_EVENT));
+}
+
 export function getToken(): string | null {
   return localStorage.getItem(TOKEN_KEY);
 }
@@ -29,7 +44,22 @@ function formatApiFailure(data: { error?: string; details?: string } | null, fal
   return d ? `${msg}\n${d}` : msg;
 }
 
+function requestMethod(init?: RequestInit): string {
+  return (init?.method ?? "GET").toUpperCase();
+}
+
+function cacheKey(path: string, init?: RequestInit): string | null {
+  if (requestMethod(init) !== "GET") return null;
+  return path;
+}
+
 export async function apiJson<T>(path: string, init?: RequestInit): Promise<T> {
+  const key = cacheKey(path, init);
+  if (key && getCache.has(key)) {
+    return getCache.get(key) as T;
+  }
+
+  const method = requestMethod(init);
   const res = await fetch(resolveFetchUrl(path), {
     ...init,
     headers: {
@@ -39,7 +69,10 @@ export async function apiJson<T>(path: string, init?: RequestInit): Promise<T> {
       ...init?.headers,
     },
   });
-  if (res.status === 204) return undefined as T;
+  if (res.status === 204) {
+    if (method !== "GET") clearApiCache();
+    return undefined as T;
+  }
   const text = await res.text();
   let data: { error?: string; details?: string } | null = null;
   if (text) {
@@ -51,9 +84,12 @@ export async function apiJson<T>(path: string, init?: RequestInit): Promise<T> {
   }
   if (res.status === 401) {
     setToken(null);
+    clearApiCache();
     window.dispatchEvent(new Event("afo:auth"));
   }
   if (!res.ok) throw new Error(formatApiFailure(data, res.statusText));
+  if (method !== "GET") clearApiCache();
+  else if (key) getCache.set(key, data);
   return data as T;
 }
 
@@ -69,7 +105,10 @@ export async function apiFormJson<T>(path: string, formData: FormData, method = 
     body: formData,
   });
   const text = await res.text();
-  if (res.status === 204) return undefined as T;
+  if (res.status === 204) {
+    clearApiCache();
+    return undefined as T;
+  }
   let data: { error?: string; details?: string } | null = null;
   if (text) {
     try {
@@ -80,8 +119,10 @@ export async function apiFormJson<T>(path: string, formData: FormData, method = 
   }
   if (res.status === 401) {
     setToken(null);
+    clearApiCache();
     window.dispatchEvent(new Event("afo:auth"));
   }
   if (!res.ok) throw new Error(formatApiFailure(data, res.statusText));
+  clearApiCache();
   return data as T;
 }

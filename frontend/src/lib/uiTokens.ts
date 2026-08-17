@@ -84,11 +84,37 @@ export const chartSeries = {
   maintenance: "#7c3aed",
 } as const;
 
-/** ประกอบ URL สื่อ (/uploads/...) กับ VITE_API_URL / proxy */
+/** ประกอบ URL สื่อ (/uploads/...) กับ VITE_API_URL / proxy
+ *  ถ้าเป็น absolute ที่ชี้ localhost หรือโดเมนแอปเอง → ตัดเหลือ path เพื่อให้ผ่าน Cloudflare/proxy ได้
+ */
 export function mediaUrl(pathOrUrl: string | null | undefined): string | null {
   if (!pathOrUrl) return null;
-  if (/^https?:\/\//i.test(pathOrUrl)) return pathOrUrl;
-  const base = (import.meta.env.VITE_API_URL ?? "").replace(/\/$/, "");
-  const p = pathOrUrl.startsWith("/") ? pathOrUrl : `/${pathOrUrl}`;
-  return base ? `${base}${p}` : p;
+  let raw = String(pathOrUrl).trim();
+  if (!raw) return null;
+
+  const publicOrigin = (import.meta.env.VITE_PUBLIC_ORIGIN ?? "").replace(/\/$/, "");
+  const apiBase = (import.meta.env.VITE_API_URL ?? "").replace(/\/$/, "");
+
+  if (/^https?:\/\//i.test(raw)) {
+    try {
+      const u = new URL(raw);
+      const host = u.hostname.toLowerCase();
+      const isLocal = host === "localhost" || host === "127.0.0.1" || host === "::1";
+      const isAppHost =
+        (publicOrigin && raw.startsWith(publicOrigin)) ||
+        (apiBase && raw.startsWith(apiBase)) ||
+        host === "allforone.ma-well.com" ||
+        host.endsWith(".ma-well.com");
+      if ((isLocal || isAppHost) && u.pathname.startsWith("/uploads/")) {
+        raw = u.pathname;
+      } else {
+        return raw;
+      }
+    } catch {
+      return raw;
+    }
+  }
+
+  const p = raw.startsWith("/") ? raw : `/${raw}`;
+  return apiBase ? `${apiBase}${p}` : p;
 }

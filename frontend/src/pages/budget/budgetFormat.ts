@@ -4,6 +4,7 @@ export type BudgetFundingType = "ANNUAL" | "COMMITMENT";
 export type BudgetBucket = string;
 
 export const BUDGET_BUCKETS: { id: BudgetBucket; label: string }[] = [
+  { id: "2568", label: "ปี 2568" },
   { id: "2569", label: "ปี 2569" },
   { id: "2570", label: "ปี 2570" },
 ];

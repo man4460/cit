@@ -155,7 +155,7 @@ assetsRouter.post("/:id/photos", upload.array("photos", 24), async (req, res, ne
         const row = await prisma.assetDocument.create({
           data: {
             assetId,
-            fileUrl: saved.fileUrl,
+            fileUrl: saved.publicPath,
             mimeType: saved.mimeType,
             originalName: saved.displayName,
             kind: "PHOTO",
@@ -192,7 +192,7 @@ assetsRouter.post("/:id/permit", upload.single("file"), async (req, res, next) =
     const row = await prisma.assetDocument.create({
       data: {
         assetId,
-        fileUrl: saved.fileUrl,
+        fileUrl: saved.publicPath,
         mimeType: saved.mimeType,
         originalName: saved.displayName,
         kind: "PERMIT",

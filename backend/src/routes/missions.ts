@@ -79,7 +79,7 @@ function serializeMissionAttachment(a: {
 function multerFilesErrorMessage(err: unknown): string | null {
   if (!err || typeof err !== "object" || !("code" in err)) return null;
   const code = String((err as { code: unknown }).code);
-  if (code === "LIMIT_FILE_SIZE") return "ไฟล์ใหญ่เกิน ~15 MB ต่อไฟล์";
+  if (code === "LIMIT_FILE_SIZE") return "ไฟล์ใหญ่เกิน ~50 MB ต่อไฟล์";
   if (code === "LIMIT_FILE_COUNT") return "เลือกได้ไม่เกิน 24 ไฟล์ต่อครั้ง";
   if (code === "LIMIT_UNEXPECTED_FILE") return "ฟิลด์ไฟล์ไม่ถูกต้อง — ใช้ชื่อฟิลด์ files";
   return null;

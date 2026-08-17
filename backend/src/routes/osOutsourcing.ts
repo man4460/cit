@@ -226,7 +226,7 @@ async function persistOsLibraryFile(params: {
       title: params.title,
       details: params.details,
       documentTypeId,
-      fileUrl: saved.fileUrl,
+      fileUrl: saved.publicPath,
       mimeType: saved.mimeType,
       originalName: saved.displayName,
     },

@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
+import { DATA_REFRESH_EVENT, refreshAppData } from "../api/client";
 import { useAuth } from "../context/AuthContext";
 import {
   filterGroupItems,
@@ -55,6 +56,18 @@ function LogoutDoorIcon({ className }: { className?: string }) {
   );
 }
 
+function RefreshIcon({ className }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.85} aria-hidden>
+      <path
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0 3.181 3.183a8.25 8.25 0 0 0 13.803-3.7M4.031 9.865a8.25 8.25 0 0 1 13.803-3.7l3.181 3.182"
+      />
+    </svg>
+  );
+}
+
 function HamburgerIcon({ open }: { open: boolean }) {
   return (
     <svg className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2} aria-hidden>
@@ -82,7 +95,18 @@ export function Shell() {
   const [mobileOpen, setMobileOpen] = useState(false);
   const [collapsed, setCollapsed] = useState(readCollapsed);
   const [moduleHeaderCollapsed, setModuleHeaderCollapsed] = useState(readModuleHeaderCollapsed);
+  const [dataEpoch, setDataEpoch] = useState(0);
+  const [refreshing, setRefreshing] = useState(false);
   const activeGroup = findGroupForPath(location.pathname, user?.role);
+
+  useEffect(() => {
+    const onRefresh = () => {
+      setDataEpoch((n) => n + 1);
+      setRefreshing(false);
+    };
+    window.addEventListener(DATA_REFRESH_EVENT, onRefresh);
+    return () => window.removeEventListener(DATA_REFRESH_EVENT, onRefresh);
+  }, []);
 
   useEffect(() => {
     setMobileOpen(false);
@@ -239,6 +263,19 @@ export function Shell() {
           {moduleHeaderCollapsed ? <ModuleHeaderBarNav role={user?.role} /> : null}
         </div>
         <div className="flex min-w-0 shrink-0 items-center gap-1.5 border-l border-[#0000BF]/15 pl-2.5 sm:gap-2 sm:pl-3">
+          <button
+            type="button"
+            onClick={() => {
+              setRefreshing(true);
+              refreshAppData();
+            }}
+            disabled={refreshing}
+            className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-[#0000BF]/20 bg-white/80 text-[#58547f] shadow-sm transition hover:border-[#0000BF]/35 hover:bg-white hover:text-[#0000BF] disabled:opacity-60"
+            title="รีเฟรชข้อมูล"
+            aria-label="รีเฟรชข้อมูล"
+          >
+            <RefreshIcon className={`h-[1.125rem] w-[1.125rem] ${refreshing ? "animate-spin" : ""}`} />
+          </button>
           <NavLink
             to="/profile"
             className="inline-flex min-w-0 items-center gap-2 rounded-xl border border-[#0000BF]/20 bg-white/80 py-1 pl-1 pr-2.5 text-[#2e2a58] shadow-sm hover:bg-white sm:pr-3"
@@ -322,7 +359,7 @@ export function Shell() {
                 moduleHeaderCollapsed ? "pt-3 sm:pt-4" : "pt-4 sm:pt-6"
               }`}
             >
-              <Outlet />
+              <Outlet key={dataEpoch} />
             </div>
           </div>
         </main>

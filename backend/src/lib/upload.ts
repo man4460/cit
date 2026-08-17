@@ -14,7 +14,9 @@ export const PREPARED_IMAGE_MAX_DIMENSION = 1600;
 /** ขนาดไฟล์เป้าหมายหลังบีบ JPEG */
 export const PREPARED_IMAGE_MAX_BYTES = Math.round(1.85 * 1024 * 1024);
 export const UPLOAD_MAX_IMAGE_BYTES = 8 * 1024 * 1024;
-export const UPLOAD_MAX_FILE_BYTES = 15 * 1024 * 1024;
+/** เอกสารสัญญา / PDF / Office — สัญญา OS มักใหญ่กว่า 15MB */
+export const UPLOAD_MAX_FILE_BYTES = 50 * 1024 * 1024;
+export const UPLOAD_MAX_FILE_MB = Math.round(UPLOAD_MAX_FILE_BYTES / (1024 * 1024));
 
 const HEIC_HINT_TH =
   "รูป HEIC/HEIF ยังไม่รองรับ — ตั้ง iPhone: การตั้งค่า > กล้อง > รูปแบบ เป็น “ความเข้ากันได้ดีที่สุด” (JPG)";
@@ -196,7 +198,7 @@ export async function persistUpload(
 
   if (looksPdf && allowDocs && !opts.forceImage) {
     if (!isPdfBuffer(buf)) throw new Error("ไฟล์ PDF ไม่ถูกต้อง");
-    if (buf.length > UPLOAD_MAX_FILE_BYTES) throw new Error("PDF ใหญ่เกิน 15MB");
+    if (buf.length > UPLOAD_MAX_FILE_BYTES) throw new Error(`PDF ใหญ่เกิน ${UPLOAD_MAX_FILE_MB}MB`);
     outBuf = buf;
     ext = "pdf";
     mimeType = "application/pdf";
@@ -207,7 +209,7 @@ export async function persistUpload(
     ext = processed.ext;
     mimeType = processed.mimeType;
   } else if (opts.allowOfficeDocs) {
-    if (buf.length > UPLOAD_MAX_FILE_BYTES) throw new Error("ไฟล์ใหญ่เกิน 15MB");
+    if (buf.length > UPLOAD_MAX_FILE_BYTES) throw new Error(`ไฟล์ใหญ่เกิน ${UPLOAD_MAX_FILE_MB}MB`);
     const fromName = extFromName(originalDecoded);
     if (!OFFICE_DOC_EXTS.has(fromName)) {
       throw new Error("รองรับเฉพาะ Word Excel PowerPoint PDF (.doc .docx .xls .xlsx .ppt .pptx .pdf)");
@@ -220,7 +222,7 @@ export async function persistUpload(
     mimeType = rawType && OFFICE_DOC_MIMES.has(rawType) ? rawType : "application/octet-stream";
   } else if (opts.allowPdf) {
     // ไฟล์ทั่วไป (เอกสาร) — เก็บนามสกุลเดิมแบบปลอดภัย
-    if (buf.length > UPLOAD_MAX_FILE_BYTES) throw new Error("ไฟล์ใหญ่เกิน 15MB");
+    if (buf.length > UPLOAD_MAX_FILE_BYTES) throw new Error(`ไฟล์ใหญ่เกิน ${UPLOAD_MAX_FILE_MB}MB`);
     const detected = detectImageKind(buf);
     if (detected === "heic") throw new Error(HEIC_HINT_TH);
     if (detected) {

@@ -126,6 +126,18 @@ const DB_SCHEMA_HINT =
   "ฐานข้อมูลยังไม่อัปเดตให้ตรงโค้ด — เปิดเทอร์มินัลที่โฟลเดอร์ backend แล้วรัน npx prisma db push แล้วรีสตาร์ท API (ถ้าใช้ PostgreSQL ใช้ migrate deploy ตาม workflow ของคุณ)";
 
 function apiErrorBody(err: unknown): { status: number; body: { error: string; details?: string } } {
+  if (err && typeof err === "object" && "code" in err) {
+    const code = String((err as { code: unknown }).code);
+    if (code === "LIMIT_FILE_SIZE") {
+      return { status: 413, body: { error: "ไฟล์ใหญ่เกิน 50MB — ลดขนาดหรือแยกไฟล์แล้วลองใหม่" } };
+    }
+    if (code === "LIMIT_FILE_COUNT") {
+      return { status: 400, body: { error: "เลือกไฟล์เกินจำนวนที่อนุญาต" } };
+    }
+    if (code === "LIMIT_UNEXPECTED_FILE") {
+      return { status: 400, body: { error: "ฟิลด์ไฟล์ไม่ถูกต้อง" } };
+    }
+  }
   if (err instanceof PrismaClientInitializationError) {
     return {
       status: 500,

@@ -32,6 +32,7 @@ type YearsRes = {
 
 function fallbackBuckets(): YearBucket[] {
   return [
+    { id: "2568", label: "ปี 2568", yearBe: 2568, fundingType: "ANNUAL" },
     { id: "2569", label: "ปี 2569", yearBe: 2569, fundingType: "ANNUAL" },
     { id: "2570", label: "ปี 2570", yearBe: 2570, fundingType: "ANNUAL" },
   ];
