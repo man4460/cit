@@ -1,6 +1,7 @@
 ﻿import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { apiJson } from "../../api/client";
+import { InvestigationLawsModal } from "../../components/InvestigationLawsModal";
 import { PageHeaderBar } from "../../components/PageHeaderBar";
 import { KIND_LABEL_TH, STATUS_LABEL_TH, isStrategicKind, teamShortName } from "../../lib/investigationLabels";
 import type { LoadOptions } from "../../lib/loadOptions";
@@ -132,6 +133,7 @@ export function InvestigationDashboardPage() {
   const [stats, setStats] = useState<InvestigationStats | null>(null);
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState<string | null>(null);
+  const [lawsOpen, setLawsOpen] = useState(false);
 
   const load = useCallback(async (opts?: LoadOptions) => {
     setLoadBusy(setLoading, opts, true);
@@ -170,6 +172,9 @@ export function InvestigationDashboardPage() {
         }}
         extras={
           <>
+            <button type="button" className={toolbarLinkBtnClass} onClick={() => setLawsOpen(true)}>
+              กฎหมาย
+            </button>
             <Link to="/investigation/approvals" className={toolbarLinkBtnClass}>
               รออนุมัติ
             </Link>
@@ -184,6 +189,8 @@ export function InvestigationDashboardPage() {
           </Link>
         }
       />
+
+      <InvestigationLawsModal open={lawsOpen} onClose={() => setLawsOpen(false)} />
 
       {err ? (
         <p className="mt-3 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">{err}</p>

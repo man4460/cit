@@ -113,6 +113,31 @@ async function main() {
   const line70 = new Map<string, string>();
   const snapshotDate = new Date(Date.UTC(2026, 6, 31));
 
+  async function upsertSnapshot(yearLineId: string, spent: number, notes: string) {
+    const amount = d(spent);
+    const existing = await prisma.budgetSpendSnapshot.findFirst({
+      where: { yearLineId, asOfDate: snapshotDate },
+    });
+    if (existing) {
+      if (amount.greaterThan(existing.spentAmount)) {
+        await prisma.budgetSpendSnapshot.update({
+          where: { id: existing.id },
+          data: { spentAmount: amount, notes },
+        });
+      }
+      return;
+    }
+    await prisma.budgetSpendSnapshot.create({
+      data: {
+        yearLineId,
+        asOfDate: snapshotDate,
+        spentAmount: amount,
+        source: "IMPORT",
+        notes,
+      },
+    });
+  }
+
   async function ensureAccount(row: Row): Promise<string> {
     if (row.codeOrSection && /หมวดค่าใช้จ่าย/.test(row.codeOrSection)) kind = "EXPENSE";
     if (row.codeOrSection && /สินทรัพย์ถาวร/.test(row.codeOrSection)) kind = "CAPEX";
@@ -208,15 +233,7 @@ async function main() {
       line69.set(accountId, yl69.id);
 
       if (row.spent != null) {
-        await prisma.budgetSpendSnapshot.create({
-          data: {
-            yearLineId: yl69.id,
-            asOfDate: snapshotDate,
-            spentAmount: d(row.spent),
-            source: "IMPORT",
-            notes: "ใช้ไป ณ 31 ก.ค. 69 (ชีตคำขอปึ70)",
-          },
-        });
+        await upsertSnapshot(yl69.id, row.spent, "ใช้ไป ณ 31 ก.ค. 69 (ชีตคำขอปึ70)");
       }
 
       if (row.y70 != null) {
@@ -318,15 +335,7 @@ async function main() {
         },
       });
       if (row.spent != null) {
-        await prisma.budgetSpendSnapshot.create({
-          data: {
-            yearLineId: ylId,
-            asOfDate: snapshotDate,
-            spentAmount: d(row.spent),
-            source: "IMPORT",
-            notes: "จากชีตสรุปใช้งบ 31กค",
-          },
-        });
+        await upsertSnapshot(ylId, row.spent, "จากชีตสรุปใช้งบ 31กค");
       }
     }
     if (row.superiorCi && /^\d+/.test(row.superiorCi)) {

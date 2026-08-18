@@ -38,6 +38,23 @@ export async function seedAssetMasterData() {
     create: { name: "วิทยุสื่อสาร", sortOrder: 1 },
     update: { sortOrder: 1 },
   });
+
+  const defaultAffiliations = [
+    "สำนักงานใหญ่",
+    "สายออกบัตรธนาคาร",
+    "งานขนส่งธนบัตร",
+    "สำนักงานภาคเหนือ",
+    "สำนักงานภาคตะวันออกเฉียงเหนือ",
+    "สำนักงานภาคใต้",
+  ];
+  for (let i = 0; i < defaultAffiliations.length; i++) {
+    const name = defaultAffiliations[i]!;
+    await prisma.assetAffiliation.upsert({
+      where: { name },
+      create: { name, sortOrder: i },
+      update: {},
+    });
+  }
   const legacyGeneral = await prisma.assetCategory.findUnique({ where: { name: "ทั่วไป" } });
   if (legacyGeneral) {
     const target = await prisma.assetCategory.findUnique({ where: { name: "วัสดุทั่วไป" } });

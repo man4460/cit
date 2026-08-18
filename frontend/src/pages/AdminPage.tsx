@@ -74,7 +74,7 @@ export function AdminPage() {
     e.preventDefault();
     setCreateErr(null);
     try {
-      await apiJson("/api/admin/users", {
+      const created = await apiJson<AdminUserRow>("/api/admin/users", {
         method: "POST",
         body: JSON.stringify({
           username: newUsername,
@@ -88,7 +88,7 @@ export function AdminPage() {
       setNewFullName("");
       setNewRole("OPERATOR");
       setCreateOpen(false);
-      load();
+      setRows((prev) => [...prev, created].sort((a, b) => a.username.localeCompare(b.username, "th")));
     } catch (e) {
       setCreateErr(e instanceof Error ? e.message : "สร้างไม่สำเร็จ");
     }
@@ -105,16 +105,22 @@ export function AdminPage() {
         role: editRole,
         active: editActive,
       };
-      if (editPassword.trim()) body.password = editPassword.trim();
+      if (editPassword.trim()) {
+        if (editPassword.trim().length < 8) {
+          setEditErr("รหัสผ่านใหม่ต้องมีอย่างน้อย 8 ตัวอักษร");
+          return;
+        }
+        body.password = editPassword.trim();
+      }
 
-      await apiJson(`/api/admin/users/${editTarget.id}`, {
+      const updated = await apiJson<AdminUserRow>(`/api/admin/users/${editTarget.id}`, {
         method: "PATCH",
         body: JSON.stringify(body),
       });
 
       if (editTarget.id === currentUser.id) await refreshMe();
+      setRows((prev) => prev.map((r) => (r.id === updated.id ? updated : r)));
       setEditTarget(null);
-      load();
     } catch (e) {
       setEditErr(e instanceof Error ? e.message : "บันทึกไม่สำเร็จ");
     }
@@ -125,7 +131,7 @@ export function AdminPage() {
     if (!confirm(`ลบผู้ใช้ "${r.username}" ถาวร? การกระทำนี้ย้อนกลับไม่ได้`)) return;
     try {
       await apiJson(`/api/admin/users/${r.id}`, { method: "DELETE" });
-      load();
+      setRows((prev) => prev.filter((x) => x.id !== r.id));
     } catch (e) {
       alert(e instanceof Error ? e.message : "ลบไม่สำเร็จ");
     }
@@ -133,11 +139,11 @@ export function AdminPage() {
 
   async function toggleActive(r: AdminUserRow) {
     if (r.id === currentUser.id) return;
-    await apiJson(`/api/admin/users/${r.id}`, {
+    const updated = await apiJson<AdminUserRow>(`/api/admin/users/${r.id}`, {
       method: "PATCH",
       body: JSON.stringify({ active: !r.active }),
     });
-    load();
+    setRows((prev) => prev.map((x) => (x.id === updated.id ? updated : x)));
   }
 
   const editingSelf = editTarget?.id === currentUser.id;
@@ -199,6 +205,7 @@ export function AdminPage() {
               <input
                 required
                 type="password"
+                minLength={8}
                 className="mt-1 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-slate-900"
                 value={newPassword}
                 onChange={(e) => setNewPassword(e.target.value)}
@@ -285,10 +292,11 @@ export function AdminPage() {
               <span className="text-sm text-slate-700">เปิดใช้งานบัญชี</span>
             </label>
             <label className="block">
-              <span className="text-xs text-slate-600">รหัสผ่านใหม่ (เว้นว่างถ้าไม่เปลี่ยน)</span>
+              <span className="text-xs text-slate-600">รหัสผ่านใหม่ (เว้นว่างถ้าไม่เปลี่ยน · อย่างน้อย 8 ตัว)</span>
               <input
                 type="password"
                 autoComplete="new-password"
+                minLength={8}
                 className="mt-1 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-slate-900"
                 value={editPassword}
                 onChange={(e) => setEditPassword(e.target.value)}

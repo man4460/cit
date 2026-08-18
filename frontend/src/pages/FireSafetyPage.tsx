@@ -6,6 +6,7 @@ import { ModuleDocumentsModal } from "../components/ModuleDocumentsModal";
 import { PageHeaderBar } from "../components/PageHeaderBar";
 import { PickableDateInput } from "../components/PickableDateInput";
 import { PrintA4Table } from "../components/PrintA4Table";
+import { TeamFilterSelect, teamLabel, uniqueTeamOptions } from "../components/TeamFilterSelect";
 import { MODULE_DOCUMENT_CATEGORIES } from "../lib/moduleDocumentCategories";
 import { rowMatchesFilter } from "../lib/searchNormalize";
 import { listCardAccentClass, brandGradientFillClass, toolbarLinkBtnClass, toolbarMasterBtnClass, toolbarMasterGroupClass, toolbarPrimaryBtnClass } from "../lib/uiTokens";
@@ -504,6 +505,7 @@ export function FireSafetyPage() {
   const [ageYearsFilter, setAgeYearsFilter] = useState("");
   const [dashKey, setDashKey] = useState<DashKey>("");
   const [kindFilter, setKindFilter] = useState("");
+  const [teamFilter, setTeamFilter] = useState("");
   const [hostEquipFilter, setHostEquipFilter] = useState<HostEquipKind | "">("");
   const [page, setPage] = useState(1);
   const [modalOpen, setModalOpen] = useState(false);
@@ -573,10 +575,15 @@ export function FireSafetyPage() {
     [rows, listFilter, ageYearsFilter],
   );
 
+  const teamFilteredExtinguishers = useMemo(
+    () => searchExtinguishers.filter((r) => !teamFilter || teamLabel(r.guardTeam) === teamFilter),
+    [searchExtinguishers, teamFilter],
+  );
+
   const scopedExtinguishers = useMemo(
     () =>
-      searchExtinguishers.filter((r) => !kindFilter || (r.kind.trim() || "ไม่ระบุ") === kindFilter),
-    [searchExtinguishers, kindFilter],
+      teamFilteredExtinguishers.filter((r) => !kindFilter || (r.kind.trim() || "ไม่ระบุ") === kindFilter),
+    [teamFilteredExtinguishers, kindFilter],
   );
 
   const searchHosts = useMemo(
@@ -584,12 +591,25 @@ export function FireSafetyPage() {
     [hosts, listFilter],
   );
 
+  const teamFilteredHosts = useMemo(
+    () => searchHosts.filter((r) => !teamFilter || teamLabel(r.guardTeam) === teamFilter),
+    [searchHosts, teamFilter],
+  );
+
   const scopedHosts = useMemo(
     () =>
-      searchHosts.filter(
+      teamFilteredHosts.filter(
         (r) => !hostEquipFilter || parseHostDetail(r.detail).some((it) => it.kind === hostEquipFilter),
       ),
-    [searchHosts, hostEquipFilter],
+    [teamFilteredHosts, hostEquipFilter],
+  );
+
+  const teamOptions = useMemo(
+    () =>
+      uniqueTeamOptions(
+        (tab === "hosts" ? searchHosts : searchExtinguishers).map((r) => r.guardTeam),
+      ),
+    [tab, searchHosts, searchExtinguishers],
   );
 
   const dashStats = useMemo(() => {
@@ -612,7 +632,7 @@ export function FireSafetyPage() {
       else if (life === "unknown") noDate += 1;
     }
     const kinds = new Map<string, number>();
-    for (const r of searchExtinguishers) {
+    for (const r of teamFilteredExtinguishers) {
       if (isDisposedStatus(r.status)) continue;
       const k = r.kind.trim() || "ไม่ระบุ";
       kinds.set(k, (kinds.get(k) || 0) + 1);
@@ -630,7 +650,7 @@ export function FireSafetyPage() {
       for (const it of items) hostEquipTotal += it.qty ?? 1;
     }
     const equip = new Map<HostEquipKind, number>();
-    for (const h of searchHosts) {
+    for (const h of teamFilteredHosts) {
       for (const it of parseHostDetail(h.detail)) {
         equip.set(it.kind, (equip.get(it.kind) || 0) + (it.qty ?? 1));
       }
@@ -652,7 +672,7 @@ export function FireSafetyPage() {
       hostEquipTotal,
       equip: [...equip.entries()].sort((a, b) => b[1] - a[1]),
     };
-  }, [scopedExtinguishers, searchExtinguishers, scopedHosts, searchHosts]);
+  }, [scopedExtinguishers, teamFilteredExtinguishers, scopedHosts, teamFilteredHosts]);
 
   const filtered = useMemo(
     () =>
@@ -698,7 +718,7 @@ export function FireSafetyPage() {
 
   useEffect(() => {
     setPage(1);
-  }, [tab, listFilter, ageYearsFilter, dashKey, kindFilter, hostEquipFilter]);
+  }, [tab, listFilter, ageYearsFilter, dashKey, kindFilter, hostEquipFilter, teamFilter]);
 
   useEffect(() => {
     if (page > pageCount) setPage(pageCount);
@@ -844,6 +864,7 @@ export function FireSafetyPage() {
         }}
         extras={
           <>
+            <TeamFilterSelect value={teamFilter} onChange={setTeamFilter} options={teamOptions} />
             <button type="button" className={toolbarLinkBtnClass} onClick={() => setDocsOpen(true)}>
               เอกสาร
             </button>
@@ -884,6 +905,7 @@ export function FireSafetyPage() {
                   onClick={() => {
                     setTab(id);
                     setDashKey("");
+                    setTeamFilter("");
                   }}
                   className={`inline-flex h-8 items-center gap-1.5 rounded-lg px-2.5 text-[11px] font-black transition sm:h-9 sm:px-3 sm:text-xs ${
                     active ? `${brandGradientFillClass} text-white shadow-md` : toolbarMasterBtnClass
@@ -1046,7 +1068,13 @@ export function FireSafetyPage() {
                   value={form.guardTeam}
                   onChange={(e) => setForm((f) => ({ ...f, guardTeam: e.target.value }))}
                   placeholder="สภต."
+                  list="fire-team-options"
                 />
+                <datalist id="fire-team-options">
+                  {uniqueTeamOptions([...rows, ...hosts].map((r) => r.guardTeam)).filter((n) => n !== "ไม่ระบุทีม").map((n) => (
+                    <option key={n} value={n} />
+                  ))}
+                </datalist>
               </label>
               <label className="block sm:col-span-2">
                 <span className="text-xs font-medium text-slate-700">หมายเหตุ</span>
@@ -1106,7 +1134,13 @@ export function FireSafetyPage() {
                   className="mt-1 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900"
                   value={hostForm.guardTeam}
                   onChange={(e) => setHostForm((f) => ({ ...f, guardTeam: e.target.value }))}
+                  list="fire-host-team-options"
                 />
+                <datalist id="fire-host-team-options">
+                  {uniqueTeamOptions(hosts.map((r) => r.guardTeam)).filter((n) => n !== "ไม่ระบุทีม").map((n) => (
+                    <option key={n} value={n} />
+                  ))}
+                </datalist>
               </label>
               <label className="block">
                 <span className="text-xs font-medium text-slate-700">รายละเอียดอุปกรณ์</span>

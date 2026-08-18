@@ -7,6 +7,7 @@ import { ModuleDocumentsModal } from "../components/ModuleDocumentsModal";
 import { PageHeaderBar } from "../components/PageHeaderBar";
 import { PickableDateInput } from "../components/PickableDateInput";
 import { PrintA4Table } from "../components/PrintA4Table";
+import { TeamFilterSelect, teamLabel, uniqueTeamOptions } from "../components/TeamFilterSelect";
 import { MODULE_DOCUMENT_CATEGORIES } from "../lib/moduleDocumentCategories";
 import { rowMatchesFilter } from "../lib/searchNormalize";
 import { listCardAccentClass, listCardClass, toolbarLinkBtnClass, toolbarPrimaryBtnClass } from "../lib/uiTokens";
@@ -223,7 +224,7 @@ export function ArmorVestsPage() {
     () =>
       searchRows.filter((r) => {
         if (kindFilter && r.description !== kindFilter) return false;
-        if (teamFilter && (r.team || "ไม่ระบุทีม") !== teamFilter) return false;
+        if (teamFilter && teamLabel(r.team) !== teamFilter) return false;
         if (levelFilter && r.level !== levelFilter) return false;
         return true;
       }),
@@ -239,7 +240,7 @@ export function ArmorVestsPage() {
     const levels = new Map<string, number>();
     for (const r of searchRows) {
       kinds.set(r.description, (kinds.get(r.description) || 0) + 1);
-      const team = r.team || "ไม่ระบุทีม";
+      const team = teamLabel(r.team);
       teams.set(team, (teams.get(team) || 0) + 1);
       if (r.level) levels.set(r.level, (levels.get(r.level) || 0) + 1);
     }
@@ -358,6 +359,7 @@ export function ArmorVestsPage() {
         }}
         extras={
           <>
+            <TeamFilterSelect value={teamFilter} onChange={setTeamFilter} options={dashStats.teams.map(([name]) => name)} />
             <button type="button" className={toolbarLinkBtnClass} onClick={() => setDocsOpen(true)}>
               เอกสาร
             </button>
@@ -525,7 +527,17 @@ export function ArmorVestsPage() {
               </label>
               <label className="block">
                 <span className="text-xs font-medium text-slate-700">ทีม</span>
-                <input className="mt-1 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm" value={form.team} onChange={(e) => setForm((f) => ({ ...f, team: e.target.value }))} />
+                <input
+                  className="mt-1 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm"
+                  value={form.team}
+                  onChange={(e) => setForm((f) => ({ ...f, team: e.target.value }))}
+                  list="armor-team-options"
+                />
+                <datalist id="armor-team-options">
+                  {uniqueTeamOptions(rows.map((r) => r.team)).filter((n) => n !== "ไม่ระบุทีม").map((n) => (
+                    <option key={n} value={n} />
+                  ))}
+                </datalist>
               </label>
               <label className="block">
                 <span className="text-xs font-medium text-slate-700">ทะเบียน</span>

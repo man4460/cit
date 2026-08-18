@@ -87,8 +87,16 @@ export function ProfilePage() {
       e.preventDefault();
       setPwErr(null);
       setPwOk(null);
+      if (newPassword.length < 8) {
+        setPwErr("รหัสผ่านใหม่ต้องมีอย่างน้อย 8 ตัวอักษร");
+        return;
+      }
       if (newPassword !== confirmPassword) {
         setPwErr("รหัสผ่านใหม่กับยืนยันไม่ตรงกัน");
+        return;
+      }
+      if (!currentPassword) {
+        setPwErr("กรอกรหัสผ่านปัจจุบัน");
         return;
       }
       setPwPending(true);
@@ -100,18 +108,17 @@ export function ProfilePage() {
             newPassword,
           }),
         });
-        await refreshMe();
         setCurrentPassword("");
         setNewPassword("");
         setConfirmPassword("");
-        setPwOk("เปลี่ยนรหัสผ่านแล้ว");
+        setPwOk("เปลี่ยนรหัสผ่านแล้ว — ใช้รหัสใหม่เมื่อเข้าสู่ระบบครั้งถัดไป");
       } catch (err) {
         setPwErr(err instanceof Error ? err.message : "เปลี่ยนรหัสผ่านไม่สำเร็จ");
       } finally {
         setPwPending(false);
       }
     },
-    [currentPassword, newPassword, confirmPassword, refreshMe],
+    [currentPassword, newPassword, confirmPassword],
   );
 
   if (!user) return null;
@@ -215,6 +222,7 @@ export function ProfilePage() {
               id="pw-current"
               type="password"
               autoComplete="current-password"
+              required
               value={currentPassword}
               onChange={(e) => setCurrentPassword(e.target.value)}
               className="mt-1.5 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 outline-none focus:border-[#0000BF] focus:ring-2 focus:ring-[#0000BF]/20"
@@ -228,6 +236,8 @@ export function ProfilePage() {
               id="pw-new"
               type="password"
               autoComplete="new-password"
+              required
+              minLength={8}
               value={newPassword}
               onChange={(e) => setNewPassword(e.target.value)}
               className="mt-1.5 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 outline-none focus:border-[#0000BF] focus:ring-2 focus:ring-[#0000BF]/20"
@@ -241,6 +251,8 @@ export function ProfilePage() {
               id="pw-confirm"
               type="password"
               autoComplete="new-password"
+              required
+              minLength={8}
               value={confirmPassword}
               onChange={(e) => setConfirmPassword(e.target.value)}
               className="mt-1.5 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 outline-none focus:border-[#0000BF] focus:ring-2 focus:ring-[#0000BF]/20"

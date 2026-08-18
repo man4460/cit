@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { Link, useSearchParams } from "react-router-dom";
-import { apiJson, apiUrl, authHeader } from "../api/client";
+import { apiFormJson, apiJson } from "../api/client";
 import { ImageLightbox } from "../components/ImageLightbox";
 import { ListPagination } from "../components/ListPagination";
 import { Modal, ModalFormActions, ModalFormBody, ModalFormSection } from "../components/Modal";
@@ -436,22 +436,20 @@ export function PersonnelPage() {
       fd.append("photo", prepared);
     }
 
-    const url = editingId ? apiUrl(`/api/personnel/${editingId}`) : apiUrl("/api/personnel");
+    const path = editingId ? `/api/personnel/${editingId}` : "/api/personnel";
     const method = editingId ? "PUT" : "POST";
 
-    const res = await fetch(url, {
-      method,
-      headers: { ...authHeader() },
-      body: fd,
-    });
-    if (!res.ok) {
-      const j = await res.json().catch(() => ({}));
-      alert(j.error ?? res.statusText);
-      return;
+    try {
+      const saved = await apiFormJson<Personnel>(path, fd, method);
+      setRows((prev) => {
+        if (editingId) return prev.map((r) => (r.id === saved.id ? saved : r));
+        return [saved, ...prev];
+      });
+      resetForm();
+      closeAddModal();
+    } catch (err) {
+      alert(err instanceof Error ? err.message : "บันทึกไม่สำเร็จ");
     }
-    resetForm();
-    closeAddModal();
-    load();
   }
 
   function onPhotoPick(e: React.ChangeEvent<HTMLInputElement>) {

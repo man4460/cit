@@ -152,7 +152,7 @@ function enrichLine(line: LineWithRelations) {
 const lineInclude = {
   account: { include: { category: { select: { id: true, name: true } } } },
   fiscalYear: { select: { yearBe: true } },
-  snapshots: { orderBy: { asOfDate: "desc" as const }, take: 1 },
+  snapshots: { orderBy: [{ asOfDate: "desc" as const }, { spentAmount: "desc" as const }, { createdAt: "desc" as const }], take: 1 },
   transactions: { select: { amount: true, occurredAt: true } },
 };
 
@@ -937,17 +937,26 @@ budgetRouter.get("/year-lines/:id/snapshots", async (req, res, next) => {
     const id = routeParam(req.params.id);
     const rows = await prisma.budgetSpendSnapshot.findMany({
       where: { yearLineId: id },
-      orderBy: { asOfDate: "desc" },
+      orderBy: [{ asOfDate: "desc" }, { createdAt: "desc" }],
     });
+    /** ชีตคำขอ + ชีตสรุปใช้งบ อาจตัดยอดวันเดียวกันซ้ำ — แสดงวันละแถว เลือกยอดสูงกว่า */
+    const byDay = new Map<string, (typeof rows)[number]>();
+    for (const r of rows) {
+      const day = r.asOfDate.toISOString().slice(0, 10);
+      const prev = byDay.get(day);
+      if (!prev || num(r.spentAmount) > num(prev.spentAmount)) byDay.set(day, r);
+    }
     res.json(
-      rows.map((r) => ({
-        id: r.id,
-        asOfDate: r.asOfDate.toISOString(),
-        spentAmount: num(r.spentAmount),
-        source: r.source,
-        notes: r.notes,
-        createdAt: r.createdAt.toISOString(),
-      })),
+      [...byDay.values()]
+        .sort((a, b) => b.asOfDate.getTime() - a.asOfDate.getTime())
+        .map((r) => ({
+          id: r.id,
+          asOfDate: r.asOfDate.toISOString(),
+          spentAmount: num(r.spentAmount),
+          source: r.source,
+          notes: r.notes,
+          createdAt: r.createdAt.toISOString(),
+        })),
     );
   } catch (e) {
     next(e);
@@ -963,15 +972,22 @@ budgetRouter.post("/year-lines/:id/snapshots", requireAdmin, async (req, res, ne
     if (spent == null) return res.status(400).json({ error: "ต้องระบุยอดใช้ไป" });
     const asOf = req.body?.asOfDate ? new Date(String(req.body.asOfDate)) : new Date();
     if (Number.isNaN(asOf.getTime())) return res.status(400).json({ error: "วันที่ไม่ถูกต้อง" });
-    const created = await prisma.budgetSpendSnapshot.create({
-      data: {
-        yearLineId: id,
-        asOfDate: asOf,
-        spentAmount: spent,
-        source: req.body?.source === "IMPORT" ? "IMPORT" : "MANUAL",
-        notes: req.body?.notes != null ? String(req.body.notes) : null,
-      },
+    const day = asOf.toISOString().slice(0, 10);
+    const sameDay = await prisma.budgetSpendSnapshot.findMany({
+      where: { yearLineId: id },
+      orderBy: { createdAt: "asc" },
     });
+    const match = sameDay.find((r) => r.asOfDate.toISOString().slice(0, 10) === day);
+    const source = req.body?.source === "IMPORT" ? "IMPORT" : "MANUAL";
+    const notes = req.body?.notes != null ? String(req.body.notes) : null;
+    const created = match
+      ? await prisma.budgetSpendSnapshot.update({
+          where: { id: match.id },
+          data: { asOfDate: asOf, spentAmount: spent, source, notes },
+        })
+      : await prisma.budgetSpendSnapshot.create({
+          data: { yearLineId: id, asOfDate: asOf, spentAmount: spent, source, notes },
+        });
     res.status(201).json({
       id: created.id,
       asOfDate: created.asOfDate.toISOString(),
@@ -1029,6 +1045,45 @@ budgetRouter.post("/year-lines/:id/transactions", requireAdmin, async (req, res,
       occurredAt: created.occurredAt.toISOString(),
       description: created.description,
       refNo: created.refNo,
+    });
+  } catch (e) {
+    next(e);
+  }
+});
+
+budgetRouter.patch("/year-lines/:id/transactions/:txId", requireAdmin, async (req, res, next) => {
+  try {
+    const lineId = routeParam(req.params.id);
+    const txId = routeParam(req.params.txId);
+    const existing = await prisma.budgetTransaction.findFirst({ where: { id: txId, yearLineId: lineId } });
+    if (!existing) return res.status(404).json({ error: "ไม่พบรายการใช้จ่าย" });
+
+    const data: { amount?: Prisma.Decimal; occurredAt?: Date; description?: string | null; refNo?: string | null } = {};
+    if (req.body?.amount !== undefined) {
+      const amount = dec(req.body.amount);
+      if (amount == null) return res.status(400).json({ error: "จำนวนเงินไม่ถูกต้อง" });
+      data.amount = amount;
+    }
+    if (req.body?.occurredAt !== undefined) {
+      const occurredAt = new Date(String(req.body.occurredAt));
+      if (Number.isNaN(occurredAt.getTime())) return res.status(400).json({ error: "วันที่ไม่ถูกต้อง" });
+      data.occurredAt = occurredAt;
+    }
+    if (req.body?.description !== undefined) {
+      data.description = req.body.description == null || req.body.description === "" ? null : String(req.body.description);
+    }
+    if (req.body?.refNo !== undefined) {
+      data.refNo = req.body.refNo == null || req.body.refNo === "" ? null : String(req.body.refNo).trim() || null;
+    }
+    if (Object.keys(data).length === 0) return res.status(400).json({ error: "ไม่มีข้อมูลแก้ไข" });
+
+    const updated = await prisma.budgetTransaction.update({ where: { id: txId }, data });
+    res.json({
+      id: updated.id,
+      amount: num(updated.amount),
+      occurredAt: updated.occurredAt.toISOString(),
+      description: updated.description,
+      refNo: updated.refNo,
     });
   } catch (e) {
     next(e);

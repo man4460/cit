@@ -31,6 +31,7 @@ adminUsersRouter.post("/", async (req, res, next) => {
   try {
     const { username, password, role, fullName } = req.body ?? {};
     if (!username || !password) return res.status(400).json({ error: "username และ password จำเป็น" });
+    if (String(password).length < 8) return res.status(400).json({ error: "รหัสผ่านต้องมีอย่างน้อย 8 ตัวอักษร" });
     if (role && !Object.values(UserRole).includes(role))
       return res.status(400).json({ error: "role ไม่ถูกต้อง" });
 
@@ -75,6 +76,9 @@ adminUsersRouter.patch("/:id", async (req, res, next) => {
       data.active = Boolean(active);
     }
     if (password !== undefined && String(password).length > 0) {
+      if (String(password).length < 8) {
+        return res.status(400).json({ error: "รหัสผ่านใหม่ต้องมีอย่างน้อย 8 ตัวอักษร" });
+      }
       data.passwordHash = await bcrypt.hash(String(password), 10);
     }
 

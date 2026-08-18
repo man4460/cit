@@ -9,26 +9,13 @@ function resolveFetchUrl(path: string): string {
 
 const TOKEN_KEY = "afo_token";
 
-/** cache GET ในหน่วยความจำ — อยู่จนรีเฟรชเบราว์เซอร์ / กดปุ่มรีเฟรชข้อมูล / มีการเขียนข้อมูล */
+/** cache GET ในหน่วยความจำ — ล้างเมื่อมีการเขียนข้อมูล / กดรีเฟรช / ออกจากระบบ */
 const getCache = new Map<string, unknown>();
 
 export const DATA_REFRESH_EVENT = "afo:data-refresh";
 
 export function clearApiCache() {
   getCache.clear();
-}
-
-/** ล้าง cache GET เฉพาะ module ที่เกี่ยวข้องกับ path ที่เขียน (ไม่ล้างทั้งแอป) */
-export function invalidateApiCacheForMutation(path: string) {
-  const clean = path.split("?")[0];
-  const parts = clean.split("/").filter(Boolean);
-  const prefix = parts.length >= 2 ? `/${parts[0]}/${parts[1]}` : clean;
-  for (const key of [...getCache.keys()]) {
-    const keyPath = key.split("?")[0];
-    if (keyPath === clean || keyPath.startsWith(`${prefix}/`) || keyPath === prefix) {
-      getCache.delete(key);
-    }
-  }
 }
 
 /** ล้าง cache แล้วให้หน้าปัจจุบันโหลดข้อมูลใหม่ */
@@ -66,24 +53,38 @@ function cacheKey(path: string, init?: RequestInit): string | null {
   return path;
 }
 
-export async function apiJson<T>(path: string, init?: RequestInit): Promise<T> {
-  const key = cacheKey(path, init);
-  if (key && getCache.has(key)) {
-    return getCache.get(key) as T;
-  }
+function isSessionExpiredError(status: number, data: { error?: string } | null): boolean {
+  if (status !== 401) return false;
+  const msg = String(data?.error ?? "");
+  if (/รหัสผ่านปัจจุบัน/.test(msg)) return false;
+  return /ต้องเข้าสู่ระบบ|โทเคน|หมดอายุ|บัญชีถูกปิด/.test(msg) || !msg;
+}
 
-  const method = requestMethod(init);
+function handleUnauthorized(status: number, data: { error?: string } | null) {
+  if (!isSessionExpiredError(status, data)) return;
+  setToken(null);
+  clearApiCache();
+  window.dispatchEvent(new Event("afo:auth"));
+}
+
+export type ApiJsonInit = RequestInit & { skipCache?: boolean };
+
+export async function apiJson<T>(path: string, init?: ApiJsonInit): Promise<T> {
+  const skipCache = Boolean(init?.skipCache);
+  const fetchInit = init ? (({ skipCache: _s, ...rest }) => rest)(init) : undefined;
+  const key = cacheKey(path, fetchInit);
+  const method = requestMethod(fetchInit);
   const res = await fetch(resolveFetchUrl(path), {
-    ...init,
+    ...fetchInit,
     headers: {
       Accept: "application/json",
       "Content-Type": "application/json",
       ...authHeader(),
-      ...init?.headers,
+      ...fetchInit?.headers,
     },
   });
   if (res.status === 204) {
-    if (method !== "GET") invalidateApiCacheForMutation(path);
+    if (method !== "GET") clearApiCache();
     return undefined as T;
   }
   const text = await res.text();
@@ -95,14 +96,10 @@ export async function apiJson<T>(path: string, init?: RequestInit): Promise<T> {
       throw new Error(`คำตอบจาก API ไม่ใช่ JSON (${path}) — ตรวจสอบว่า backend รันและ VITE_API_URL ถูกต้อง`);
     }
   }
-  if (res.status === 401) {
-    setToken(null);
-    clearApiCache();
-    window.dispatchEvent(new Event("afo:auth"));
-  }
+  if (res.status === 401) handleUnauthorized(res.status, data);
   if (!res.ok) throw new Error(formatApiFailure(data, res.statusText));
-  if (method !== "GET") invalidateApiCacheForMutation(path);
-  else if (key) getCache.set(key, data);
+  if (method !== "GET") clearApiCache();
+  else if (key && !skipCache) getCache.set(key, data);
   return data as T;
 }
 
@@ -119,7 +116,7 @@ export async function apiFormJson<T>(path: string, formData: FormData, method = 
   });
   const text = await res.text();
   if (res.status === 204) {
-    invalidateApiCacheForMutation(path);
+    clearApiCache();
     return undefined as T;
   }
   let data: { error?: string; details?: string } | null = null;
@@ -130,12 +127,8 @@ export async function apiFormJson<T>(path: string, formData: FormData, method = 
       throw new Error(`คำตอบจาก API ไม่ใช่ JSON (${path})`);
     }
   }
-  if (res.status === 401) {
-    setToken(null);
-    clearApiCache();
-    window.dispatchEvent(new Event("afo:auth"));
-  }
+  if (res.status === 401) handleUnauthorized(res.status, data);
   if (!res.ok) throw new Error(formatApiFailure(data, res.statusText));
-  invalidateApiCacheForMutation(path);
+  clearApiCache();
   return data as T;
 }

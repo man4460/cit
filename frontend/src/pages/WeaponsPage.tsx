@@ -6,6 +6,7 @@ import { ModuleDocumentsModal } from "../components/ModuleDocumentsModal";
 import { PageHeaderBar } from "../components/PageHeaderBar";
 import { PickableDateInput } from "../components/PickableDateInput";
 import { PrintA4Table } from "../components/PrintA4Table";
+import { TeamFilterSelect, teamLabel, uniqueTeamOptions } from "../components/TeamFilterSelect";
 import { MODULE_DOCUMENT_CATEGORIES } from "../lib/moduleDocumentCategories";
 import { rowMatchesFilter } from "../lib/searchNormalize";
 import type { LoadOptions } from "../lib/loadOptions";
@@ -258,6 +259,7 @@ export function WeaponsPage() {
   const [listFilter, setListFilter] = useState("");
   const [dashKey, setDashKey] = useState<DashKey>("");
   const [kindFilter, setKindFilter] = useState("");
+  const [teamFilter, setTeamFilter] = useState("");
   const [modalOpen, setModalOpen] = useState(false);
   const [ammoModalOpen, setAmmoModalOpen] = useState(false);
   const [docsOpen, setDocsOpen] = useState(false);
@@ -304,8 +306,13 @@ export function WeaponsPage() {
   );
 
   const scopedGuns = useMemo(
-    () => searchGuns.filter((r) => !kindFilter || gunKindLabel(r.brand) === kindFilter),
-    [searchGuns, kindFilter],
+    () =>
+      searchGuns.filter((r) => {
+        if (kindFilter && gunKindLabel(r.brand) !== kindFilter) return false;
+        if (teamFilter && teamLabel(r.team) !== teamFilter) return false;
+        return true;
+      }),
+    [searchGuns, kindFilter, teamFilter],
   );
 
   const searchAmmo = useMemo(
@@ -326,8 +333,18 @@ export function WeaponsPage() {
   );
 
   const scopedAmmo = useMemo(
-    () => searchAmmo.filter((r) => !kindFilter || r.kind === kindFilter),
-    [searchAmmo, kindFilter],
+    () =>
+      searchAmmo.filter((r) => {
+        if (kindFilter && r.kind !== kindFilter) return false;
+        if (teamFilter && teamLabel(r.team) !== teamFilter) return false;
+        return true;
+      }),
+    [searchAmmo, kindFilter, teamFilter],
+  );
+
+  const teamOptions = useMemo(
+    () => uniqueTeamOptions((tab === "guns" ? searchGuns : searchAmmo).map((r) => r.team)),
+    [tab, searchGuns, searchAmmo],
   );
 
   const dashStats = useMemo(() => {
@@ -681,6 +698,7 @@ export function WeaponsPage() {
                     setTab(id);
                     setDashKey("");
                     setKindFilter("");
+                    setTeamFilter("");
                     setLedgerLots(null);
                     setZeroLots(null);
                   }}
@@ -697,6 +715,7 @@ export function WeaponsPage() {
         }
         extras={
           <>
+            <TeamFilterSelect value={teamFilter} onChange={setTeamFilter} options={teamOptions} />
             <button type="button" className={toolbarLinkBtnClass} onClick={() => setDocsOpen(true)}>
               เอกสาร
             </button>
@@ -907,7 +926,17 @@ export function WeaponsPage() {
               </label>
               <label className="block">
                 <span className="text-xs font-medium text-slate-700">ทีม</span>
-                <input className="mt-1 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm" value={gunForm.team} onChange={(e) => setGunForm((f) => ({ ...f, team: e.target.value }))} />
+                <input
+                  className="mt-1 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm"
+                  value={gunForm.team}
+                  onChange={(e) => setGunForm((f) => ({ ...f, team: e.target.value }))}
+                  list="weapon-team-options"
+                />
+                <datalist id="weapon-team-options">
+                  {uniqueTeamOptions([...guns, ...ammo].map((r) => r.team)).filter((n) => n !== "ไม่ระบุทีม").map((n) => (
+                    <option key={n} value={n} />
+                  ))}
+                </datalist>
               </label>
               <label className="block sm:col-span-2">
                 <span className="text-xs font-medium text-slate-700">สถานะ</span>
@@ -968,7 +997,17 @@ export function WeaponsPage() {
               </label>
               <label className="block">
                 <span className="text-xs font-medium text-slate-700">ทีม / คลัง</span>
-                <input className="mt-1 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm" value={ammoForm.team} onChange={(e) => setAmmoForm((f) => ({ ...f, team: e.target.value }))} />
+                <input
+                  className="mt-1 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm"
+                  value={ammoForm.team}
+                  onChange={(e) => setAmmoForm((f) => ({ ...f, team: e.target.value }))}
+                  list="ammo-team-options"
+                />
+                <datalist id="ammo-team-options">
+                  {uniqueTeamOptions(ammo.map((r) => r.team)).filter((n) => n !== "ไม่ระบุทีม").map((n) => (
+                    <option key={n} value={n} />
+                  ))}
+                </datalist>
               </label>
               <label className="block sm:col-span-2">
                 <span className="text-xs font-medium text-slate-700">รายละเอียด</span>

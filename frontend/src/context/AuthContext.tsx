@@ -37,11 +37,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       timeoutId = window.setTimeout(() => reject(new Error("timeout")), timeoutMs);
     });
     try {
-      const me = await Promise.race([apiJson<AuthUser>("/api/me"), timeoutPromise]);
+      const me = await Promise.race([apiJson<AuthUser>("/api/me", { skipCache: true }), timeoutPromise]);
       setUser(me);
-    } catch {
-      setUser(null);
-      setToken(null);
+    } catch (e) {
+      if (e instanceof Error && e.message === "timeout") {
+        setLoading(false);
+        return;
+      }
+      const t = getToken();
+      if (!t) {
+        setUser(null);
+      }
     } finally {
       if (timeoutId !== undefined) window.clearTimeout(timeoutId);
       setLoading(false);

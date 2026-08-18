@@ -1,9 +1,10 @@
 import { useCallback, useEffect, useMemo, useState, Fragment } from "react";
 import { Link, Navigate, useParams, useSearchParams } from "react-router-dom";
-import { ModuleDocumentsModal } from "../../components/ModuleDocumentsModal";
+import { PickableDateInput } from "../../components/PickableDateInput";
 import { BudgetStatCard, BUDGET_STAT_TONES } from "../../components/BudgetStatCard";
 import { PageHeaderBar } from "../../components/PageHeaderBar";
 import { FitSingleLine } from "../../components/FitSingleLine";
+import { ModuleDocumentsModal } from "../../components/ModuleDocumentsModal";
 import { apiJson } from "../../api/client";
 import { useAuth } from "../../context/AuthContext";
 import { MODULE_DOCUMENT_CATEGORIES } from "../../lib/moduleDocumentCategories";
@@ -108,6 +109,15 @@ function moneyFieldFromNumber(n: number | null | undefined): string {
   return formatMoneyInput(String(n));
 }
 
+function isoToDateInput(iso: string): string {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "";
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
+}
+
 /** แสดงชื่อตามเลขในชื่อจริง: 1. = หัวข้อ, 1.1 = หัวข้อย่อย — ไม่ใส่เลขซ้ำ */
 function budgetLineDisplayName(name: string, fallbackIndex: number, nested: boolean): string {
   const trimmed = name.trim();
@@ -156,6 +166,7 @@ export function BudgetYearPage() {
   const [txAmount, setTxAmount] = useState("");
   const [txDesc, setTxDesc] = useState("");
   const [txDate, setTxDate] = useState(() => new Date().toISOString().slice(0, 10));
+  const [editingTxId, setEditingTxId] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [lineForm, setLineForm] = useState<LineFormState | null>(null);
   const [categories, setCategories] = useState<BudgetCategoryRow[]>([]);
@@ -287,6 +298,7 @@ export function BudgetYearPage() {
     setTxAmount("");
     setTxDesc("");
     setTxDate(new Date().toISOString().slice(0, 10));
+    setEditingTxId(null);
     try {
       const [t, s] = await Promise.all([
         apiJson<Tx[]>(`/api/budget/year-lines/${row.id}/transactions`),
@@ -299,28 +311,57 @@ export function BudgetYearPage() {
     }
   };
 
-  const addTx = async () => {
+  const resetTxForm = () => {
+    setEditingTxId(null);
+    setTxAmount("");
+    setTxDesc("");
+    setTxDate(new Date().toISOString().slice(0, 10));
+  };
+
+  const startEditTx = (t: Tx) => {
+    setEditingTxId(t.id);
+    setTxAmount(String(t.amount));
+    setTxDesc(t.description ?? "");
+    setTxDate(isoToDateInput(t.occurredAt));
+  };
+
+  const saveTx = async () => {
     if (!selected || !isAdmin || !allowSpend) return;
     const amount = Number(txAmount.replace(/,/g, ""));
-    if (!Number.isFinite(amount) || amount === 0) return;
+    if (!Number.isFinite(amount) || amount === 0) {
+      setErr("ระบุจำนวนเงินที่ใช้จ่าย");
+      return;
+    }
     setSaving(true);
+    setErr(null);
     try {
-      await apiJson(`/api/budget/year-lines/${selected.id}/transactions`, {
-        method: "POST",
-        body: JSON.stringify({
-          amount,
-          description: txDesc || null,
-          occurredAt: txDate ? new Date(`${txDate}T12:00:00`).toISOString() : undefined,
-        }),
-      });
+      const payload = {
+        amount,
+        description: txDesc.trim() || null,
+        occurredAt: txDate ? new Date(`${txDate}T12:00:00`).toISOString() : undefined,
+      };
+      let saved: Tx;
+      if (editingTxId) {
+        saved = await apiJson<Tx>(`/api/budget/year-lines/${selected.id}/transactions/${editingTxId}`, {
+          method: "PATCH",
+          body: JSON.stringify(payload),
+        });
+        setTxs((prev) => prev.map((t) => (t.id === saved.id ? saved : t)));
+      } else {
+        saved = await apiJson<Tx>(`/api/budget/year-lines/${selected.id}/transactions`, {
+          method: "POST",
+          body: JSON.stringify(payload),
+        });
+        setTxs((prev) => [saved, ...prev]);
+      }
+      resetTxForm();
       await load({ silent: true });
       const refreshed = (
         await apiJson<{ lines: BudgetYearLineRow[] }>(
           `/api/budget/lines?bucket=${bucket}&fundingType=${fundingType}`,
         )
       ).lines.find((l) => l.id === selected.id);
-      if (refreshed) await openDetail(refreshed);
-      else await openDetail(selected);
+      if (refreshed) setSelected(refreshed);
     } catch (e) {
       setErr(e instanceof Error ? e.message : "บันทึกไม่สำเร็จ");
     } finally {
@@ -333,8 +374,15 @@ export function BudgetYearPage() {
     if (!window.confirm("ลบรายการใช้จ่ายนี้?")) return;
     try {
       await apiJson(`/api/budget/year-lines/${selected.id}/transactions/${txId}`, { method: "DELETE" });
+      setTxs((prev) => prev.filter((t) => t.id !== txId));
+      if (editingTxId === txId) resetTxForm();
       await load({ silent: true });
-      await openDetail(selected);
+      const refreshed = (
+        await apiJson<{ lines: BudgetYearLineRow[] }>(
+          `/api/budget/lines?bucket=${bucket}&fundingType=${fundingType}`,
+        )
+      ).lines.find((l) => l.id === selected.id);
+      if (refreshed) setSelected(refreshed);
     } catch (e) {
       setErr(e instanceof Error ? e.message : "ลบไม่สำเร็จ");
     }
@@ -1117,13 +1165,20 @@ export function BudgetYearPage() {
             <div className="flex-1 space-y-4 overflow-y-auto p-4">
               {snaps.length ? (
                 <section>
-                  <h3 className="text-xs font-black uppercase tracking-wide text-[#66638c]">ยอด ณ วันที่</h3>
+                  <h3 className="text-xs font-black uppercase tracking-wide text-[#66638c]">ยอดตัดจากไฟล์งบ</h3>
+                  <p className="mt-1 text-[11px] leading-snug text-slate-500">
+                    ยอดใช้ไปตามไฟล์ ณ วันที่นั้น — ไม่ใช่รายการที่กรอกด้านล่าง
+                  </p>
                   <ul className="mt-2 space-y-1.5 text-sm">
                     {snaps.map((s) => (
                       <li key={s.id} className="rounded-lg border border-[#ecebff] px-2.5 py-1.5">
                         <div className="flex justify-between gap-2">
                           <span>{new Date(s.asOfDate).toLocaleDateString("th-TH")}</span>
                           <span className="font-semibold">{fmt(s.spentAmount)}</span>
+                        </div>
+                        <div className="text-[11px] text-slate-500">
+                          {s.source === "IMPORT" ? "จากไฟล์งบ" : "บันทึกมือ"}
+                          {s.notes ? ` · ${s.notes}` : ""}
                         </div>
                       </li>
                     ))}
@@ -1145,13 +1200,22 @@ export function BudgetYearPage() {
                       <div className="text-right">
                         <div className="font-semibold">{fmt(t.amount)}</div>
                         {isAdmin ? (
-                          <button
-                            type="button"
-                            className="text-[11px] font-bold text-rose-600"
-                            onClick={() => void deleteTx(t.id)}
-                          >
-                            ลบ
-                          </button>
+                          <div className="mt-0.5 flex justify-end gap-2">
+                            <button
+                              type="button"
+                              className="text-[11px] font-bold text-[#4d47b6]"
+                              onClick={() => startEditTx(t)}
+                            >
+                              แก้ไข
+                            </button>
+                            <button
+                              type="button"
+                              className="text-[11px] font-bold text-rose-600"
+                              onClick={() => void deleteTx(t.id)}
+                            >
+                              ลบ
+                            </button>
+                          </div>
                         ) : null}
                       </div>
                     </li>
@@ -1162,12 +1226,14 @@ export function BudgetYearPage() {
 
               {isAdmin && allowSpend && !selected.isSummary ? (
                 <section className="space-y-2 rounded-xl border border-[#e8e6fc] bg-[#faf9ff]/80 p-3">
-                  <h3 className="text-xs font-black uppercase tracking-wide text-[#66638c]">เพิ่มการใช้จ่าย</h3>
-                  <input
+                  <h3 className="text-xs font-black uppercase tracking-wide text-[#66638c]">
+                    {editingTxId ? "แก้ไขการใช้จ่าย" : "เพิ่มการใช้จ่าย"}
+                  </h3>
+                  <PickableDateInput
                     type="date"
-                    className="w-full rounded-lg border border-[#dcd8f0] px-2.5 py-1.5 text-sm"
+                    aria-label="วันที่ใช้จ่าย"
                     value={txDate}
-                    onChange={(e) => setTxDate(e.target.value)}
+                    onChange={setTxDate}
                   />
                   <input
                     className="w-full rounded-lg border border-[#dcd8f0] px-2.5 py-1.5 text-sm"
@@ -1181,9 +1247,20 @@ export function BudgetYearPage() {
                     value={txDesc}
                     onChange={(e) => setTxDesc(e.target.value)}
                   />
-                  <button type="button" className={toolbarPrimaryBtnClass} disabled={saving} onClick={() => void addTx()}>
-                    บันทึกรายการใช้จ่าย
-                  </button>
+                  <div className="flex flex-wrap gap-2">
+                    <button type="button" className={toolbarPrimaryBtnClass} disabled={saving} onClick={() => void saveTx()}>
+                      {saving ? "กำลังบันทึก…" : editingTxId ? "บันทึกการแก้ไข" : "บันทึกรายการใช้จ่าย"}
+                    </button>
+                    {editingTxId ? (
+                      <button
+                        type="button"
+                        className="rounded-lg border border-slate-200 px-3 py-1.5 text-sm font-bold text-slate-600"
+                        onClick={resetTxForm}
+                      >
+                        ยกเลิก
+                      </button>
+                    ) : null}
+                  </div>
                 </section>
               ) : null}
             </div>

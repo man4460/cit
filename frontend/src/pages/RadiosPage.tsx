@@ -4,9 +4,11 @@ import { AssetQrModal } from "../components/AssetQrModal";
 import { AssetPhotosModal } from "../components/AssetPhotosModal";
 import { DetailField } from "../components/DetailField";
 import { FitSingleLine } from "../components/FitSingleLine";
+import { CrudNameMasterModal } from "../components/CrudNameMasterModal";
 import { Modal, ModalFormActions, ModalFormBody } from "../components/Modal";
 import { ModuleDocumentsModal } from "../components/ModuleDocumentsModal";
 import { PageHeaderBar } from "../components/PageHeaderBar";
+import { TeamFilterSelect, teamLabel, uniqueTeamOptions } from "../components/TeamFilterSelect";
 import { PrintA4Table } from "../components/PrintA4Table";
 import { MODULE_DOCUMENT_CATEGORIES } from "../lib/moduleDocumentCategories";
 import { isRadioAsset, radioKind, radioKindLabel, RADIO_CATEGORY_NAME } from "../lib/radioAsset";
@@ -35,6 +37,7 @@ function emptyForm() {
     deviceBrand: "",
     deviceModel: "",
     assetItemStatusId: "",
+    assetAffiliationId: "",
     notes: "",
   };
 }
@@ -95,10 +98,13 @@ export function RadiosPage() {
   const [rows, setRows] = useState<Asset[]>([]);
   const [categories, setCategories] = useState<NameMasterRow[]>([]);
   const [statuses, setStatuses] = useState<NameMasterRow[]>([]);
+  const [affiliations, setAffiliations] = useState<NameMasterRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [listFilter, setListFilter] = useState("");
   const [dashKey, setDashKey] = useState<DashKey>("");
   const [brandFilter, setBrandFilter] = useState("");
+  const [teamFilter, setTeamFilter] = useState("");
+  const [affModal, setAffModal] = useState(false);
   const [modalOpen, setModalOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [form, setForm] = useState(emptyForm);
@@ -116,14 +122,16 @@ export function RadiosPage() {
   const load = useCallback(async (opts?: LoadOptions) => {
     setLoadBusy(setLoading, opts, true);
     try {
-      const [a, c, s] = await Promise.all([
+      const [a, c, s, aff] = await Promise.all([
         apiJson<Asset[]>("/api/assets"),
         apiJson<NameMasterRow[]>("/api/asset-categories"),
         apiJson<NameMasterRow[]>("/api/asset-item-statuses"),
+        apiJson<NameMasterRow[]>("/api/asset-affiliations"),
       ]);
       setRows(a.filter(isRadioAsset));
       setCategories(c);
       setStatuses(s);
+      setAffiliations(aff);
     } finally {
       setLoading(false);
     }
@@ -145,15 +153,26 @@ export function RadiosPage() {
           r.deviceModel,
           r.notes,
           r.assetItemStatus?.name,
+          r.assetAffiliation?.name,
           radioKindLabel(r.itemName),
         ]),
       ),
     [rows, listFilter],
   );
 
+  const teamOptions = useMemo(
+    () => uniqueTeamOptions(searchRows.map((r) => r.assetAffiliation?.name)),
+    [searchRows],
+  );
+
   const scoped = useMemo(
-    () => searchRows.filter((r) => !brandFilter || (r.deviceBrand || "ไม่ระบุยี่ห้อ") === brandFilter),
-    [searchRows, brandFilter],
+    () =>
+      searchRows.filter((r) => {
+        if (brandFilter && (r.deviceBrand || "ไม่ระบุยี่ห้อ") !== brandFilter) return false;
+        if (teamFilter && teamLabel(r.assetAffiliation?.name) !== teamFilter) return false;
+        return true;
+      }),
+    [searchRows, brandFilter, teamFilter],
   );
 
   const dashStats = useMemo(() => {
@@ -206,6 +225,7 @@ export function RadiosPage() {
       deviceBrand: r.deviceBrand ?? "",
       deviceModel: r.deviceModel ?? "",
       assetItemStatusId: r.assetItemStatusId ?? "",
+      assetAffiliationId: r.assetAffiliationId ?? "",
       notes: r.notes ?? "",
     });
     setModalOpen(true);
@@ -223,6 +243,7 @@ export function RadiosPage() {
       deviceModel: form.deviceModel.trim() || null,
       assetCategoryId: radioCategoryId || null,
       assetItemStatusId: form.assetItemStatusId || null,
+      assetAffiliationId: form.assetAffiliationId || null,
       notes: form.notes.trim() || null,
     });
     try {
@@ -264,12 +285,18 @@ export function RadiosPage() {
           value: listFilter,
           onChange: setListFilter,
           printTitle: "วิทยุสื่อสาร",
-          placeholder: "กรองเลขครุภัณฑ์ / ชนิด / ยี่ห้อ / ที่ตั้ง…",
+          placeholder: "กรองเลขครุภัณฑ์ / ชนิด / ยี่ห้อ / ที่ตั้ง / สังกัด…",
         }}
         extras={
-          <button type="button" className={toolbarLinkBtnClass} onClick={() => setDocsOpen(true)}>
-            เอกสาร
-          </button>
+          <>
+            <TeamFilterSelect value={teamFilter} onChange={setTeamFilter} options={teamOptions} />
+            <button type="button" className={toolbarLinkBtnClass} onClick={() => setAffModal(true)}>
+              สังกัด
+            </button>
+            <button type="button" className={toolbarLinkBtnClass} onClick={() => setDocsOpen(true)}>
+              เอกสาร
+            </button>
+          </>
         }
         primary={
           <button type="button" onClick={openAdd} className={toolbarPrimaryBtnClass}>
@@ -347,6 +374,15 @@ export function RadiosPage() {
               <label className="block">
                 <span className="text-xs font-medium text-slate-700">รุ่น</span>
                 <input className="mt-1 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm" value={form.deviceModel} onChange={(e) => setForm((f) => ({ ...f, deviceModel: e.target.value }))} />
+              </label>
+              <label className="block">
+                <span className="text-xs font-medium text-slate-700">สังกัด / ทีม</span>
+                <select className="mt-1 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm" value={form.assetAffiliationId} onChange={(e) => setForm((f) => ({ ...f, assetAffiliationId: e.target.value }))}>
+                  <option value="">ไม่ระบุ</option>
+                  {affiliations.map((a) => (
+                    <option key={a.id} value={a.id}>{a.name}</option>
+                  ))}
+                </select>
               </label>
               <label className="block">
                 <span className="text-xs font-medium text-slate-700">ที่ตั้ง</span>
@@ -436,6 +472,10 @@ export function RadiosPage() {
                         <dd className="font-semibold text-[#4d47b6]">{[r.deviceBrand, r.deviceModel].filter(Boolean).join(" ") || "—"}</dd>
                       </div>
                       <div>
+                        <dt className="text-slate-500">สังกัด / ทีม</dt>
+                        <dd className="font-medium text-[#2e2a58]">{r.assetAffiliation?.name || "—"}</dd>
+                      </div>
+                      <div>
                         <dt className="text-slate-500">ที่ตั้ง</dt>
                         <dd className="font-medium text-[#2e2a58]">{r.location || "—"}</dd>
                       </div>
@@ -487,6 +527,7 @@ export function RadiosPage() {
                 <DetailField label="ชนิด" value={detail.itemName} className="sm:col-span-2" />
                 <DetailField label="ยี่ห้อ / รุ่น" value={[detail.deviceBrand, detail.deviceModel].filter(Boolean).join(" ") || "—"} />
                 <DetailField label="สถานะ" value={detail.assetItemStatus?.name || "—"} />
+                <DetailField label="สังกัด / ทีม" value={detail.assetAffiliation?.name || "—"} />
                 <DetailField label="ที่ตั้ง" value={detail.location || "—"} />
                 <DetailField label="ศูนย์ต้นทุน" value={detail.costCenter || "—"} mono />
                 <DetailField label="หมายเหตุ" value={detail.notes || "—"} className="sm:col-span-2" />
@@ -506,6 +547,7 @@ export function RadiosPage() {
           { label: "ประเภท" },
           { label: "ชนิด" },
           { label: "ยี่ห้อ / รุ่น" },
+          { label: "สังกัด / ทีม" },
           { label: "ที่ตั้ง" },
           { label: "สถานะ" },
         ]}
@@ -514,9 +556,18 @@ export function RadiosPage() {
           radioKindLabel(r.itemName),
           r.itemName,
           [r.deviceBrand, r.deviceModel].filter(Boolean).join(" ") || "—",
+          r.assetAffiliation?.name || "—",
           r.location || "—",
           r.assetItemStatus?.name || "—",
         ])}
+      />
+
+      <CrudNameMasterModal
+        title="สังกัด / ทีม (เพิ่ม / แก้ไข / ลบ)"
+        apiPath="/api/asset-affiliations"
+        open={affModal}
+        onClose={() => setAffModal(false)}
+        onChanged={() => void load({ silent: true })}
       />
 
       <ModuleDocumentsModal

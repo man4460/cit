@@ -67,7 +67,7 @@ meRouter.patch("/me", async (req: Request, res: Response, next: NextFunction) =>
         return res.status(400).json({ error: "กรอกรหัสผ่านปัจจุบันเพื่อเปลี่ยนรหัสผ่าน" });
       }
       const match = await bcrypt.compare(cur, row.passwordHash);
-      if (!match) return res.status(401).json({ error: "รหัสผ่านปัจจุบันไม่ถูกต้อง" });
+      if (!match) return res.status(400).json({ error: "รหัสผ่านปัจจุบันไม่ถูกต้อง" });
       data.passwordHash = await bcrypt.hash(np, 10);
     }
 
