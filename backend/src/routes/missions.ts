@@ -1,5 +1,14 @@
 import { Router } from "express";
 import { MissionStatus, MissionVehicleFuelType, Prisma } from "@prisma/client";
+import XLSX from "xlsx-js-style";
+import { withExcelFont } from "../lib/excelFont.js";
+import {
+  getActualExpenseByMissionId,
+  parseActualExpenseLines,
+  upsertActualExpenseForMission,
+} from "../lib/missionActualExpenseService.js";
+import { buildActualExpenseWorkbook, buildAdvanceReturnWorkbook } from "../lib/missionActualExpenseExcel.js";
+import { getEstimateByMissionId, upsertEstimateForMission } from "../lib/missionEstimateService.js";
 import { prisma } from "../lib/prisma.js";
 import { routeParam } from "../lib/routeParam.js";
 import { persistUpload, unlinkUploadFile, upload } from "../lib/upload.js";
@@ -39,6 +48,19 @@ function validateFuelLitersInput(v: unknown): boolean {
 }
 
 function normalizeFuelLiters(v: unknown): Prisma.Decimal | null {
+  if (v === undefined || v === null || v === "") return null;
+  const n = Number(v);
+  if (!Number.isFinite(n) || n < 0) return null;
+  return new Prisma.Decimal(n);
+}
+
+function validateFuelAmountInput(v: unknown): boolean {
+  if (v === undefined || v === null || v === "") return true;
+  const n = Number(v);
+  return Number.isFinite(n) && n >= 0;
+}
+
+function normalizeFuelAmount(v: unknown): Prisma.Decimal | null {
   if (v === undefined || v === null || v === "") return null;
   const n = Number(v);
   if (!Number.isFinite(n) || n < 0) return null;
@@ -218,6 +240,7 @@ async function missionSummary(missionId: string) {
       name: s.policeStation.name,
       vendorCode: s.policeStation.vendorCode,
       amount: s.amount.toString(),
+      estimateItemCode: s.estimateItemCode,
       note: s.note,
       sortOrder: s.sortOrder,
     })),
@@ -227,6 +250,7 @@ async function missionSummary(missionId: string) {
       roleName: v.vehicleRole.name,
       fuelLiters: v.fuelLiters?.toString() ?? null,
       fuelType: v.fuelType,
+      fuelAmount: v.fuelAmount?.toString() ?? null,
     })),
     destinations: mission.destinations.map((d) => ({
       address: d.address,
@@ -253,6 +277,231 @@ async function allIdsExist(
     count = await prisma.policeStationMaster.count({ where: { id: { in: uniq } } });
   else count = await prisma.missionExpenseTypeMaster.count({ where: { id: { in: uniq } } });
   return count === uniq.length;
+}
+
+function missionYearBe(row: {
+  code: string | null;
+  plannedStart: Date | null;
+  plannedEnd: Date | null;
+  createdAt: Date;
+}): number {
+  const fromCode = row.code?.match(/TRIP-(\d{4})(?:-|$)/i);
+  if (fromCode) {
+    const y = Number(fromCode[1]);
+    if (Number.isFinite(y) && y >= 2400) return y;
+  }
+  for (const d of [row.plannedStart, row.plannedEnd, row.createdAt]) {
+    if (d && !Number.isNaN(d.getTime())) return d.getFullYear() + 543;
+  }
+  return new Date().getFullYear() + 543;
+}
+
+function formatMissionDateTime(iso: Date | null | undefined): string {
+  if (!iso) return "—";
+  try {
+    return iso.toLocaleString("th-TH", { dateStyle: "medium", timeStyle: "short" });
+  } catch {
+    return "—";
+  }
+}
+
+function buildMissionsWorkbook(
+  expenseTypeNames: string[],
+  rows: Array<{
+    id: string;
+    code: string | null;
+    title: string | null;
+    status: MissionStatus;
+    plannedStart: Date | null;
+    plannedEnd: Date | null;
+    createdAt: Date;
+    route: { startLocation: string; endLocation: string; name: string | null } | null;
+    _count: { personnel: number; vehicles: number; destinations: number; expenses: number; attachments: number };
+    expenses: Array<{ amount: Prisma.Decimal; expenseType: { name: string } }>;
+  }>,
+): Buffer {
+  const wb = XLSX.utils.book_new();
+  const byYear = new Map<number, typeof rows>();
+
+  for (const row of rows) {
+    const year = missionYearBe(row);
+    const bucket = byYear.get(year) ?? [];
+    bucket.push(row);
+    byYear.set(year, bucket);
+  }
+
+  const years = [...byYear.keys()].sort((a, b) => b - a);
+  const labelFill = { fgColor: { rgb: "EEF2FF" } };
+  const headerFill = { fgColor: { rgb: "E0E7FF" } };
+  const totalFill = { fgColor: { rgb: "FEF3C7" } };
+  const thinBorder = {
+    top: { style: "thin", color: { rgb: "D8D9FF" } },
+    bottom: { style: "thin", color: { rgb: "D8D9FF" } },
+    left: { style: "thin", color: { rgb: "D8D9FF" } },
+    right: { style: "thin", color: { rgb: "D8D9FF" } },
+  } as const;
+
+  /** รายการแนวตั้ง (แถว) × ภารกิจแนวนอน (คอลัมน์) — เหมือนชีต trip ใน Excel สรุป */
+  const metaLabels = [
+    "ลำดับ",
+    "รหัสภารกิจ",
+    "ชื่อภารกิจ",
+    "สถานะ",
+    "วันเริ่ม",
+    "วันสิ้นสุด",
+    "เส้นทาง",
+    "บุคลากร",
+    "รถ",
+    "จุดส่ง",
+    "จำนวนรายการค่าใช้จ่าย",
+    "เอกสาร",
+  ] as const;
+
+  for (const year of years) {
+    const yearRows = [...(byYear.get(year) ?? [])].sort((a, b) =>
+      String(a.code ?? "").localeCompare(String(b.code ?? ""), "th"),
+    );
+
+    const expenseByMission = yearRows.map((row) => {
+      const byType: Record<string, number> = Object.fromEntries(expenseTypeNames.map((name) => [name, 0]));
+      for (const expense of row.expenses) {
+        const key = expense.expenseType.name;
+        byType[key] = (byType[key] ?? 0) + expense.amount.toNumber();
+      }
+      return byType;
+    });
+
+    const colHeaders = [
+      "รายการ",
+      ...yearRows.map((row, idx) => row.code ?? `Trip ${idx + 1}`),
+    ];
+
+    const metaValueRows: (string | number)[][] = metaLabels.map((label) => {
+      const values = yearRows.map((row, idx) => {
+        switch (label) {
+          case "ลำดับ":
+            return idx + 1;
+          case "รหัสภารกิจ":
+            return row.code ?? "—";
+          case "ชื่อภารกิจ":
+            return row.title ?? "—";
+          case "สถานะ":
+            return row.status;
+          case "วันเริ่ม":
+            return formatMissionDateTime(row.plannedStart);
+          case "วันสิ้นสุด":
+            return formatMissionDateTime(row.plannedEnd);
+          case "เส้นทาง":
+            return row.route ? `${row.route.startLocation} → ${row.route.endLocation}` : "—";
+          case "บุคลากร":
+            return row._count.personnel;
+          case "รถ":
+            return row._count.vehicles;
+          case "จุดส่ง":
+            return row._count.destinations;
+          case "จำนวนรายการค่าใช้จ่าย":
+            return row._count.expenses;
+          case "เอกสาร":
+            return row._count.attachments;
+          default:
+            return "—";
+        }
+      });
+      return [label, ...values];
+    });
+
+    const expenseValueRows: (string | number)[][] = expenseTypeNames.map((name) => [
+      name,
+      ...expenseByMission.map((byType) => byType[name] ?? 0),
+    ]);
+
+    const totalRow: (string | number)[] = [
+      "รวมค่าใช้จ่าย",
+      ...expenseByMission.map((byType) =>
+        expenseTypeNames.reduce((sum, name) => sum + (byType[name] ?? 0), 0),
+      ),
+    ];
+
+    const sheetRows: (string | number)[][] = [
+      [`รายการภารกิจทั้งหมด ปี ${year}`],
+      [],
+      colHeaders,
+      ...metaValueRows,
+      ...expenseValueRows,
+      totalRow,
+    ];
+
+    const ws = XLSX.utils.aoa_to_sheet(sheetRows);
+    const lastCol = Math.max(colHeaders.length - 1, 0);
+    ws["!cols"] = [
+      { wch: 28 },
+      ...yearRows.map(() => ({ wch: 18 })),
+    ];
+    if (lastCol > 0) {
+      ws["!merges"] = [{ s: { r: 0, c: 0 }, e: { r: 0, c: lastCol } }];
+    }
+
+    const titleCell = ws["A1"];
+    if (titleCell) {
+      titleCell.s = {
+        font: withExcelFont({ bold: true, sz: 14, color: { rgb: "1E1B4B" } }),
+        alignment: { horizontal: "left", vertical: "center" },
+      };
+    }
+
+    const range = XLSX.utils.decode_range(ws["!ref"] ?? "A1");
+    const headerRow = 2;
+    const firstDataRow = 3;
+    const totalRowIdx = range.e.r;
+    const expenseStartRow = firstDataRow + metaLabels.length;
+
+    for (let c = 0; c <= lastCol; c++) {
+      const addr = XLSX.utils.encode_cell({ r: headerRow, c });
+      const cell = ws[addr];
+      if (!cell) continue;
+      cell.s = {
+        fill: headerFill,
+        border: thinBorder,
+        font: withExcelFont({ bold: true, sz: 10, color: { rgb: "312E81" } }),
+        alignment: { horizontal: "center", vertical: "center", wrapText: true },
+      };
+    }
+
+    for (let r = firstDataRow; r <= range.e.r; r++) {
+      const isTotal = r === totalRowIdx;
+      const isExpense = r >= expenseStartRow && r < totalRowIdx;
+      for (let c = 0; c <= lastCol; c++) {
+        const addr = XLSX.utils.encode_cell({ r, c });
+        const cell = ws[addr];
+        if (!cell) continue;
+        const isLabelCol = c === 0;
+        cell.s = {
+          fill: isTotal ? totalFill : isLabelCol ? labelFill : undefined,
+          border: thinBorder,
+          alignment: {
+            horizontal: isLabelCol ? "left" : isExpense || isTotal || r === firstDataRow ? "right" : "center",
+            vertical: "center",
+            wrapText: true,
+          },
+          font: withExcelFont({
+            bold: isLabelCol || isTotal,
+            sz: 10,
+            color: { rgb: isTotal ? "92400E" : "0F172A" },
+          }),
+          numFmt: (isExpense || isTotal) && typeof cell.v === "number" ? "#,##0.00" : undefined,
+        };
+      }
+    }
+
+    XLSX.utils.book_append_sheet(wb, ws, String(year).slice(0, 31));
+  }
+
+  if (years.length === 0) {
+    const ws = XLSX.utils.aoa_to_sheet([["ยังไม่มีข้อมูลภารกิจ"]]);
+    XLSX.utils.book_append_sheet(wb, ws, "ภารกิจ");
+  }
+
+  return XLSX.write(wb, { type: "buffer", bookType: "xlsx" }) as Buffer;
 }
 
 const MONTH_LABELS_TH = [
@@ -413,11 +662,171 @@ missionsRouter.get("/", async (_req, res, next) => {
   }
 });
 
+missionsRouter.get("/export.xlsx", async (_req, res, next) => {
+  try {
+    const expenseTypeMasters = await prisma.missionExpenseTypeMaster.findMany({
+      orderBy: [{ sortOrder: "asc" }, { name: "asc" }],
+      select: { name: true },
+    });
+    const expenseTypeNames = expenseTypeMasters.map((x) => x.name);
+    const rows = await prisma.mission.findMany({
+      where: { status: MissionStatus.COMPLETED },
+      orderBy: [{ createdAt: "desc" }],
+      include: {
+        route: { select: { startLocation: true, endLocation: true, name: true } },
+        expenses: {
+          include: { expenseType: { select: { name: true } } },
+          orderBy: [{ incurredAt: "asc" }],
+        },
+        _count: {
+          select: { personnel: true, vehicles: true, destinations: true, expenses: true, attachments: true },
+        },
+      },
+    });
+    const file = buildMissionsWorkbook(expenseTypeNames, rows);
+    const filename = "รายการภารกิจทั้งหมด_เสร็จสิ้นแล้ว.xlsx";
+    res.setHeader(
+      "Content-Type",
+      "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    );
+    res.setHeader("Content-Disposition", `attachment; filename*=UTF-8''${encodeURIComponent(filename)}`);
+    res.send(file);
+  } catch (e) {
+    next(e);
+  }
+});
+
 missionsRouter.get("/:id/summary", async (req, res, next) => {
   try {
     const s = await missionSummary(req.params.id);
     if (!s) return res.status(404).json({ error: "Not found" });
     res.json(s);
+  } catch (e) {
+    next(e);
+  }
+});
+
+/** ประมาณการค่าใช้จ่ายของภารกิจ (ตาราง MissionEstimate แยกจากค่าใช้จ่ายจริง) */
+missionsRouter.get("/:id/estimate", async (req, res, next) => {
+  try {
+    const missionId = routeParam(req.params.id);
+    const mission = await prisma.mission.findUnique({ where: { id: missionId }, select: { id: true } });
+    if (!mission) return res.status(404).json({ error: "ไม่พบภารกิจ" });
+    const row = await getEstimateByMissionId(missionId);
+    res.json(row);
+  } catch (e) {
+    next(e);
+  }
+});
+
+missionsRouter.put("/:id/estimate", async (req, res, next) => {
+  try {
+    const missionId = routeParam(req.params.id);
+    const row = await upsertEstimateForMission(missionId, req.body as Record<string, unknown>);
+    res.json(row);
+  } catch (e) {
+    const err = e as Error & { status?: number };
+    if (err.status === 404) return res.status(404).json({ error: err.message });
+    if (err.status === 400) return res.status(400).json({ error: err.message });
+    next(e);
+  }
+});
+
+/** ค่าใช้จ่ายจริงของภารกิจ (เก็บบรรทัดย่อย และสรุปลง MissionExpense) */
+missionsRouter.get("/:id/actual-expense", async (req, res, next) => {
+  try {
+    const missionId = routeParam(req.params.id);
+    const mission = await prisma.mission.findUnique({ where: { id: missionId }, select: { id: true } });
+    if (!mission) return res.status(404).json({ error: "ไม่พบภารกิจ" });
+    const row = await getActualExpenseByMissionId(missionId);
+    res.json(row);
+  } catch (e) {
+    next(e);
+  }
+});
+
+missionsRouter.put("/:id/actual-expense", async (req, res, next) => {
+  try {
+    const missionId = routeParam(req.params.id);
+    const row = await upsertActualExpenseForMission(missionId, req.body as Record<string, unknown>);
+    res.json(row);
+  } catch (e) {
+    const err = e as Error & { status?: number };
+    if (err.status === 404) return res.status(404).json({ error: err.message });
+    if (err.status === 400) return res.status(400).json({ error: err.message });
+    next(e);
+  }
+});
+
+/** ส่งออก Excel ค่าใช้จ่ายจริงจากข้อมูลในฟอร์ม (ยังไม่ต้องบันทึกก่อน) */
+missionsRouter.post("/actual-expense/export", async (req, res, next) => {
+  try {
+    const body = req.body as {
+      currentLabel?: string | null;
+      currentDateRange?: string | null;
+      notes?: string | null;
+      currentTitle?: string | null;
+      missionCode?: string | null;
+      receivedAmount?: number | string | null;
+      lines?: unknown;
+    };
+    const lines = parseActualExpenseLines(body.lines);
+    if (!lines.length) return res.status(400).json({ error: "ไม่มีรายการค่าใช้จ่ายให้ส่งออก" });
+
+    const buf = buildActualExpenseWorkbook({
+      currentLabel: body.currentLabel,
+      currentDateRange: body.currentDateRange,
+      notes: body.notes,
+      currentTitle: body.currentTitle,
+      missionCode: body.missionCode,
+      receivedAmount: body.receivedAmount,
+      lines,
+    });
+    const codePart = String(body.missionCode ?? "").trim() || "draft";
+    const filename = `ค่าใช้จ่ายจริง_${codePart}.xlsx`;
+    res.setHeader(
+      "Content-Type",
+      "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    );
+    res.setHeader("Content-Disposition", `attachment; filename*=UTF-8''${encodeURIComponent(filename)}`);
+    res.send(buf);
+  } catch (e) {
+    next(e);
+  }
+});
+
+/** ส่งออก Excel สรุปยอดส่งคืน — รายการยืมเงินทดรองจ่าย + ตารางสรุป */
+missionsRouter.post("/actual-expense/export-return", async (req, res, next) => {
+  try {
+    const body = req.body as {
+      currentLabel?: string | null;
+      currentDateRange?: string | null;
+      notes?: string | null;
+      currentTitle?: string | null;
+      missionCode?: string | null;
+      receivedAmount?: number | string | null;
+      lines?: unknown;
+    };
+    const lines = parseActualExpenseLines(body.lines);
+    if (!lines.length) return res.status(400).json({ error: "ไม่มีรายการค่าใช้จ่ายให้ส่งออก" });
+
+    const buf = buildAdvanceReturnWorkbook({
+      currentLabel: body.currentLabel,
+      currentDateRange: body.currentDateRange,
+      notes: body.notes,
+      currentTitle: body.currentTitle,
+      missionCode: body.missionCode,
+      receivedAmount: body.receivedAmount,
+      lines,
+    });
+    const codePart = String(body.missionCode ?? "").trim() || "draft";
+    const filename = `สรุปยอดส่งคืน_${codePart}.xlsx`;
+    res.setHeader(
+      "Content-Type",
+      "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    );
+    res.setHeader("Content-Disposition", `attachment; filename*=UTF-8''${encodeURIComponent(filename)}`);
+    res.send(buf);
   } catch (e) {
     next(e);
   }
@@ -533,21 +942,56 @@ missionsRouter.get("/:id", async (req, res, next) => {
           orderBy: [{ sortOrder: "asc" }, { policeStation: { name: "asc" } }],
         },
         attachments: { orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }] },
+        actualExpense: { include: { lines: { orderBy: { sortOrder: "asc" } } } },
       },
     });
     if (!row) return res.status(404).json({ error: "Not found" });
-    const { attachments, policeStations, ...rest } = row;
+    const { attachments, policeStations, actualExpense, ...rest } = row;
     res.json({
       ...rest,
       policeStations: policeStations.map((s) => ({
         id: s.id,
         policeStationId: s.policeStationId,
         amount: s.amount.toString(),
+        estimateItemCode: s.estimateItemCode,
         note: s.note,
         sortOrder: s.sortOrder,
         policeStation: s.policeStation,
       })),
       attachments: attachments.map(serializeMissionAttachment),
+      actualExpense: actualExpense
+        ? {
+            id: actualExpense.id,
+            missionId: actualExpense.missionId,
+            currentLabel: actualExpense.currentLabel,
+            currentDateRange: actualExpense.currentDateRange,
+            notes: actualExpense.notes,
+            reserveAmount: actualExpense.reserveAmount.toString(),
+            roundedSpend: actualExpense.roundedSpend.toString(),
+            approvalTotal: actualExpense.approvalTotal.toString(),
+            createdAt: actualExpense.createdAt.toISOString(),
+            updatedAt: actualExpense.updatedAt.toISOString(),
+            lines: actualExpense.lines.map((line) => ({
+              id: line.id,
+              sortOrder: line.sortOrder,
+              kind: line.kind,
+              groupCode: line.groupCode,
+              itemCode: line.itemCode,
+              name: line.name,
+              payoutMethod: line.payoutMethod,
+              quantity: line.quantity?.toString() ?? null,
+              unitPrice: line.unitPrice?.toString() ?? null,
+              amount: line.amount.toString(),
+              previousAmount: line.previousAmount?.toString() ?? null,
+              qtyEditable: line.qtyEditable,
+              rateEditable: line.rateEditable,
+              amountEditable: line.amountEditable,
+              includeInTotal: line.includeInTotal,
+              isReserve: line.isReserve,
+              expenseTypeName: line.expenseTypeName,
+            })),
+          }
+        : null,
     });
   } catch (e) {
     next(e);
@@ -560,6 +1004,7 @@ type VehicleIn = {
   vehicleRoleId: string;
   fuelLiters?: string | number | null;
   fuelType?: string | null;
+  fuelAmount?: string | number | null;
 };
 type DestIn = { address: string; cargoValue?: string | number; containerCount?: number; sortOrder?: number };
 type ExpIn = {
@@ -571,9 +1016,16 @@ type ExpIn = {
 type PoliceStationIn = {
   policeStationId: string;
   amount?: string | number;
+  estimateItemCode?: string | null;
   note?: string | null;
   sortOrder?: number;
 };
+
+function normalizeEstimateItemCode(v: unknown): string | null {
+  if (v === "2.4" || v === "2.5" || v === "2.6" || v === "2.7") return v;
+  if (v === undefined || v === null || v === "") return null;
+  return null;
+}
 
 missionsRouter.post("/", async (req, res, next) => {
   try {
@@ -611,6 +1063,8 @@ missionsRouter.post("/", async (req, res, next) => {
         return res.status(400).json({ error: "fuelLiters must be a non-negative number" });
       if (!validateFuelTypeInput(v.fuelType))
         return res.status(400).json({ error: "fuelType must be GASOLINE, DIESEL, or empty" });
+      if (!validateFuelAmountInput(v.fuelAmount))
+        return res.status(400).json({ error: "fuelAmount must be a non-negative number" });
     }
     for (const d of destArr) {
       if (!d.address) return res.status(400).json({ error: "Each destination needs address" });
@@ -657,6 +1111,7 @@ missionsRouter.post("/", async (req, res, next) => {
             vehicleRoleId: v.vehicleRoleId,
             fuelLiters: normalizeFuelLiters(v.fuelLiters),
             fuelType: normalizeFuelType(v.fuelType),
+            fuelAmount: normalizeFuelAmount(v.fuelAmount),
           })),
         },
         destinations: {
@@ -679,6 +1134,7 @@ missionsRouter.post("/", async (req, res, next) => {
           create: policeStationArr.map((s, i) => ({
             policeStationId: s.policeStationId,
             amount: dec(s.amount) ?? new Prisma.Decimal(0),
+            estimateItemCode: normalizeEstimateItemCode(s.estimateItemCode),
             note: s.note ? String(s.note) : null,
             sortOrder: s.sortOrder ?? i,
           })),
@@ -742,6 +1198,8 @@ missionsRouter.put("/:id", async (req, res, next) => {
         return res.status(400).json({ error: "fuelLiters must be a non-negative number" });
       if (!validateFuelTypeInput(v.fuelType))
         return res.status(400).json({ error: "fuelType must be GASOLINE, DIESEL, or empty" });
+      if (!validateFuelAmountInput(v.fuelAmount))
+        return res.status(400).json({ error: "fuelAmount must be a non-negative number" });
     }
     for (const d of destArr) {
       if (!d.address) return res.status(400).json({ error: "Each destination needs address" });
@@ -801,6 +1259,7 @@ missionsRouter.put("/:id", async (req, res, next) => {
               vehicleRoleId: v.vehicleRoleId,
               fuelLiters: normalizeFuelLiters(v.fuelLiters),
               fuelType: normalizeFuelType(v.fuelType),
+              fuelAmount: normalizeFuelAmount(v.fuelAmount),
             })),
           },
           destinations: {
@@ -823,6 +1282,7 @@ missionsRouter.put("/:id", async (req, res, next) => {
             create: policeStationArr.map((s, i) => ({
               policeStationId: s.policeStationId,
               amount: dec(s.amount) ?? new Prisma.Decimal(0),
+              estimateItemCode: normalizeEstimateItemCode(s.estimateItemCode),
               note: s.note ? String(s.note) : null,
               sortOrder: s.sortOrder ?? i,
             })),
@@ -842,7 +1302,12 @@ missionsRouter.put("/:id", async (req, res, next) => {
 
     const { attachments, ...rest } = row;
     res.json({ ...rest, attachments: attachments.map(serializeMissionAttachment) });
-  } catch (e) {
+  } catch (e: unknown) {
+    if (e && typeof e === "object" && "code" in e && (e as { code: string }).code === "P2002") {
+      return res.status(409).json({
+        error: "ข้อมูลซ้ำในภารกิจ (บุคลากร / ยานพาหนะ / สถานีตำรวจ เลือกซ้ำไม่ได้)",
+      });
+    }
     next(e);
   }
 });
@@ -953,12 +1418,14 @@ missionsRouter.delete("/:missionId/personnel/:assignmentId", async (req, res, ne
 
 missionsRouter.post("/:id/vehicles", async (req, res, next) => {
   try {
-    const { vehicleId, vehicleRoleId, fuelLiters, fuelType } = req.body;
+    const { vehicleId, vehicleRoleId, fuelLiters, fuelType, fuelAmount } = req.body;
     if (!vehicleId || !vehicleRoleId) return res.status(400).json({ error: "vehicleId, vehicleRoleId required" });
     if (!validateFuelLitersInput(fuelLiters))
       return res.status(400).json({ error: "fuelLiters must be a non-negative number" });
     if (!validateFuelTypeInput(fuelType))
       return res.status(400).json({ error: "fuelType must be GASOLINE, DIESEL, or empty" });
+    if (!validateFuelAmountInput(fuelAmount))
+      return res.status(400).json({ error: "fuelAmount must be a non-negative number" });
     if (!(await allIdsExist("vehicleRole", [vehicleRoleId])))
       return res.status(400).json({ error: "Invalid vehicle role" });
     const row = await prisma.missionVehicle.create({
@@ -968,6 +1435,7 @@ missionsRouter.post("/:id/vehicles", async (req, res, next) => {
         vehicleRoleId,
         fuelLiters: normalizeFuelLiters(fuelLiters),
         fuelType: normalizeFuelType(fuelType),
+        fuelAmount: normalizeFuelAmount(fuelAmount),
       },
       include: { vehicle: true, vehicleRole: true },
     });

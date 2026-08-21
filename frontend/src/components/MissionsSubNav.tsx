@@ -4,7 +4,7 @@ import { itemVisual, NavGlyph } from "../lib/navVisuals";
 import { toolbarMasterGroupClass } from "../lib/uiTokens";
 
 const SUB_ITEMS: NavItem[] = [
-  { to: "/missions", label: "ภารกิจ", end: true },
+  { to: "/missions", label: "ภารกิจ" },
   { to: "/routes", label: "เส้นทางภารกิจ" },
 ];
 

@@ -18,7 +18,7 @@ export const MISSION_PERSONNEL_TABS: readonly MissionPersonnelTabDef[] = [
     key: "special",
     label: "ปฏิบัติการพิเศษ",
     categories: ["ปฏิบัติการพิเศษ", "อรินทราช", "หนุมาน"],
-    defaultRoleRe: /ตร\.อรินทราช|อรินทราช|ปฏิบัติการพิเศษ/,
+    defaultRoleRe: /ตร\.อรินทราช|อรินทราช|หนุมาน|ปฏิบัติการพิเศษ/,
   },
   { key: "driver", label: "ขับรถสินค้า", categories: ["ขับรถสินค้า"], defaultRoleRe: /คนขับ|ขับรถ/ },
 ] as const;
@@ -31,6 +31,11 @@ export function missionPersonnelTabByCategory(
   for (const tab of MISSION_PERSONNEL_TABS) {
     if (tab.categories.some((c) => c === n)) return tab.key;
   }
+  if (/^ตร\.ทางหลวง|ทางหลวง/.test(n)) return "highway";
+  if (/^ตร\.กองปราบ|กองปราบ/.test(n)) return "crime";
+  if (/^ตร\.อรินทราช|อรินทราช|หนุมาน|ปฏิบัติการพิเศษ/.test(n)) return "special";
+  if (n === "ธปท.") return "bot";
+  if (n === "ขับรถสินค้า") return "driver";
   return null;
 }
 

@@ -7,7 +7,7 @@
  *  - ค่าตอบแทน ตำรวจ (2).xlsx
  *
  * บุคลากร: จับคู่รหัส/ชื่อที่มีอยู่แล้ว — ไม่สร้างซ้ำ
- * น้ำมัน: แยกตามทะเบียนรถ — หลายคันในแถวหารลิตรเท่า ๆ กัน
+ * น้ำมัน: แยกตามทะเบียนรถ — หลายคันในแถวหารลิตรและจำนวนเงินเท่า ๆ กัน
  *
  *   npm run seed:missions:apr69-rayong
  */
@@ -362,6 +362,7 @@ async function main() {
     vehicleRoleId: vRoleId(f.roleName),
     fuelLiters: new Prisma.Decimal(Math.round(f.liters * 1000) / 1000),
     fuelType: f.fuelType,
+    fuelAmount: new Prisma.Decimal(Math.round(f.amount * 100) / 100),
   }));
 
   for (const [vid, f] of fuelByVehicle) {

@@ -41,7 +41,9 @@ export const navGroups: NavGroup[] = [
       {
         to: "/missions",
         label: "ภารกิจ",
-        children: [{ to: "/routes", label: "เส้นทางภารกิจ" }],
+        children: [
+          { to: "/routes", label: "เส้นทางภารกิจ" },
+        ],
       },
       { to: "/activities", label: "กิจกรรม" },
       {

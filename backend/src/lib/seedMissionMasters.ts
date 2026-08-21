@@ -42,6 +42,12 @@ export async function seedMissionMasterData() {
     { name: "ค่าอาหาร / เครื่องดื่ม", sortOrder: 2 },
     { name: "ค่าที่พัก", sortOrder: 3 },
     { name: "ค่าน้ำมัน / เชื้อเพลิง", sortOrder: 4 },
+    { name: "ค่ารับรอง", sortOrder: 5 },
+    { name: "ค่าธรรมเนียมอื่นๆ", sortOrder: 6 },
+    { name: "เบ็ดเตล็ด/ล้างรถ", sortOrder: 7 },
+    { name: "ค่าเงินช่วยเหลือ", sortOrder: 8 },
+    { name: "ประกันภัย", sortOrder: 9 },
+    { name: "ค่าจ้างรถบรรทุก", sortOrder: 10 },
   ];
   for (const r of expenseTypes) {
     await prisma.missionExpenseTypeMaster.upsert({

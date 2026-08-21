@@ -132,3 +132,61 @@ export async function apiFormJson<T>(path: string, formData: FormData, method = 
   clearApiCache();
   return data as T;
 }
+
+function filenameFromContentDisposition(header: string | null, fallback: string): string {
+  if (!header) return fallback;
+  const star = /filename\*=UTF-8''([^;]+)/i.exec(header);
+  if (star?.[1]) {
+    try {
+      return decodeURIComponent(star[1]);
+    } catch {
+      return star[1];
+    }
+  }
+  const plain = /filename="?([^";]+)"?/i.exec(header);
+  return plain?.[1] ?? fallback;
+}
+
+/** ดาวน์โหลดไฟล์จาก API (เช่น Excel) — รองรับ JSON error */
+export async function apiDownload(path: string, init?: RequestInit, fallbackName = "download.xlsx"): Promise<void> {
+  const fetchInit = init ?? {};
+  const res = await fetch(resolveFetchUrl(path), {
+    ...fetchInit,
+    headers: {
+      Accept: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet, application/json",
+      ...authHeader(),
+      ...fetchInit.headers,
+    },
+  });
+  if (res.status === 401) {
+    const text = await res.text();
+    let data: { error?: string } | null = null;
+    try {
+      data = text ? (JSON.parse(text) as { error?: string }) : null;
+    } catch {
+      data = null;
+    }
+    handleUnauthorized(res.status, data);
+    throw new Error(data?.error ?? "ต้องเข้าสู่ระบบ");
+  }
+  if (!res.ok) {
+    const text = await res.text();
+    let data: { error?: string; details?: string } | null = null;
+    try {
+      data = text ? (JSON.parse(text) as { error?: string; details?: string }) : null;
+    } catch {
+      data = null;
+    }
+    throw new Error(formatApiFailure(data, res.statusText));
+  }
+  const blob = await res.blob();
+  const filename = filenameFromContentDisposition(res.headers.get("content-disposition"), fallbackName);
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+}

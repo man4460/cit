@@ -15,7 +15,8 @@ const prisma = new PrismaClient();
 
 const DEFAULT_XLSX =
   process.env.DEST_SUMMARY_XLSX ??
-  String.raw`C:\Users\LENOVO\Downloads\Telegram Desktop\งขส_สรุปจำนวนภารกิจขนส่งธนบัตร+5+ประจำปี+2569.xlsx`;
+  process.env.MISSION_TRIP2569_XLSX ??
+  String.raw`C:\Users\MAN\Downloads\Telegram Desktop\งขส_สรุปจำนวนภารกิจขนส่งธนบัตร+5+ประจำปี+2569.xlsx`;
 
 type StopAlloc = { code: string; containers: number; cargoMillionBaht: number };
 

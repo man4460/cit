@@ -755,6 +755,153 @@ export interface MissionListItem {
   };
 }
 
+export type MissionEstimateLineKind = "GROUP" | "ITEM";
+
+export interface MissionEstimateLine {
+  sortOrder: number;
+  kind: MissionEstimateLineKind;
+  groupCode: string | null;
+  itemCode: string | null;
+  name: string;
+  payoutMethod: string | null;
+  quantity: string | null;
+  unitPrice: string | null;
+  amount: string;
+  previousAmount: string | null;
+  qtyEditable: boolean;
+  rateEditable: boolean;
+  amountEditable: boolean;
+  includeInTotal: boolean;
+  isReserve: boolean;
+  expenseTypeName: string | null;
+  lineNote?: string | null;
+}
+
+export interface MissionEstimateTemplate {
+  currentLabel: string;
+  notes: string;
+  lines: MissionEstimateLine[];
+}
+
+export interface MissionEstimatePreviousLine {
+  amount: number;
+  quantity: number | null;
+  unitPrice: number | null;
+}
+
+export interface MissionEstimatePrevious {
+  missionId: string;
+  estimateId?: string;
+  code: string | null;
+  title: string | null;
+  plannedStart: string | null;
+  plannedEnd: string | null;
+  dateRange: string | null;
+  label: string | null;
+  notes: string | null;
+  amountsByKey: Record<string, number>;
+  linesByKey?: Record<string, MissionEstimatePreviousLine>;
+  approvalTotal: number | null;
+}
+
+/** ข้อมูลอ้างอิงจากชีต trip 69 / สรุป 69 (5 ทริปปี 2569) */
+export interface MissionTrip2569Meta {
+  tripNo: number;
+  missionCode: string;
+  routeText: string;
+  dateRange: string;
+  spareTractor: number;
+  personnel: {
+    special: number;
+    highway: number;
+    crime: number;
+    bot: number;
+    driver: number;
+  };
+  personCounts: Record<string, number>;
+  amountsByKey: Record<string, number>;
+  groupTotals: {
+    hospitality: number;
+    external: number;
+    misc: number;
+    allowance: number;
+    fuel: number;
+    insurance: number;
+    fees: number;
+    operating: number;
+  };
+}
+
+export interface MissionEstimateRecord {
+  id: string;
+  missionId: string;
+  previousMissionId: string | null;
+  currentLabel: string | null;
+  previousLabel: string | null;
+  currentDateRange: string | null;
+  previousDateRange: string | null;
+  notes: string | null;
+  personCounts?: Record<string, number> | null;
+  calcMeta?: {
+    tripType: "oneWay" | "roundTrip";
+    destinationGroup: string;
+    supportAmount: number;
+    specialTransport: number;
+    escort1: number;
+    escort2: number;
+  } | null;
+  reserveAmount: string | null;
+  roundedSpend: string | null;
+  approvalTotal: string | null;
+  createdAt: string;
+  updatedAt: string;
+  lines: MissionEstimateLine[];
+  mission?: {
+    id: string;
+    code: string | null;
+    title: string | null;
+    status: MissionStatus;
+    routeId: string | null;
+    plannedStart: string | null;
+    plannedEnd: string | null;
+    budgetAmount: string | null;
+    route: RouteMaster | null;
+  };
+  previousMission?: {
+    id: string;
+    code: string | null;
+    title: string | null;
+    plannedStart: string | null;
+    plannedEnd: string | null;
+  } | null;
+}
+
+export interface MissionActualExpenseRecord {
+  id: string;
+  missionId: string;
+  currentLabel: string | null;
+  currentDateRange: string | null;
+  notes: string | null;
+  reserveAmount: string | null;
+  roundedSpend: string | null;
+  approvalTotal: string | null;
+  createdAt: string;
+  updatedAt: string;
+  lines: MissionEstimateLine[];
+  mission?: {
+    id: string;
+    code: string | null;
+    title: string | null;
+    routeId: string | null;
+    plannedStart: string | null;
+    plannedEnd: string | null;
+    actualStart?: string | null;
+    actualEnd?: string | null;
+    budgetAmount: string | null;
+    route: RouteMaster | null;
+  };
+}
+
 /** รายละเอียดภารกิจจาก GET /api/missions/:id — ใช้โหลดฟอร์มแก้ไข */
 export interface MissionDetail {
   id: string;
@@ -776,6 +923,7 @@ export interface MissionDetail {
     vehicleRoleId: string;
     fuelLiters: string | null;
     fuelType: "GASOLINE" | "DIESEL" | null;
+    fuelAmount: string | null;
   }>;
   destinations: Array<{ address: string; cargoValue: string; containerCount: number; sortOrder: number }>;
   expenses: Array<{ expenseTypeId: string; amount: string }>;
@@ -783,11 +931,13 @@ export interface MissionDetail {
     id?: string;
     policeStationId: string;
     amount: string;
+    estimateItemCode?: string | null;
     note?: string | null;
     sortOrder?: number;
     policeStation?: { id: string; name: string; vendorCode?: string | null };
   }>;
   attachments?: MissionAttachmentRow[];
+  actualExpense?: MissionActualExpenseRecord | null;
 }
 
 export interface MissionSummary {

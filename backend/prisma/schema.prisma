@@ -717,6 +717,9 @@ model Mission {
   expenses       MissionExpense[]
   attachments    MissionAttachment[]
   policeStations MissionPoliceStation[]
+  estimate       MissionEstimate?
+  actualExpense  MissionActualExpense?
+  previousForEstimates MissionEstimate[] @relation("EstimatePreviousTrip")
 }
 
 /// สถานีตำรวจที่เกี่ยวในภารกิจ (อาจมีจำนวนเงินจ่ายให้หน่วยงาน)
@@ -728,6 +731,8 @@ model MissionPoliceStation {
   policeStation   PoliceStationMaster @relation(fields: [policeStationId], references: [id], onDelete: Restrict)
   /// จำนวนเงินจ่ายให้สถานี/หน่วยงาน (บาท) — 0 = แค่ระบุว่าเกี่ยว
   amount          Decimal             @default(0)
+  /// ลิงก์ยอดไปรายการประมาณการ 2.4 / 2.5 / 2.6 / 2.7
+  estimateItemCode String?
   note            String?
   sortOrder       Int                 @default(0)
 
@@ -776,6 +781,8 @@ model MissionVehicle {
   /// การใช้น้ำมัน (ลิตร)
   fuelLiters Decimal?
   fuelType   MissionVehicleFuelType?
+  /// ค่าน้ำมัน (บาท)
+  fuelAmount Decimal?
 
   @@unique([missionId, vehicleId])
 }
@@ -801,6 +808,111 @@ model MissionExpense {
   amount      Decimal
   description String?  @db.Text
   incurredAt  DateTime @default(now())
+}
+
+/// ค่าใช้จ่ายจริงรายหัวข้อย่อยของภารกิจ (ใช้โครงเดียวกับประมาณการ แต่เป็นยอดใช้จริง)
+model MissionActualExpense {
+  id        String  @id @default(uuid())
+  missionId String  @unique
+  mission   Mission @relation(fields: [missionId], references: [id], onDelete: Cascade)
+
+  currentLabel     String?
+  currentDateRange String?
+  notes            String? @db.Text
+
+  reserveAmount Decimal @default(0)
+  roundedSpend  Decimal @default(0)
+  approvalTotal Decimal @default(0)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  lines MissionActualExpenseLine[]
+}
+
+model MissionActualExpenseLine {
+  id       String              @id @default(uuid())
+  actualId String
+  actual   MissionActualExpense @relation(fields: [actualId], references: [id], onDelete: Cascade)
+
+  sortOrder Int
+  kind      String
+
+  groupCode String?
+  itemCode  String?
+  name      String
+  payoutMethod String?
+
+  quantity   Decimal?
+  unitPrice  Decimal?
+  amount     Decimal @default(0)
+  previousAmount Decimal?
+
+  qtyEditable    Boolean @default(false)
+  rateEditable   Boolean @default(false)
+  amountEditable Boolean @default(true)
+  includeInTotal Boolean @default(true)
+  isReserve      Boolean @default(false)
+  expenseTypeName String?
+
+  @@index([actualId, sortOrder])
+}
+
+/// ประมาณการค่าใช้จ่ายภารกิจ (เทียบ trip ก่อนหน้าบนเส้นทางเดียวกัน)
+model MissionEstimate {
+  id        String  @id @default(uuid())
+  missionId String  @unique
+  mission   Mission @relation(fields: [missionId], references: [id], onDelete: Cascade)
+
+  previousMissionId String?
+  previousMission   Mission? @relation("EstimatePreviousTrip", fields: [previousMissionId], references: [id], onDelete: SetNull)
+
+  currentLabel      String?
+  previousLabel     String?
+  currentDateRange  String?
+  previousDateRange String?
+  notes             String?  @db.Text
+
+  /// จำนวนคนแยกประเภท เช่น { "bot": 12, "highwayCommissioned": 4, "highwayEnlisted": 6, "driver": 2 }
+  personCounts Json?
+
+  reserveAmount Decimal @default(0)
+  roundedSpend  Decimal @default(0)
+  approvalTotal Decimal @default(0)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  lines MissionEstimateLine[]
+}
+
+model MissionEstimateLine {
+  id         String          @id @default(uuid())
+  estimateId String
+  estimate   MissionEstimate @relation(fields: [estimateId], references: [id], onDelete: Cascade)
+
+  sortOrder Int
+  /// GROUP = หัวข้อหมวด, ITEM = รายการย่อย
+  kind      String
+
+  groupCode String?
+  itemCode  String?
+  name      String
+  payoutMethod String?
+
+  quantity   Decimal?
+  unitPrice  Decimal?
+  amount     Decimal  @default(0)
+  previousAmount Decimal?
+
+  qtyEditable     Boolean @default(false)
+  rateEditable    Boolean @default(false)
+  amountEditable  Boolean @default(true)
+  includeInTotal  Boolean @default(true)
+  isReserve       Boolean @default(false)
+  expenseTypeName String?
+
+  @@index([estimateId, sortOrder])
 }
 
 // --- งบประมาณ ---

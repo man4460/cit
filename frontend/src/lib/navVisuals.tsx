@@ -267,6 +267,12 @@ const ITEM_VISUALS: ({ match: RegExp } & ItemVisual)[] = [
     tone: "text-emerald-600",
     chip: "bg-emerald-500/12 text-emerald-600 ring-emerald-500/25",
   },
+  {
+    match: /^\/missions\/estimates/,
+    icon: "budget",
+    tone: "text-emerald-600",
+    chip: "bg-emerald-500/12 text-emerald-600 ring-emerald-500/25",
+  },
   { match: /^\/missions/, icon: "mission", tone: "text-violet-600", chip: "bg-violet-500/12 text-violet-600 ring-violet-500/25" },
   { match: /^\/routes/, icon: "route", tone: "text-fuchsia-600", chip: "bg-fuchsia-500/12 text-fuchsia-600 ring-fuchsia-500/25" },
   { match: /^\/activities/, icon: "calendar", tone: "text-pink-600", chip: "bg-pink-500/12 text-pink-600 ring-pink-500/25" },

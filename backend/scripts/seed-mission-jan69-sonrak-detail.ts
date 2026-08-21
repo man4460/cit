@@ -6,7 +6,7 @@
  *  - ค่าตอบแทน ฝรภ..xlsx
  *  - ค่าตอบแทน ตำรวจ..xlsx
  *
- * น้ำมัน: แยกตามทะเบียนรถได้ — ถ้าแถวมีหลายคัน จะหารลิตรเท่า ๆ กัน
+ * น้ำมัน: แยกตามทะเบียนรถได้ — ถ้าแถวมีหลายคัน จะหารลิตรและจำนวนเงินเท่า ๆ กัน
  *
  *   npm run seed:missions:jan69-sonrak
  */
@@ -352,6 +352,7 @@ async function main() {
     vehicleRoleId: vRoleId(f.roleName),
     fuelLiters: new Prisma.Decimal(Math.round(f.liters * 1000) / 1000),
     fuelType: f.fuelType,
+    fuelAmount: new Prisma.Decimal(Math.round(f.amount * 100) / 100),
   }));
 
   for (const [vid, f] of fuelByVehicle) {

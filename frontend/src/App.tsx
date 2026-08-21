@@ -15,6 +15,7 @@ import { VehicleWeeklyInspectionPage } from "./pages/VehicleWeeklyInspectionPage
 import { ArmorMonthlyInspectionPage } from "./pages/ArmorMonthlyInspectionPage";
 import { AssetsPage } from "./pages/AssetsPage";
 import { MissionsPage } from "./pages/MissionsPage";
+import { MissionFormPage } from "./pages/MissionFormPage";
 import { RouteMasterPage } from "./pages/RouteMasterPage";
 import { ReportPage } from "./pages/ReportPage";
 import { ReportsHubPage } from "./pages/ReportsHubPage";
@@ -64,6 +65,10 @@ export default function App() {
               <Route path="assets" element={<AssetsPage />} />
               <Route path="assets/armor-monthly" element={<ArmorMonthlyInspectionPage />} />
               <Route path="missions" element={<MissionsPage />} />
+              <Route path="missions/new" element={<MissionFormPage />} />
+              <Route path="missions/:id/edit" element={<MissionFormPage />} />
+              <Route path="missions/:id/duplicate" element={<MissionFormPage />} />
+              <Route path="missions/estimates/*" element={<Navigate to="/missions" replace />} />
               <Route path="routes" element={<RouteMasterPage />} />
               <Route path="activities" element={<ActivitiesPage />} />
               <Route path="security-incidents/dashboard" element={<SecurityIncidentsDashboard />} />

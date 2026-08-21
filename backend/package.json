@@ -26,6 +26,7 @@
     "seed:missions:apr69-rayong": "tsx scripts/seed-mission-apr69-rayong-detail.ts",
     "seed:missions:jul69-sosor": "tsx scripts/seed-mission-jul69-sosor-detail.ts",
     "seed:missions:destinations-2569": "tsx scripts/seed-mission-destinations-2569.ts",
+    "seed:missions:summary-6668": "tsx scripts/seed-missions-from-summary-6668.ts",
     "seed:missions:remap-roles-2569": "tsx scripts/remap-mission-roles-2569.ts",
     "seed:personnel:remap-police-categories": "tsx scripts/remap-police-categories.ts",
     "seed:training:tactical-driving-2569": "tsx scripts/seed-training-tactical-driving-2569.ts",
@@ -68,7 +69,8 @@
     "sharp": "^0.35.3",
     "tesseract.js": "^7.0.0",
     "uuid": "^11.1.0",
-    "xlsx": "^0.18.5"
+    "xlsx": "^0.18.5",
+    "xlsx-js-style": "^1.2.0"
   },
   "devDependencies": {
     "@types/bcrypt": "^5.0.2",
