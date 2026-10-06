@@ -1,3 +1,5 @@
+import { canViewPath, type PermissionViewer } from "./permissions";
+
 export type NavItem = {
   to: string;
   label: string;
@@ -22,6 +24,7 @@ export const navGroups: NavGroup[] = [
     items: [
       { to: "/", label: "ขนส่งธนบัตร", end: true },
       { to: "/security-incidents/dashboard", label: "เหตุการณ์ไม่ปกติ", end: true },
+      { to: "/os-outsourcing/dashboard", label: "งานจ้าง OS", end: true },
       {
         to: "/budget/overview/2569",
         label: "งบประมาณ",
@@ -31,6 +34,7 @@ export const navGroups: NavGroup[] = [
           { to: "/budget/overview/2570", label: "ปี 2570", end: true },
         ],
       },
+      { to: "/executive-report", label: "รายงานผู้บริหาร", end: true },
     ],
   },
   {
@@ -46,17 +50,9 @@ export const navGroups: NavGroup[] = [
         ],
       },
       { to: "/activities", label: "กิจกรรม" },
-      {
-        to: "/reports",
-        label: "รายงาน",
-        end: true,
-        children: [
-          { to: "/vehicles/weekly-inspection", label: "ตรวจรถประจำสัปดาห์" },
-          { to: "/assets/armor-monthly", label: "ตรวจเสื้อเกราะรายเดือน" },
-        ],
-      },
+      { to: "/reports", label: "รายงาน", end: true },
       { to: "/security-incidents", label: "เหตุการณ์ไม่ปกติ" },
-      { to: "/os-outsourcing", label: "งานจ้าง OS" },
+      { to: "/os-outsourcing", label: "งานจ้าง OS", end: true },
     ],
   },
   {
@@ -118,6 +114,7 @@ export const navGroups: NavGroup[] = [
     titleEn: "Administration",
     items: [
       { to: "/admin", label: "จัดการผู้ใช้", end: true, adminOnly: true },
+      { to: "/admin/registrations", label: "อนุมัติสมาชิก", adminOnly: true },
       { to: "/audit-trail", label: "ความเคลื่อนไหว", adminOnly: true },
       { to: "/scan", label: "สแกน QR", adminOnly: true },
     ],
@@ -166,21 +163,35 @@ export function itemSelfMatchesPath(pathname: string, item: NavItem): boolean {
   return selfMatchesPath(pathname, item);
 }
 
-export function findGroupForPath(pathname: string, role?: string): NavGroup | null {
+function itemVisible(it: NavItem, viewer: PermissionViewer): boolean {
+  if (it.adminOnly && viewer?.role !== "ADMIN") return false;
+  return canViewPath(viewer, it.to);
+}
+
+export function findGroupForPath(pathname: string, viewer?: PermissionViewer): NavGroup | null {
   const path = pathOnly(pathname);
   // งบประมาณ: ปีใดก็ได้ (ไม่รวม /budget/overview ที่อยู่ในสรุปภาพรวม)
   if (/^\/budget\/year\/\d+(\/|$)/.test(path)) {
     return navGroups.find((g) => g.id === "budget") ?? null;
   }
   for (const group of navGroups) {
-    const items = group.items.filter((it) => !it.adminOnly || role === "ADMIN");
+    const items = group.items.filter((it) => itemVisible(it, viewer));
     if (items.some((it) => itemMatchesPath(pathname, it))) return group;
   }
   return null;
 }
 
-export function filterGroupItems(group: NavGroup, role?: string): NavItem[] {
-  return group.items.filter((it) => !it.adminOnly || role === "ADMIN");
+export function filterGroupItems(group: NavGroup, viewer?: PermissionViewer): NavItem[] {
+  return group.items.filter((it) => itemVisible(it, viewer));
+}
+
+/** หน้าแรกที่ผู้ใช้มีสิทธิ์เข้า (ใช้เมื่อถูกปฏิเสธการเข้าหน้า) */
+export function firstAllowedPath(viewer?: PermissionViewer): string {
+  for (const group of navGroups) {
+    const items = filterGroupItems(group, viewer);
+    if (items.length) return items[0].to;
+  }
+  return "/profile";
 }
 
 const LAST_PATH_PREFIX = "afo_nav_last_";
@@ -202,8 +213,8 @@ export function writeGroupLastPath(groupId: string, path: string) {
 }
 
 /** เส้นทางที่จะไปเมื่อกดหมวด — จำหน้าล่าสุดในหมวดนั้น ถ้ายังใช้ได้ */
-export function resolveGroupEntryPath(group: NavGroup, role?: string): string {
-  const items = filterGroupItems(group, role);
+export function resolveGroupEntryPath(group: NavGroup, viewer?: PermissionViewer): string {
+  const items = filterGroupItems(group, viewer);
   if (!items.length) return "/";
   const last = readGroupLastPath(group.id);
   if (last && items.some((it) => itemMatchesPath(last, it))) return last;

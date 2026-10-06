@@ -6,6 +6,7 @@ import { AdminRoute } from "./routes/AdminRoute";
 import { ActivitiesPage } from "./pages/ActivitiesPage";
 import { Dashboard } from "./pages/Dashboard";
 import { LoginPage } from "./pages/LoginPage";
+import { RegisterPage } from "./pages/RegisterPage";
 import { PersonnelPage } from "./pages/PersonnelPage";
 import { TrainingRegistryPage } from "./pages/TrainingRegistryPage";
 import { AuditTrailPage } from "./pages/AuditTrailPage";
@@ -21,6 +22,7 @@ import { ReportPage } from "./pages/ReportPage";
 import { ReportsHubPage } from "./pages/ReportsHubPage";
 import { ScanPage } from "./pages/ScanPage";
 import { AdminPage } from "./pages/AdminPage";
+import { RegistrationReviewPage } from "./pages/RegistrationReviewPage";
 import { DocumentsPage } from "./pages/DocumentsPage";
 import { FireSafetyPage } from "./pages/FireSafetyPage";
 import { WeaponsPage } from "./pages/WeaponsPage";
@@ -39,6 +41,8 @@ import { InvestigationApprovalsPage } from "./pages/investigation/InvestigationA
 import { InvestigationTeamsPage } from "./pages/investigation/InvestigationTeamsPage";
 import { ApprovalLinkPage } from "./pages/ApprovalLinkPage";
 import { OsOutsourcingPage } from "./pages/os-outsourcing/OsOutsourcingPage";
+import { OsOutsourcingDashboard } from "./pages/os-outsourcing/OsOutsourcingDashboard";
+import { ExecutiveReportPage } from "./pages/ExecutiveReportPage";
 
 export default function App() {
   return (
@@ -46,6 +50,7 @@ export default function App() {
       <AuthProvider>
         <Routes>
           <Route path="/login" element={<LoginPage />} />
+          <Route path="/register" element={<RegisterPage />} />
           {/* อนุมัติผ่านลิงก์อีเมล — ไม่ต้องเข้าสู่ระบบ */}
           <Route path="/approve/:token" element={<ApprovalLinkPage />} />
           <Route element={<ProtectedRoute />}>
@@ -74,6 +79,8 @@ export default function App() {
               <Route path="security-incidents/dashboard" element={<SecurityIncidentsDashboard />} />
               <Route path="security-incidents" element={<SecurityIncidentsPage />} />
               <Route path="os-outsourcing" element={<OsOutsourcingPage />} />
+              <Route path="os-outsourcing/dashboard" element={<OsOutsourcingDashboard />} />
+              <Route path="executive-report" element={<ExecutiveReportPage />} />
               <Route path="investigation" element={<InvestigationDashboardPage />} />
               <Route path="investigation/cases" element={<InvestigationCasesPage />} />
               <Route path="investigation/cases/:caseId" element={<InvestigationCaseDetailPage />} />
@@ -95,6 +102,7 @@ export default function App() {
               <Route element={<AdminRoute />}>
                 <Route path="scan" element={<ScanPage />} />
                 <Route path="admin" element={<AdminPage />} />
+                <Route path="admin/registrations" element={<RegistrationReviewPage />} />
                 <Route path="audit-trail" element={<AuditTrailPage />} />
               </Route>
               <Route path="*" element={<Navigate to="/" replace />} />

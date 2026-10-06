@@ -199,6 +199,10 @@ export function BudgetYearPage() {
   const [txDesc, setTxDesc] = useState("");
   const [txDate, setTxDate] = useState(() => new Date().toISOString().slice(0, 10));
   const [editingTxId, setEditingTxId] = useState<string | null>(null);
+  const [snapForm, setSnapForm] = useState<{ id: string | null; date: string; amount: string; notes: string } | null>(
+    null,
+  );
+  const [showOldSnaps, setShowOldSnaps] = useState(false);
   const [saving, setSaving] = useState(false);
   const [lineForm, setLineForm] = useState<LineFormState | null>(null);
   const [categories, setCategories] = useState<BudgetCategoryRow[]>([]);
@@ -345,6 +349,8 @@ export function BudgetYearPage() {
     setTxDesc("");
     setTxDate(new Date().toISOString().slice(0, 10));
     setEditingTxId(null);
+    setSnapForm(null);
+    setShowOldSnaps(false);
     try {
       const [t, s] = await Promise.all([
         apiJson<Tx[]>(`/api/budget/year-lines/${row.id}/transactions`),
@@ -385,6 +391,72 @@ export function BudgetYearPage() {
     }
     return importData.rows.find((r) => r.yearLineId === selected.id) ?? null;
   }, [selected, importData, isCommitment]);
+
+  const refreshSelected = async (id: string) => {
+    await load({ silent: true });
+    const res = await apiJson<{ lines: BudgetYearLineRow[] }>(
+      `/api/budget/lines?bucket=${bucket}&fundingType=${fundingType}`,
+    );
+    const row = res.lines.find((l) => l.id === id);
+    if (row) setSelected(useNetBudget ? { ...row, allocatedAmount: row.totalBudget } : row);
+  };
+
+  const reloadSnaps = async (lineId: string) => {
+    setSnaps(await apiJson<Snap[]>(`/api/budget/year-lines/${lineId}/snapshots`));
+  };
+
+  const startEditSnap = (s: Snap | null) => {
+    setSnapForm(
+      s
+        ? { id: s.id, date: isoToDateInput(s.asOfDate), amount: String(s.spentAmount), notes: s.notes ?? "" }
+        : { id: null, date: new Date().toISOString().slice(0, 10), amount: "", notes: "" },
+    );
+  };
+
+  const saveSnap = async () => {
+    if (!selected || !isAdmin || !snapForm) return;
+    const amount = Number(snapForm.amount.replace(/,/g, ""));
+    if (!Number.isFinite(amount)) {
+      setErr("ระบุยอดใช้ไป");
+      return;
+    }
+    setSaving(true);
+    setErr(null);
+    try {
+      const payload = {
+        spentAmount: amount,
+        asOfDate: new Date(`${snapForm.date}T12:00:00`).toISOString(),
+        notes: snapForm.notes.trim() || null,
+        source: "MANUAL",
+      };
+      await apiJson(
+        snapForm.id
+          ? `/api/budget/year-lines/${selected.id}/snapshots/${snapForm.id}`
+          : `/api/budget/year-lines/${selected.id}/snapshots`,
+        { method: snapForm.id ? "PATCH" : "POST", body: JSON.stringify(payload) },
+      );
+      setSnapForm(null);
+      await reloadSnaps(selected.id);
+      await refreshSelected(selected.id);
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : "บันทึกไม่สำเร็จ");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const deleteSnap = async (snapId: string) => {
+    if (!selected || !isAdmin) return;
+    if (!window.confirm("ลบยอดตัดของวันที่นี้?")) return;
+    try {
+      await apiJson(`/api/budget/year-lines/${selected.id}/snapshots/${snapId}`, { method: "DELETE" });
+      if (snapForm?.id === snapId) setSnapForm(null);
+      await reloadSnaps(selected.id);
+      await refreshSelected(selected.id);
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : "ลบไม่สำเร็จ");
+    }
+  };
 
   const resetTxForm = () => {
     setEditingTxId(null);
@@ -430,13 +502,7 @@ export function BudgetYearPage() {
         setTxs((prev) => [saved, ...prev]);
       }
       resetTxForm();
-      await load({ silent: true });
-      const refreshed = (
-        await apiJson<{ lines: BudgetYearLineRow[] }>(
-          `/api/budget/lines?bucket=${bucket}&fundingType=${fundingType}`,
-        )
-      ).lines.find((l) => l.id === selected.id);
-      if (refreshed) setSelected(refreshed);
+      await refreshSelected(selected.id);
     } catch (e) {
       setErr(e instanceof Error ? e.message : "บันทึกไม่สำเร็จ");
     } finally {
@@ -451,13 +517,7 @@ export function BudgetYearPage() {
       await apiJson(`/api/budget/year-lines/${selected.id}/transactions/${txId}`, { method: "DELETE" });
       setTxs((prev) => prev.filter((t) => t.id !== txId));
       if (editingTxId === txId) resetTxForm();
-      await load({ silent: true });
-      const refreshed = (
-        await apiJson<{ lines: BudgetYearLineRow[] }>(
-          `/api/budget/lines?bucket=${bucket}&fundingType=${fundingType}`,
-        )
-      ).lines.find((l) => l.id === selected.id);
-      if (refreshed) setSelected(refreshed);
+      await refreshSelected(selected.id);
     } catch (e) {
       setErr(e instanceof Error ? e.message : "ลบไม่สำเร็จ");
     }
@@ -1343,42 +1403,184 @@ export function BudgetYearPage() {
                   <BudgetImportRowBreakdown row={selectedImportRow} asOfDate={importData?.batch?.asOfDate ?? null} />
                 )
               ) : null}
-              {snaps.length ? (
-                <section>
-                  <h3 className="text-xs font-black uppercase tracking-wide text-[#66638c]">ยอดตัดจากไฟล์งบ</h3>
-                  <p className="mt-1 text-[11px] leading-snug text-slate-500">
-                    ยอดใช้ไปตามไฟล์ ณ วันที่นั้น — ไม่ใช่รายการที่กรอกด้านล่าง
-                  </p>
-                  <ul className="mt-2 space-y-1.5 text-sm">
-                    {snaps.map((s) => (
-                      <li key={s.id} className="rounded-lg border border-[#ecebff] px-2.5 py-1.5">
+              {isTracking && !selected.isSummary ? (() => {
+                const latest = snaps[0] ?? null;
+                const importSnap = snaps.find((s) => s.source === "IMPORT") ?? null;
+                const manualSnaps = snaps.filter((s) => s.source !== "IMPORT");
+                const latestDay = latest ? isoToDateInput(latest.asOfDate) : null;
+                const afterTx = txs.filter((t) => !latestDay || isoToDateInput(t.occurredAt) > latestDay);
+                const afterTotal = afterTx.reduce((s, t) => s + t.amount, 0);
+                const snapRow = (s: Snap) => {
+                  const inUse = latest?.id === s.id;
+                  const editable = s.source !== "IMPORT";
+                  return (
+                  <li
+                    key={s.id}
+                    className={`flex items-start justify-between gap-2 rounded-lg border px-2.5 py-1.5 ${
+                      inUse ? "border-[#0000BF]/25 bg-white" : "border-slate-100 bg-slate-50/60 text-slate-500"
+                    }`}
+                  >
+                    <div className="min-w-0">
+                      <div className="text-[13px]">
+                        ณ {new Date(s.asOfDate).toLocaleDateString("th-TH")}
+                        {inUse ? (
+                          <span className="ml-1.5 rounded-full bg-[#0000BF]/10 px-1.5 py-0.5 text-[10px] font-bold text-[#0000BF]">
+                            ใช้ยอดนี้
+                          </span>
+                        ) : (
+                          <span className="ml-1.5 text-[10px]">· ไม่ได้ใช้ (มียอดใหม่กว่า)</span>
+                        )}
+                      </div>
+                      {s.notes ? <div className="truncate text-[11px] text-slate-500">{s.notes}</div> : null}
+                    </div>
+                    <div className="shrink-0 text-right">
+                      <div className="font-semibold tabular-nums">{fmt(s.spentAmount)}</div>
+                      {isAdmin && editable ? (
+                        <div className="mt-0.5 flex justify-end gap-2">
+                          <button type="button" className="text-[11px] font-bold text-[#4d47b6]" onClick={() => startEditSnap(s)}>
+                            แก้ไข
+                          </button>
+                          <button type="button" className="text-[11px] font-bold text-rose-600" onClick={() => void deleteSnap(s.id)}>
+                            ลบ
+                          </button>
+                        </div>
+                      ) : null}
+                    </div>
+                  </li>
+                  );
+                };
+                return (
+                  <section className="space-y-3">
+                    <h3 className="text-xs font-black uppercase tracking-wide text-[#66638c]">ยอดใช้ไป</h3>
+                    <div className="rounded-xl border border-[#e8e6fc] bg-[#faf9ff] px-3 py-2 text-[12px]">
+                      <div className="flex justify-between gap-2">
+                        <span className="text-slate-600">
+                          {latest
+                            ? `${latest.source === "IMPORT" ? "จากระบบหลัก" : "บันทึกเอง"} ณ ${new Date(latest.asOfDate).toLocaleDateString("th-TH")}`
+                            : "ยังไม่มียอดตัด"}
+                        </span>
+                        <span className="tabular-nums">{fmt(latest?.spentAmount ?? 0)}</span>
+                      </div>
+                      {afterTx.length ? (
                         <div className="flex justify-between gap-2">
-                          <span>{new Date(s.asOfDate).toLocaleDateString("th-TH")}</span>
-                          <span className="font-semibold">{fmt(s.spentAmount)}</span>
+                          <span className="text-slate-600">+ รายการใช้จ่ายหลังวันตัดยอด ({afterTx.length})</span>
+                          <span className="tabular-nums">{fmt(afterTotal)}</span>
                         </div>
-                        <div className="text-[11px] text-slate-500">
-                          {s.source === "IMPORT" ? "จากไฟล์งบ" : "บันทึกมือ"}
-                          {s.notes ? ` · ${s.notes}` : ""}
+                      ) : null}
+                      <div className="mt-1 flex justify-between gap-2 border-t border-[#e8e6fc] pt-1 font-black text-[#1e1b4b]">
+                        <span>ใช้ไปทั้งสิ้น</span>
+                        <span className="tabular-nums">{fmt(selected.spent)}</span>
+                      </div>
+                    </div>
+                    <div className="rounded-xl border border-sky-200 bg-sky-50/40 p-2.5">
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="text-[11px] font-black text-sky-800">จากระบบหลัก (อัปโหลดไฟล์)</span>
+                        <span className="text-[10px] text-sky-700">อัปโหลดไฟล์ใหม่ = อัปเดตทับ</span>
+                      </div>
+                      {importSnap ? (
+                        <ul className="mt-1.5 space-y-1.5 text-sm">{snapRow(importSnap)}</ul>
+                      ) : (
+                        <p className="mt-1 text-[11px] text-slate-500">ยังไม่มีข้อมูลจากระบบหลัก</p>
+                      )}
+                    </div>
+
+                    <div className="rounded-xl border border-amber-200 bg-amber-50/30 p-2.5">
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="text-[11px] font-black text-amber-900">บันทึกเอง · ยอดใช้ไป ณ วันที่</span>
+                        {isAdmin && !snapForm ? (
+                          <button type="button" className="text-[11px] font-bold text-[#4d47b6]" onClick={() => startEditSnap(null)}>
+                            + เพิ่ม
+                          </button>
+                        ) : null}
+                      </div>
+                      {manualSnaps.length ? (
+                        <>
+                          <ul className="mt-1.5 space-y-1.5 text-sm">
+                            {(showOldSnaps ? manualSnaps : manualSnaps.slice(0, 1)).map((s) => snapRow(s))}
+                          </ul>
+                          {manualSnaps.length > 1 ? (
+                            <button
+                              type="button"
+                              className="mt-1 text-[11px] font-bold text-slate-500 hover:text-[#4d47b6]"
+                              onClick={() => setShowOldSnaps((v) => !v)}
+                            >
+                              {showOldSnaps ? "▾ ซ่อนยอดเก่า" : `▸ ดูยอดเก่า (${manualSnaps.length - 1})`}
+                            </button>
+                          ) : null}
+                        </>
+                      ) : (
+                        <p className="mt-1 text-[11px] text-slate-500">
+                          ไม่มี — ใช้เมื่อต้องปรับยอดเอง เช่น โอนงบไปหน่วยอื่น (ยอดที่วันที่ใหม่กว่าจะถูกใช้)
+                        </p>
+                      )}
+                    {snapForm ? (
+                      <div className="space-y-2 rounded-xl border border-[#e8e6fc] bg-white p-3">
+                        <div className="text-[11px] font-black text-[#66638c]">
+                          {snapForm.id ? "แก้ไขยอดตัด" : "บันทึกยอดใช้ไป ณ วันที่"}
                         </div>
-                      </li>
-                    ))}
-                  </ul>
-                </section>
-              ) : null}
+                        <PickableDateInput
+                          type="date"
+                          aria-label="วันที่ตัดยอด"
+                          value={snapForm.date}
+                          onChange={(v) => setSnapForm((f) => (f ? { ...f, date: v } : f))}
+                        />
+                        <input
+                          className="w-full rounded-lg border border-[#dcd8f0] px-2.5 py-1.5 text-sm"
+                          placeholder="ยอดใช้ไปสะสม ณ วันที่นี้ (บาท)"
+                          value={snapForm.amount}
+                          onChange={(e) => setSnapForm((f) => (f ? { ...f, amount: e.target.value } : f))}
+                        />
+                        <input
+                          className="w-full rounded-lg border border-[#dcd8f0] px-2.5 py-1.5 text-sm"
+                          placeholder="หมายเหตุ"
+                          value={snapForm.notes}
+                          onChange={(e) => setSnapForm((f) => (f ? { ...f, notes: e.target.value } : f))}
+                        />
+                        <p className="text-[10px] leading-snug text-slate-500">
+                          เป็นยอดสะสมทั้งหมด ณ วันที่นั้น (ไม่ใช่ยอดเพิ่ม) · ระบบใช้ยอดที่วันที่ใหม่กว่า ระหว่างยอดบันทึกเองกับยอดจากระบบหลัก
+                          — การอัปโหลดไฟล์ไม่ลบยอดที่บันทึกเอง
+                        </p>
+                        <div className="flex gap-2">
+                          <button type="button" className={toolbarPrimaryBtnClass} disabled={saving} onClick={() => void saveSnap()}>
+                            {saving ? "กำลังบันทึก…" : "บันทึก"}
+                          </button>
+                          <button
+                            type="button"
+                            className="rounded-lg border border-slate-200 px-3 py-1.5 text-sm font-bold text-slate-600"
+                            onClick={() => setSnapForm(null)}
+                          >
+                            ยกเลิก
+                          </button>
+                        </div>
+                      </div>
+                    ) : null}
+                    </div>
+                  </section>
+                );
+              })() : null}
 
               <section>
-                <h3 className="text-xs font-black uppercase tracking-wide text-[#66638c]">ประวัติการใช้จ่าย</h3>
+                <h3 className="text-xs font-black uppercase tracking-wide text-amber-900">บันทึกเอง · รายการใช้จ่าย</h3>
                 <ul className="mt-2 space-y-1.5 text-sm">
-                  {txs.map((t) => (
-                    <li key={t.id} className="flex items-start justify-between gap-2 rounded-lg border border-[#ecebff] px-2.5 py-1.5">
+                  {txs.map((t) => {
+                    const latestDay = snaps[0] ? isoToDateInput(snaps[0].asOfDate) : null;
+                    const covered = Boolean(latestDay && isoToDateInput(t.occurredAt) <= latestDay);
+                    return (
+                    <li
+                      key={t.id}
+                      className={`flex items-start justify-between gap-2 rounded-lg border px-2.5 py-1.5 ${
+                        covered ? "border-slate-100 bg-slate-50/60 text-slate-500" : "border-[#ecebff]"
+                      }`}
+                    >
                       <div>
                         <div>{t.description || "—"}</div>
                         <div className="text-[11px] text-slate-500">
                           {new Date(t.occurredAt).toLocaleDateString("th-TH")}
+                          {covered ? " · รวมอยู่ในยอดตัดแล้ว ไม่นับซ้ำ" : " · นับเพิ่มจากยอดตัด"}
                         </div>
                       </div>
                       <div className="text-right">
-                        <div className="font-semibold">{fmt(t.amount)}</div>
+                        <div className={`font-semibold ${covered ? "line-through decoration-slate-300" : ""}`}>{fmt(t.amount)}</div>
                         {isAdmin ? (
                           <div className="mt-0.5 flex justify-end gap-2">
                             <button
@@ -1399,7 +1601,8 @@ export function BudgetYearPage() {
                         ) : null}
                       </div>
                     </li>
-                  ))}
+                    );
+                  })}
                   {!txs.length ? <li className="text-slate-500">ยังไม่มีรายการใช้จ่าย</li> : null}
                 </ul>
               </section>

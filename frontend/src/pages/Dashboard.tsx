@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { DashboardStatDetailModal, type DashboardStatKind } from "../components/DashboardStatDetailModal";
 import { FitSingleLine } from "../components/FitSingleLine";
 import { PageHeaderBar } from "../components/PageHeaderBar";
 import { rowMatchesFilter } from "../lib/searchNormalize";
@@ -6,24 +7,15 @@ import {
   Bar,
   BarChart,
   CartesianGrid,
-  ComposedChart,
   Legend,
   ResponsiveContainer,
   Tooltip,
   XAxis,
   YAxis,
 } from "recharts";
-import type { TooltipContentProps } from "recharts";
 import { apiJson } from "../api/client";
 import { chartAxisFill, chartGridStroke, chartSeries, toolbarLinkBtnClass } from "../lib/uiTokens";
-import type { MissionYearTotals, MissionYearStatsResponse } from "../types";
-
-/** แกนกราฟ: ค่าที่ plot เป็นสิบล้าน/แสนแล้ว — แสดงทศนิยมสั้นๆ */
-function formatMixedScaleTick(v: number) {
-  if (!Number.isFinite(v)) return "";
-  if (v === 0) return "0";
-  return v.toLocaleString("th-TH", { maximumFractionDigits: 2 });
-}
+import type { MissionYearAreaStat, MissionYearTotals, MissionYearStatsResponse } from "../types";
 
 function formatBahtStr(s: string | undefined) {
   const n = Number(s ?? 0);
@@ -32,93 +24,169 @@ function formatBahtStr(s: string | undefined) {
   return n.toLocaleString("th-TH", { maximumFractionDigits: 2 });
 }
 
-/** มูลค่าทรัพย์สินจากชีตเป็นล้านบาท — แสดงหน่วยให้ตรงไฟล์ */
-function formatCargoMillionBahtStr(s: string | undefined) {
-  const n = Number(s ?? 0);
-  if (!Number.isFinite(n)) return "—";
-  const million = n / 1_000_000;
-  return million.toLocaleString("th-TH", { maximumFractionDigits: 2 });
-}
+const chartCardClass =
+  "flex min-h-0 min-w-0 flex-col rounded-xl border border-slate-200 bg-white/70 px-2 pb-1 pt-2 print:border-0 print:bg-transparent print:p-0";
+const chartTitleClass = "px-1 text-xs font-black text-[#1e1b4b] print:text-[9pt]";
 
 function formatLitersStr(s: string | undefined) {
   const n = Number(s ?? 0);
   return n.toLocaleString("th-TH", { maximumFractionDigits: 3 });
 }
 
-type MissionTooltipPayload = {
+/**
+ * มาตราส่วนแกน Y ตามยอดสูงสุด — ยอดหลักร้อยล้านขึ้นไปแสดงเป็น «ล้าน» (บอกหน่วยที่หัวกราฟ)
+ * ความกว้างแกนคำนวณจากความยาวตัวเลข ไม่ให้ตัวเลขชนขอบ
+ */
+function axisScale(max: number) {
+  const div = max >= 100_000_000 ? 1_000_000 : 1;
+  const fmt = (v: number) =>
+    Number.isFinite(v) ? (v / div).toLocaleString("th-TH", { maximumFractionDigits: div > 1 ? 1 : 0 }) : "";
+  const width = Math.max(32, fmt(max * 1.1).length * 6.4 + 10);
+  return { div, unitLabel: div > 1 ? "ล้าน" : "", tickFormatter: fmt, width };
+}
+
+function AreaSummaryPanel({ areas, className = "" }: { areas: MissionYearAreaStat[]; className?: string }) {
+  const rows = useMemo(
+    () =>
+      areas
+        .map((a) => ({ code: a.code, cargo: Number(a.cargoValue) || 0, containers: a.containers }))
+        .sort((x, y) => y.cargo - x.cargo),
+    [areas],
+  );
+  const total = rows.reduce((s, r) => s + r.cargo, 0);
+  const totalContainers = rows.reduce((s, r) => s + r.containers, 0);
+  const max = rows[0]?.cargo ?? 0;
+  const pct = (n: number) =>
+    total > 0 ? `${((n / total) * 100).toLocaleString("th-TH", { maximumFractionDigits: 1 })}%` : "—";
+
+  return (
+    <div className={`${chartCardClass} min-h-[220px] print:break-inside-avoid ${className}`}>
+      <div className="flex items-baseline justify-between gap-2 px-1">
+        <h3 className={chartTitleClass}>ส่งทรัพย์สินรายพื้นที่ (บาท)</h3>
+        <span className="truncate text-[10.5px] font-bold tabular-nums text-[#4d47b6]">
+          รวม {total.toLocaleString("th-TH", { maximumFractionDigits: 2 })}
+          <span className="text-amber-600"> · {totalContainers.toLocaleString("th-TH")} ตู้</span>
+        </span>
+      </div>
+
+      {rows.length === 0 ? (
+        <p className="flex flex-1 items-center justify-center text-xs text-slate-500">ไม่มีข้อมูลพื้นที่</p>
+      ) : (
+        <ul className="mt-1 flex min-h-0 flex-1 flex-col justify-around px-1 pb-1">
+          {rows.map((r, i) => (
+            <li key={r.code} className="flex items-center gap-2 text-[11px] leading-tight">
+              <span className="w-3.5 shrink-0 text-right font-bold tabular-nums text-slate-400">{i + 1}</span>
+              <span className={`w-9 shrink-0 font-black ${i === 0 ? "text-[#4d47b6]" : "text-[#1e1b4b]"}`}>{r.code}</span>
+              <div className="h-2 min-w-[2rem] flex-1 overflow-hidden rounded-full bg-slate-100">
+                <div
+                  className={`h-full rounded-full ${i === 0 ? "bg-[#4d47b6]" : "bg-[#4d47b6]/50"}`}
+                  style={{ width: `${max > 0 ? (r.cargo / max) * 100 : 0}%` }}
+                />
+              </div>
+              <span
+                className={`shrink-0 text-right font-bold tabular-nums ${i === 0 ? "text-[#4d47b6]" : "text-[#2e2a58]"}`}
+              >
+                {r.cargo.toLocaleString("th-TH", { maximumFractionDigits: 2 })}
+              </span>
+              <span className="w-10 shrink-0 text-right tabular-nums text-slate-500">{pct(r.cargo)}</span>
+              <span className="w-11 shrink-0 text-right font-semibold tabular-nums text-amber-600">
+                {r.containers.toLocaleString("th-TH")} ตู้
+              </span>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+}
+
+type MetricRow = {
   label: string;
   missionCount: number;
   cargoBaht: number;
   expenseBaht: number;
-  containers: number;
 };
 
-/** Tooltip กราฟภารกิจ — กระชับ: ค่ารายประเภท + สัดส่วนจ่าย/ทรัพย์ */
-function MissionMonthlyTooltip({ active, payload }: TooltipContentProps) {
-  if (!active || !payload?.length) return null;
-  const row = payload[0]?.payload as MissionTooltipPayload | undefined;
-  if (!row) return null;
-
-  const { label, missionCount, cargoBaht, expenseBaht } = row;
-  const pct =
-    cargoBaht > 0
-      ? ((expenseBaht / cargoBaht) * 100).toLocaleString("th-TH", {
-        minimumFractionDigits: 2,
-        maximumFractionDigits: 2,
-      })
-      : null;
-
-  const seriesRows = payload.map((item) => {
-    const fullName = String(item.name ?? "");
-    const n = typeof item.value === "number" ? item.value : Number(item.value);
-    const color = item.color ?? "#475569";
-    let shortLabel: string;
-    let display: string;
-    if (fullName.includes("จำนวนตู้")) {
-      shortLabel = "ตู้";
-      display = Number.isFinite(n) ? n.toLocaleString("th-TH") : String(item.value ?? "—");
-    } else if (fullName.includes("มูลค่าทรัพย์สิน")) {
-      shortLabel = "ทรัพย์สิน";
-      display = `${(cargoBaht / 10_000_000).toLocaleString("th-TH", {
-        maximumFractionDigits: 4,
-      })} สิบล้าน`;
-    } else if (fullName.includes("ค่าใช้จ่าย")) {
-      shortLabel = "จ่าย";
-      display = `${(expenseBaht / 100_000).toLocaleString("th-TH", {
-        maximumFractionDigits: 4,
-      })} แสนบาท`;
-    } else {
-      shortLabel = fullName.slice(0, 12);
-      display = String(item.value ?? "—");
-    }
-    return { key: fullName, shortLabel, display, color };
-  });
-
+function MetricBarChart<T extends MetricRow>({
+  title,
+  data,
+  dataKey,
+  color,
+  unit,
+  integer,
+  extra,
+  className = "",
+}: {
+  title: string;
+  data: T[];
+  dataKey: keyof T & string;
+  color: string;
+  unit: string;
+  integer?: boolean;
+  extra?: (row: T) => string | null;
+  className?: string;
+}) {
+  const total = data.reduce((s, row) => s + (Number(row[dataKey]) || 0), 0);
+  const scale = axisScale(data.reduce((m, row) => Math.max(m, Number(row[dataKey]) || 0), 0));
   return (
-    <div
-      className="min-w-[9.5rem] max-w-[11rem] rounded-md border border-slate-200 bg-white/90 px-2 py-1.5 text-[11px] shadow-xl"
-      style={{ fontFamily: "Noto Sans Thai, sans-serif" }}
-    >
-      <p className="font-medium text-slate-800">
-        {label} · {missionCount}
-      </p>
-      <ul className="mt-1 space-y-0.5">
-        {seriesRows.map((s) => (
-          <li key={s.key} className="flex items-center gap-1.5 leading-tight text-slate-700">
-            <span className="h-1.5 w-1.5 shrink-0 rounded-[1px]" style={{ backgroundColor: s.color }} aria-hidden />
-            <span className="shrink-0 text-slate-700">{s.shortLabel}</span>
-            <span className="ml-auto tabular-nums text-slate-800">{s.display}</span>
-          </li>
-        ))}
-      </ul>
-      <p className="mt-1 border-t border-slate-200 pt-1 leading-tight text-slate-700">
-        สัดส่วน{" "}
-        {pct != null ? (
-          <span className="font-semibold text-[#4d47b6] tabular-nums">{pct}%</span>
-        ) : (
-          <span className="text-slate-600">—</span>
-        )}
-      </p>
+    <div className={`${chartCardClass} h-[220px] lg:h-auto print:h-auto ${className}`}>
+      <div className="flex items-baseline justify-between gap-2 px-1">
+        <h3 className={chartTitleClass}>
+          {title}
+          {scale.unitLabel ? (
+            <span className="ml-1 text-[10px] font-semibold text-slate-500">· แกนเป็น{scale.unitLabel}{unit}</span>
+          ) : null}
+        </h3>
+        <span className="truncate text-[10.5px] font-bold tabular-nums" style={{ color }}>
+          รวม {total.toLocaleString("th-TH", { maximumFractionDigits: integer ? 0 : 2 })}
+        </span>
+      </div>
+      <div className="min-h-0 w-full min-w-0 flex-1 print:h-[4.6cm] print:flex-none">
+        <ResponsiveContainer width="100%" height="100%">
+          <BarChart data={data} margin={{ top: 6, right: 8, left: 0, bottom: 0 }}>
+            <CartesianGrid strokeDasharray="3 3" stroke={chartGridStroke} vertical={false} />
+            <XAxis
+              dataKey="label"
+              interval={0}
+              tick={{ fill: chartAxisFill, fontSize: 9.5, fontFamily: "Noto Sans Thai, sans-serif" }}
+              tickLine={false}
+              axisLine={{ stroke: chartGridStroke }}
+            />
+            <YAxis
+              allowDecimals={!integer}
+              tickFormatter={scale.tickFormatter}
+              tick={{ fill: chartAxisFill, fontSize: 10, fontFamily: "Noto Sans Thai, sans-serif" }}
+              tickLine={false}
+              axisLine={{ stroke: chartGridStroke }}
+              width={scale.width}
+            />
+            <Tooltip
+              cursor={{ fill: "rgba(77,71,182,0.06)" }}
+              content={({ active, payload }) => {
+                const row = payload?.[0]?.payload as T | undefined;
+                if (!active || !row) return null;
+                const v = Number(row[dataKey]) || 0;
+                const note = extra?.(row);
+                return (
+                  <div
+                    className="rounded-md border border-slate-200 bg-white/95 px-2 py-1.5 text-[11px] shadow-xl"
+                    style={{ fontFamily: "Noto Sans Thai, sans-serif" }}
+                  >
+                    <p className="font-medium text-slate-700">
+                      {row.label} · {row.missionCount.toLocaleString("th-TH")} ภารกิจ
+                    </p>
+                    <p className="font-bold tabular-nums" style={{ color }}>
+                      {v.toLocaleString("th-TH", { maximumFractionDigits: integer ? 0 : 2 })} {unit}
+                    </p>
+                    {note ? <p className="text-slate-500">{note}</p> : null}
+                  </div>
+                );
+              }}
+            />
+            <Bar dataKey={dataKey as string} fill={color} radius={[5, 5, 0, 0]} maxBarSize={34} />
+          </BarChart>
+        </ResponsiveContainer>
+      </div>
     </div>
   );
 }
@@ -131,6 +199,7 @@ export function Dashboard() {
   const [statsErr, setStatsErr] = useState<string | null>(null);
   const [statsLoading, setStatsLoading] = useState(true);
   const [listFilter, setListFilter] = useState("");
+  const [detailKind, setDetailKind] = useState<DashboardStatKind | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -186,23 +255,20 @@ export function Dashboard() {
     if (!yearStats?.months.length) return [];
     return yearStats.months.map((row) => {
       const cargoBaht = Number(row.cargoValue) || 0;
-      const expenseBaht = Number(row.expenses) || 0;
+      const totalExpenseBaht = Number(row.expenses) || 0;
+      const truckBaht = Number(row.truckHire ?? 0) || 0;
       const maintenanceBaht = Number(row.maintenanceCost ?? 0) || 0;
       const fuelGasoline = Number(row.fuelGasolineLiters ?? 0) || 0;
       const fuelDiesel = Number(row.fuelDieselLiters ?? 0) || 0;
       return {
         ...row,
         cargoBaht,
-        expenseBaht,
+        /** ค่าใช้จ่ายภารกิจ ไม่รวมค่าจ้างรถบรรทุก */
+        expenseBaht: Math.max(0, totalExpenseBaht - truckBaht),
+        truckBaht,
         fuelGasoline,
         fuelDiesel,
         maintenanceBaht,
-        /** มูลค่าทรัพย์สิน ÷ 10,000,000 (สิบล้านบาท) สำหรับแท่งกราฟ */
-        cargoTenMillions: cargoBaht / 10_000_000,
-        /** ค่าใช้จ่าย ÷ 100,000 (แสนบาท) สำหรับแท่งกราฟ */
-        expenseHundredThousands: expenseBaht / 100_000,
-        /** บำรุงรักษา ÷ 100,000 (แสนบาท) */
-        maintenanceHundredThousands: maintenanceBaht / 100_000,
       };
     });
   }, [yearStats]);
@@ -224,6 +290,19 @@ export function Dashboard() {
     );
   }, [chartData, listFilter]);
 
+  const fuelScale = useMemo(
+    () => axisScale(displayChartData.reduce((m, r) => Math.max(m, r.fuelGasoline + r.fuelDiesel), 0)),
+    [displayChartData],
+  );
+
+  const filteredAreas = useMemo(() => {
+    const areas = yearStats?.areas ?? [];
+    if (!listFilter.trim()) return areas;
+    const byCode = areas.filter((a) => rowMatchesFilter(listFilter, [a.code]));
+    // คำกรองที่เป็นชื่อเดือนไม่ควรทำให้รายการพื้นที่หายหมด
+    return byCode.length ? byCode : areas;
+  }, [yearStats, listFilter]);
+
   /** รวมทั้งปี — จาก API หรือรวมจากรายเดือน */
   const yearTotalsResolved = useMemo((): MissionYearTotals | null => {
     if (!yearStats?.months.length) return null;
@@ -235,6 +314,7 @@ export function Dashboard() {
     return {
       cargoValue: sumStr((row) => Number(row.cargoValue) || 0),
       expenses: sumStr((row) => Number(row.expenses) || 0),
+      truckHire: sumStr((row) => Number(row.truckHire ?? 0) || 0),
       containers: m.reduce((s, row) => s + (row.containers || 0), 0),
       missionCount: m.reduce((s, row) => s + (row.missionCount || 0), 0),
       fuelGasolineLiters: sumStr((row) => Number(row.fuelGasolineLiters ?? 0) || 0),
@@ -252,21 +332,61 @@ export function Dashboard() {
     if (!yearTotalsResolved) return [];
     const items = [
       {
-        k: "ทรัพย์สิน (ล้านบาท)",
-        v: formatCargoMillionBahtStr(yearTotalsResolved.cargoValue),
+        k: "ทรัพย์สิน (บาท)",
+        v: formatBahtStr(yearTotalsResolved.cargoValue),
         tone: "text-[#4d47b6]",
+        size: "xl",
+        kind: "cargo",
       },
       {
+        kind: "operating",
         k: "ค่าใช้จ่ายภารกิจ (บาท)",
-        v: formatBahtStr(yearTotalsResolved.expenses),
+        v: formatBahtStr(
+          String(
+            Math.max(0, (Number(yearTotalsResolved.expenses) || 0) - (Number(yearTotalsResolved.truckHire ?? 0) || 0)),
+          ),
+        ),
         tone: "text-[#ec4899]",
       },
-      { k: "จำนวนตู้ (ใบ)", v: yearTotalsResolved.containers.toLocaleString("th-TH"), tone: "text-amber-600" },
-      { k: "จำนวนภารกิจ (ครั้ง)", v: yearTotalsResolved.missionCount.toLocaleString("th-TH"), tone: "text-[#1e1b4b]" },
-      { k: "น้ำมันเบนซิน (ลิตร)", v: formatLitersStr(yearTotalsResolved.fuelGasolineLiters), tone: "text-[#8b5cf6]" },
-      { k: "น้ำมันดีเซล (ลิตร)", v: formatLitersStr(yearTotalsResolved.fuelDieselLiters), tone: "text-[#0000BF]" },
-      { k: "บำรุงรถ (บาท)", v: formatBahtStr(yearTotalsResolved.maintenanceCost), tone: "text-[#7c3aed]" },
-    ];
+      {
+        k: "ค่าจ้างรถบรรทุกสินค้า (บาท)",
+        v: formatBahtStr(yearTotalsResolved.truckHire ?? "0"),
+        tone: "text-emerald-600",
+        kind: "truck",
+      },
+      {
+        k: "ตู้ (ใบ)",
+        v: yearTotalsResolved.containers.toLocaleString("th-TH"),
+        tone: "text-amber-600",
+        size: "sm",
+        kind: "containers",
+      },
+      {
+        k: "ภารกิจ (ครั้ง)",
+        v: yearTotalsResolved.missionCount.toLocaleString("th-TH"),
+        tone: "text-[#1e1b4b]",
+        size: "sm",
+        kind: "missions",
+      },
+      {
+        k: "น้ำมันเบนซิน (ลิตร)",
+        v: formatLitersStr(yearTotalsResolved.fuelGasolineLiters),
+        tone: "text-[#8b5cf6]",
+        kind: "gasoline",
+      },
+      {
+        k: "น้ำมันดีเซล (ลิตร)",
+        v: formatLitersStr(yearTotalsResolved.fuelDieselLiters),
+        tone: "text-[#0000BF]",
+        kind: "diesel",
+      },
+      {
+        k: "บำรุงรถ (บาท)",
+        v: formatBahtStr(yearTotalsResolved.maintenanceCost),
+        tone: "text-[#7c3aed]",
+        kind: "maintenance",
+      },
+    ] as Array<{ k: string; v: string; tone: string; size?: "xl" | "sm"; kind: DashboardStatKind }>;
     return items.filter((item) => rowMatchesFilter(listFilter, [item.k, item.v]));
   }, [yearTotalsResolved, listFilter]);
 
@@ -314,121 +434,104 @@ export function Dashboard() {
         )}
 
         {!statsLoading && yearTotalsResolved && (
-          <div>
-            <p className="text-xs font-medium uppercase tracking-wide text-slate-700 print:text-[8pt]">
-              รวมทั้งปี พ.ศ. {selectedYear + 543}
-            </p>
-            <div className="mt-2 grid gap-3 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-7 print:mt-1 print:grid-cols-7 print:gap-1">
-              {filteredYearStatItems.length === 0 ? (
-                <div className="col-span-full rounded-xl border border-slate-200 bg-white/60 px-3 py-4 text-center text-sm text-slate-600">
-                  ไม่มีช่องยอดรวมที่ตรงกับการกรอง
-                </div>
-              ) : (
-                filteredYearStatItems.map((item) => (
-                  <div
-                    key={item.k}
-                    className="min-w-0 rounded-xl border border-slate-200 bg-white/60 px-3 py-3 shadow-inner shadow-black/20 print:rounded-md print:px-1.5 print:py-1 print:shadow-none"
-                  >
-                    <FitSingleLine className="font-medium text-slate-700" maxPx={11} minPx={8} title={item.k}>
-                      {item.k}
-                    </FitSingleLine>
-                    <FitSingleLine className={`mt-1 font-bold tabular-nums ${item.tone}`} maxPx={18} minPx={11} title={item.v}>
-                      {item.v}
-                    </FitSingleLine>
-                  </div>
-                ))
-              )}
-            </div>
+          <div className="grid grid-cols-2 gap-2 sm:grid-cols-4 xl:flex print:mt-1 print:flex print:gap-1">
+            {filteredYearStatItems.length === 0 ? (
+              <div className="col-span-full rounded-xl border border-slate-200 bg-white/60 px-3 py-2 text-center text-sm text-slate-600">
+                ไม่มีช่องยอดรวมที่ตรงกับการกรอง
+              </div>
+            ) : (
+              filteredYearStatItems.map((item) => (
+                <button
+                  type="button"
+                  key={item.k}
+                  onClick={() => setDetailKind(item.kind)}
+                  title="คลิกดูรายละเอียด"
+                  className={`min-w-0 cursor-pointer rounded-xl border border-slate-200 bg-white/70 px-2.5 py-1.5 text-left transition hover:border-[#4d47b6]/40 hover:bg-white hover:shadow-sm focus:outline-none focus-visible:ring-2 focus-visible:ring-[#4d47b6]/40 print:rounded-md print:px-1.5 print:py-1 ${
+                    item.size === "xl"
+                      ? "col-span-2 xl:flex-[2.4] print:flex-[2.4]"
+                      : item.size === "sm"
+                        ? "xl:flex-[0.55] print:flex-[0.55]"
+                        : "xl:flex-[1.3] print:flex-[1.3]"
+                  }`}
+                >
+                  <FitSingleLine className="font-medium text-slate-600" maxPx={10.5} minPx={8} title={item.k}>
+                    {item.k}
+                  </FitSingleLine>
+                  <FitSingleLine className={`font-bold tabular-nums ${item.tone}`} maxPx={17} minPx={11} title={item.v}>
+                    {item.v}
+                  </FitSingleLine>
+                </button>
+              ))
+            )}
           </div>
         )}
 
-        <div className="mt-3 h-[400px] w-full min-w-0 print:mt-1 print:h-[7.2cm]">
-          {statsLoading ? (
-            <div className="flex h-full items-center justify-center text-slate-700">กำลังโหลดสถิติภารกิจ…</div>
-          ) : displayChartData.length === 0 ? (
-            <div className="flex h-full items-center justify-center text-slate-700">
-              {chartData.length === 0 ? "ไม่มีข้อมูล" : "ไม่มีเดือนที่ตรงกับการกรอง"}
-            </div>
-          ) : (
-            <ResponsiveContainer width="100%" height="100%">
-              <ComposedChart data={displayChartData} margin={{ top: 12, right: 16, left: 4, bottom: 8 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke={chartGridStroke} vertical={false} />
-                <XAxis
-                  dataKey="label"
-                  tick={{ fill: chartAxisFill, fontSize: 11, fontFamily: "Noto Sans Thai, sans-serif" }}
-                  tickLine={false}
-                  axisLine={{ stroke: chartGridStroke }}
-                />
-                <YAxis
-                  yAxisId="money"
-                  tickFormatter={formatMixedScaleTick}
-                  tick={{ fill: chartAxisFill, fontSize: 11, fontFamily: "Noto Sans Thai, sans-serif" }}
-                  tickLine={false}
-                  axisLine={{ stroke: chartGridStroke }}
-                  width={52}
-                />
-                <YAxis
-                  yAxisId="containers"
-                  orientation="right"
-                  allowDecimals={false}
-                  tick={{ fill: chartSeries.containers, fontSize: 11, fontFamily: "Noto Sans Thai, sans-serif" }}
-                  tickLine={false}
-                  axisLine={{ stroke: chartGridStroke }}
-                  width={36}
-                />
-                <Tooltip content={MissionMonthlyTooltip} />
-                <Legend
-                  wrapperStyle={{ fontFamily: "Noto Sans Thai, sans-serif", fontSize: 12 }}
-                  formatter={(value) => <span className="text-[#2e2a58]">{value}</span>}
-                />
-                <Bar
-                  yAxisId="money"
-                  dataKey="cargoTenMillions"
-                  name="มูลค่าทรัพย์สิน (สิบล้านบาท)"
-                  fill={chartSeries.cargo}
-                  radius={[6, 6, 0, 0]}
-                  maxBarSize={28}
-                />
-                <Bar
-                  yAxisId="money"
-                  dataKey="expenseHundredThousands"
-                  name="ค่าใช้จ่าย (แสนบาท)"
-                  fill={chartSeries.expense}
-                  radius={[6, 6, 0, 0]}
-                  maxBarSize={28}
-                />
-                <Bar
-                  yAxisId="containers"
-                  dataKey="containers"
-                  name="จำนวนตู้"
-                  fill={chartSeries.containers}
-                  radius={[6, 6, 0, 0]}
-                  maxBarSize={22}
-                />
-              </ComposedChart>
-            </ResponsiveContainer>
-          )}
-        </div>
-
-        {!statsLoading && displayChartData.length > 0 && (
-          <>
-            <div className="mt-8 print:mt-1.5">
-              <h3 className="text-base font-black text-[#1e1b4b] print:text-[9pt]">น้ำมันภารกิจ (ลิตร)</h3>
-              <div className="mt-3 h-[280px] w-full min-w-0 print:mt-0.5 print:h-[5.4cm]">
+        {statsLoading ? (
+          <div className="mt-2 flex h-40 items-center justify-center text-slate-700">กำลังโหลดสถิติภารกิจ…</div>
+        ) : displayChartData.length === 0 ? (
+          <div className="mt-2 flex h-40 items-center justify-center text-slate-700">
+            {chartData.length === 0 ? "ไม่มีข้อมูล" : "ไม่มีเดือนที่ตรงกับการกรอง"}
+          </div>
+        ) : (
+          <div className="mt-2 grid gap-2 sm:grid-cols-2 lg:h-[calc(100dvh-14.5rem)] lg:min-h-[28rem] lg:grid-cols-12 lg:grid-rows-2 print:mt-1 print:grid print:h-auto print:min-h-0 print:grid-cols-2 print:gap-1">
+            <MetricBarChart
+              className="lg:col-span-4"
+              title="มูลค่าทรัพย์สิน (บาท)"
+              data={displayChartData}
+              dataKey="cargoBaht"
+              color={chartSeries.cargo}
+              unit="บาท"
+              extra={(row) => `จำนวนตู้ ${row.containers.toLocaleString("th-TH")} ใบ`}
+            />
+            <MetricBarChart
+              className="lg:col-span-4"
+              title="ค่าใช้จ่ายภารกิจ (บาท)"
+              data={displayChartData}
+              dataKey="expenseBaht"
+              color={chartSeries.expense}
+              unit="บาท"
+              extra={(row) =>
+                row.cargoBaht > 0
+                  ? `คิดเป็น ${((row.expenseBaht / row.cargoBaht) * 100).toLocaleString("th-TH", {
+                      maximumFractionDigits: 3,
+                    })}% ของมูลค่าทรัพย์สิน`
+                  : null
+              }
+            />
+            <MetricBarChart
+              className="lg:col-span-4"
+              title="ค่าจ้างรถบรรทุกสินค้า (บาท)"
+              data={displayChartData}
+              dataKey="truckBaht"
+              color="#059669"
+              unit="บาท"
+              extra={(row) =>
+                row.cargoBaht > 0
+                  ? `คิดเป็น ${((row.truckBaht / row.cargoBaht) * 100).toLocaleString("th-TH", {
+                      maximumFractionDigits: 3,
+                    })}% ของมูลค่าทรัพย์สิน`
+                  : null
+              }
+            />
+            <div className={`${chartCardClass} h-[220px] lg:col-span-4 lg:h-auto print:h-auto`}>
+              <h3 className={chartTitleClass}>น้ำมันภารกิจ (ลิตร)</h3>
+              <div className="min-h-0 w-full min-w-0 flex-1 print:h-[4.6cm] print:flex-none">
                 <ResponsiveContainer width="100%" height="100%">
-                  <BarChart data={displayChartData} margin={{ top: 8, right: 12, left: 4, bottom: 8 }}>
+                  <BarChart data={displayChartData} margin={{ top: 6, right: 8, left: 0, bottom: 0 }}>
                     <CartesianGrid strokeDasharray="3 3" stroke={chartGridStroke} vertical={false} />
                     <XAxis
                       dataKey="label"
-                      tick={{ fill: chartAxisFill, fontSize: 11, fontFamily: "Noto Sans Thai, sans-serif" }}
+                      interval={0}
+                      tick={{ fill: chartAxisFill, fontSize: 9.5, fontFamily: "Noto Sans Thai, sans-serif" }}
                       tickLine={false}
                       axisLine={{ stroke: chartGridStroke }}
                     />
                     <YAxis
-                      tick={{ fill: chartAxisFill, fontSize: 11, fontFamily: "Noto Sans Thai, sans-serif" }}
+                      tickFormatter={fuelScale.tickFormatter}
+                      tick={{ fill: chartAxisFill, fontSize: 10, fontFamily: "Noto Sans Thai, sans-serif" }}
                       tickLine={false}
                       axisLine={{ stroke: chartGridStroke }}
-                      width={44}
+                      width={fuelScale.width}
                     />
                     <Tooltip
                       contentStyle={{
@@ -445,7 +548,7 @@ export function Dashboard() {
                       ]}
                     />
                     <Legend
-                      wrapperStyle={{ fontFamily: "Noto Sans Thai, sans-serif", fontSize: 12 }}
+                      wrapperStyle={{ fontFamily: "Noto Sans Thai, sans-serif", fontSize: 11, lineHeight: "14px" }}
                       formatter={(value) => <span className="text-[#2e2a58]">{value}</span>}
                     />
                     <Bar
@@ -468,56 +571,23 @@ export function Dashboard() {
               </div>
             </div>
 
-            <div className="mt-8 print:mt-1.5">
-              <h3 className="text-base font-black text-[#1e1b4b] print:text-[9pt]">บำรุงรถ (แสนบาท)</h3>
-              <div className="mt-3 h-[280px] w-full min-w-0 print:mt-0.5 print:h-[5.4cm]">
-                <ResponsiveContainer width="100%" height="100%">
-                  <BarChart data={displayChartData} margin={{ top: 8, right: 12, left: 4, bottom: 8 }}>
-                    <CartesianGrid strokeDasharray="3 3" stroke={chartGridStroke} vertical={false} />
-                    <XAxis
-                      dataKey="label"
-                      tick={{ fill: chartAxisFill, fontSize: 11, fontFamily: "Noto Sans Thai, sans-serif" }}
-                      tickLine={false}
-                      axisLine={{ stroke: chartGridStroke }}
-                    />
-                    <YAxis
-                      tickFormatter={formatMixedScaleTick}
-                      tick={{ fill: chartAxisFill, fontSize: 11, fontFamily: "Noto Sans Thai, sans-serif" }}
-                      tickLine={false}
-                      axisLine={{ stroke: chartGridStroke }}
-                      width={48}
-                    />
-                    <Tooltip
-                      contentStyle={{
-                        backgroundColor: "#ffffff",
-                        border: "1px solid #d8d6ec",
-                        borderRadius: "12px",
-                        fontFamily: "Noto Sans Thai, sans-serif",
-                        fontSize: 12,
-                        color: "#2e2a58",
-                      }}
-                      formatter={(_value, _name, props) => {
-                        const baht = (props?.payload as { maintenanceBaht?: number })?.maintenanceBaht ?? 0;
-                        return [
-                          `${baht.toLocaleString("th-TH", { maximumFractionDigits: 2 })} บาท`,
-                          "บำรุงรักษา",
-                        ];
-                      }}
-                    />
-                    <Bar
-                      dataKey="maintenanceHundredThousands"
-                      name="บำรุงรักษา"
-                      fill={chartSeries.maintenance}
-                      radius={[6, 6, 0, 0]}
-                      maxBarSize={40}
-                    />
-                  </BarChart>
-                </ResponsiveContainer>
-              </div>
-            </div>
-          </>
+            <MetricBarChart
+              className="lg:col-span-4"
+              title="บำรุงรถ (บาท)"
+              data={displayChartData}
+              dataKey="maintenanceBaht"
+              color={chartSeries.maintenance}
+              unit="บาท"
+            />
+            <AreaSummaryPanel
+              areas={filteredAreas}
+              className="lg:col-span-4 lg:min-h-0 print:col-span-2"
+            />
+          </div>
         )}
       </section>
+
+      <DashboardStatDetailModal kind={detailKind} year={selectedYear} onClose={() => setDetailKind(null)} />
     </div>
   );
 }

@@ -1,5 +1,5 @@
 import { useState, type ReactNode } from "react";
-import { useLocation } from "react-router-dom";
+import { useLocation, useNavigate } from "react-router-dom";
 import { itemVisual, NavGlyph } from "../lib/navVisuals";
 import {
   toolbarLinkBtnClass,
@@ -37,6 +37,9 @@ type Props = {
   /** กรอง + พิมพ์ */
   filter?: PageFilterConfig;
   className?: string;
+  /** แสดงปุ่มย้อนกลับหน้าหัวข้อ — ย้อนตามประวัติ ถ้าไม่มีไปหน้านี้ */
+  backTo?: string;
+  backLabel?: string;
 };
 
 function ToolDivider() {
@@ -55,8 +58,16 @@ export function PageHeaderBar({
   primary,
   filter,
   className,
+  backTo,
+  backLabel = "ย้อนกลับ",
 }: Props) {
   const { pathname } = useLocation();
+  const navigate = useNavigate();
+  function goBack() {
+    const idx = (window.history.state as { idx?: number } | null)?.idx ?? 0;
+    if (idx > 0) navigate(-1);
+    else navigate(backTo ?? "/");
+  }
   const [filterOpen, setFilterOpen] = useState(filter?.defaultOpen ?? false);
   const hasFilter = Boolean(filter?.value.trim());
   const showSearch = filter?.showSearch !== false;
@@ -83,6 +94,20 @@ export function PageHeaderBar({
       >
         {showTitle ? (
           <div className="flex min-w-0 shrink items-center gap-2.5 sm:gap-3">
+            {backTo ? (
+              <button
+                type="button"
+                onClick={goBack}
+                title={backLabel}
+                aria-label={backLabel}
+                className="inline-flex h-9 shrink-0 items-center gap-1 rounded-xl border border-[#dcd8f0] bg-white px-2.5 text-xs font-bold text-[#4d47b6] shadow-sm transition hover:-translate-x-0.5 hover:border-[#4d47b6]/40 hover:bg-[#f5f3ff] sm:h-10"
+              >
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" className="h-4 w-4" aria-hidden>
+                  <path d="M15 6l-6 6 6 6" />
+                </svg>
+                <span className="hidden sm:inline">{backLabel}</span>
+              </button>
+            ) : null}
             <span
               className={`inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl ring-1 sm:h-11 sm:w-11 sm:rounded-2xl ${visual.chip}`}
             >

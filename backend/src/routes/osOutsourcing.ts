@@ -32,12 +32,6 @@ function parseMonthYm(v: unknown): string | null {
   return s;
 }
 
-/** แปลง YYYY-MM → ปีงบ พ.ศ. (เดือนปฏิทินของปี ค.ศ. นั้น) */
-function yearBeFromMonthYm(monthYm: string): number {
-  const ce = Number(monthYm.slice(0, 4));
-  return ce + 543;
-}
-
 function endOfMonth(monthYm: string): Date {
   const y = Number(monthYm.slice(0, 4));
   const m = Number(monthYm.slice(5, 7));
@@ -54,6 +48,30 @@ function monthWithinContract(monthYm: string, start: Date, end: Date): boolean {
   const ms = startOfMonth(monthYm).getTime();
   const me = endOfMonth(monthYm).getTime();
   return me >= start.getTime() && ms <= end.getTime();
+}
+
+function ymOf(d: Date) {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+}
+
+/** งวดปกติ = monthlyAmount, งวดสุดท้าย = totalAmount − monthlyAmount × (จำนวนงวด − 1) */
+function installmentAmount(
+  c: { startDate: Date; endDate: Date; monthlyAmount: Prisma.Decimal | null; totalAmount: Prisma.Decimal | null },
+  monthYm: string,
+): number | null {
+  if (c.monthlyAmount == null) return null;
+  const monthly = num(c.monthlyAmount);
+  if (c.totalAmount == null || monthYm !== ymOf(c.endDate)) return monthly;
+  const s = c.startDate;
+  const e = c.endDate;
+  const count = (e.getFullYear() - s.getFullYear()) * 12 + (e.getMonth() - s.getMonth()) + 1;
+  return Math.round((num(c.totalAmount) - monthly * (count - 1)) * 100) / 100;
+}
+
+function parseOptionalAmount(v: unknown): number | null | "invalid" {
+  if (v === null || v === "") return null;
+  const n = Number(v);
+  return Number.isFinite(n) && n >= 0 ? n : "invalid";
 }
 
 function serializeDocLink(d: {
@@ -114,6 +132,7 @@ function serializeContract(row: {
   startDate: Date;
   endDate: Date;
   monthlyAmount: Prisma.Decimal | null;
+  totalAmount: Prisma.Decimal | null;
   notes: string | null;
   active: boolean;
   createdAt: Date;
@@ -144,6 +163,7 @@ function serializeContract(row: {
     startDate: row.startDate,
     endDate: row.endDate,
     monthlyAmount: row.monthlyAmount == null ? null : num(row.monthlyAmount),
+    totalAmount: row.totalAmount == null ? null : num(row.totalAmount),
     notes: row.notes,
     active: row.active,
     createdAt: row.createdAt,
@@ -343,6 +363,101 @@ osOutsourcingRouter.patch("/groups/:id", requireAdmin, async (req, res, next) =>
 });
 
 // --------------------------------------------------------------------------
+// สรุปผู้บริหาร
+// --------------------------------------------------------------------------
+
+osOutsourcingRouter.get("/summary", async (req, res, next) => {
+  try {
+    const qYear = Number(req.query.year);
+    const year = Number.isInteger(qYear) && qYear >= 2000 && qYear <= 2100 ? qYear : new Date().getFullYear();
+    const yStart = new Date(year, 0, 1, 0, 0, 0, 0);
+    const yEnd = new Date(year, 11, 31, 23, 59, 59, 999);
+
+    const [groups, bounds, expiring] = await Promise.all([
+      prisma.osAreaGroup.findMany({
+        where: { active: true },
+        orderBy: [{ sortOrder: "asc" }, { code: "asc" }],
+        include: {
+          contracts: {
+            where: { startDate: { lte: yEnd }, endDate: { gte: yStart } },
+            orderBy: { startDate: "asc" },
+            include: {
+              ...contractDocInclude,
+              acceptances: {
+                where: { monthYm: { startsWith: `${year}-` } },
+                orderBy: { monthYm: "asc" },
+                include: acceptanceDocInclude,
+              },
+            },
+          },
+        },
+      }),
+      prisma.osContract.aggregate({ _min: { startDate: true }, _max: { endDate: true } }),
+      prisma.osContract.findMany({
+        where: {
+          active: true,
+          endDate: { gte: new Date(), lte: new Date(Date.now() + 90 * 24 * 60 * 60 * 1000) },
+        },
+        orderBy: { endDate: "asc" },
+        include: { areaGroup: { select: { id: true, code: true, name: true } } },
+      }),
+    ]);
+
+    const contractIds = groups.flatMap((g) => g.contracts.map((c) => c.id));
+    const sums = contractIds.length
+      ? await prisma.osMonthlyAcceptance.groupBy({
+          by: ["contractId"],
+          where: { contractId: { in: contractIds } },
+          _sum: { acceptedAmount: true },
+        })
+      : [];
+    const acceptedTotals = new Map(sums.map((s) => [s.contractId, s._sum.acceptedAmount ?? 0]));
+
+    res.json({
+      year,
+      minYear: bounds._min.startDate?.getFullYear() ?? year,
+      maxYear: bounds._max.endDate?.getFullYear() ?? year,
+      groups: groups.map((g) => ({
+        id: g.id,
+        code: g.code,
+        name: g.name,
+        contracts: g.contracts.map((c) => ({
+          id: c.id,
+          vendorName: c.vendorName,
+          contractNo: c.contractNo,
+          startDate: c.startDate,
+          endDate: c.endDate,
+          monthlyAmount: c.monthlyAmount == null ? null : num(c.monthlyAmount),
+          totalAmount: c.totalAmount == null ? null : num(c.totalAmount),
+          acceptedToDate: num(acceptedTotals.get(c.id) ?? 0),
+          title: c.title,
+          notes: c.notes,
+          active: c.active,
+          documents: c.documents.map(serializeDocLink),
+          acceptances: c.acceptances.map((a) => ({
+            id: a.id,
+            monthYm: a.monthYm,
+            acceptedAmount: num(a.acceptedAmount),
+            acceptedAt: a.acceptedAt,
+            remarks: a.remarks,
+            documents: a.documents.map(serializeDocLink),
+          })),
+        })),
+      })),
+      expiring: expiring.map((c) => ({
+        id: c.id,
+        vendorName: c.vendorName,
+        contractNo: c.contractNo,
+        endDate: c.endDate,
+        areaGroup: c.areaGroup,
+      })),
+    });
+  } catch (e) {
+    next(e);
+  }
+});
+
+// --------------------------------------------------------------------------
 // สัญญา
 // --------------------------------------------------------------------------
 
@@ -401,12 +516,10 @@ osOutsourcingRouter.post("/contracts", async (req, res, next) => {
     if (endDate.getTime() < startDate.getTime())
       return res.status(400).json({ error: "วันสิ้นสุดต้องไม่ก่อนวันเริ่ม" });
 
-    let monthlyAmount: number | null = null;
-    if (req.body?.monthlyAmount !== undefined && req.body?.monthlyAmount !== null && req.body?.monthlyAmount !== "") {
-      const n = Number(req.body.monthlyAmount);
-      if (!Number.isFinite(n) || n < 0) return res.status(400).json({ error: "ยอดรายเดือนไม่ถูกต้อง" });
-      monthlyAmount = n;
-    }
+    const monthlyAmount = req.body?.monthlyAmount === undefined ? null : parseOptionalAmount(req.body.monthlyAmount);
+    if (monthlyAmount === "invalid") return res.status(400).json({ error: "ยอดรายเดือนไม่ถูกต้อง" });
+    const totalAmount = req.body?.totalAmount === undefined ? null : parseOptionalAmount(req.body.totalAmount);
+    if (totalAmount === "invalid") return res.status(400).json({ error: "มูลค่าสัญญาไม่ถูกต้อง" });
 
     const row = await prisma.osContract.create({
       data: {
@@ -417,6 +530,7 @@ osOutsourcingRouter.post("/contracts", async (req, res, next) => {
         startDate,
         endDate,
         monthlyAmount,
+        totalAmount,
         notes: req.body?.notes != null ? String(req.body.notes) : null,
         active: req.body?.active === undefined ? true : Boolean(req.body.active),
       },
@@ -478,12 +592,14 @@ osOutsourcingRouter.patch("/contracts/:id", async (req, res, next) => {
       return res.status(400).json({ error: "วันสิ้นสุดต้องไม่ก่อนวันเริ่ม" });
 
     if (req.body?.monthlyAmount !== undefined) {
-      if (req.body.monthlyAmount === null || req.body.monthlyAmount === "") data.monthlyAmount = null;
-      else {
-        const n = Number(req.body.monthlyAmount);
-        if (!Number.isFinite(n) || n < 0) return res.status(400).json({ error: "ยอดรายเดือนไม่ถูกต้อง" });
-        data.monthlyAmount = n;
-      }
+      const v = parseOptionalAmount(req.body.monthlyAmount);
+      if (v === "invalid") return res.status(400).json({ error: "ยอดรายเดือนไม่ถูกต้อง" });
+      data.monthlyAmount = v;
+    }
+    if (req.body?.totalAmount !== undefined) {
+      const v = parseOptionalAmount(req.body.totalAmount);
+      if (v === "invalid") return res.status(400).json({ error: "มูลค่าสัญญาไม่ถูกต้อง" });
+      data.totalAmount = v;
     }
     if (req.body?.areaGroupId !== undefined) {
       const areaGroupId = String(req.body.areaGroupId).trim();
@@ -671,7 +787,7 @@ osOutsourcingRouter.delete("/contracts/:id/documents/:linkId", requireAdmin, asy
 });
 
 // --------------------------------------------------------------------------
-// ตรวจรับรายเดือน → หักงบ (ADMIN)
+// ตรวจรับรายเดือน — บันทึกอย่างเดียว ไม่หักงบ (งบมาจากไฟล์ระบบหลัก) (ADMIN)
 // --------------------------------------------------------------------------
 
 osOutsourcingRouter.get("/contracts/:id/acceptances", async (req, res, next) => {
@@ -720,36 +836,9 @@ osOutsourcingRouter.post(
     let amount =
       req.body?.acceptedAmount !== undefined && req.body?.acceptedAmount !== null && req.body?.acceptedAmount !== ""
         ? Number(req.body.acceptedAmount)
-        : contract.monthlyAmount != null
-          ? num(contract.monthlyAmount)
-          : NaN;
+        : installmentAmount(contract, monthYm) ?? NaN;
     if (!Number.isFinite(amount)) return res.status(400).json({ error: "ระบุยอดตรวจรับ" });
 
-    if (!contract.areaGroup.budgetAccountId)
-      return res.status(400).json({
-        error: `กลุ่ม «${contract.areaGroup.name}» ยังไม่ผูกบัญชีงบประมาณ — ผูกบัญชีก่อนตรวจรับ`,
-      });
-
-    const yearBe = yearBeFromMonthYm(monthYm);
-    const fiscalYear = await prisma.budgetFiscalYear.findUnique({ where: { yearBe } });
-    if (!fiscalYear)
-      return res.status(400).json({ error: `ยังไม่มีปีงบ ${yearBe} ในระบบ — สร้างปีงบก่อน` });
-
-    const yearLine = await prisma.budgetYearLine.findUnique({
-      where: {
-        fiscalYearId_accountId_fundingType: {
-          fiscalYearId: fiscalYear.id,
-          accountId: contract.areaGroup.budgetAccountId,
-          fundingType: "ANNUAL",
-        },
-      },
-    });
-    if (!yearLine)
-      return res.status(400).json({
-        error: `ยังไม่มีรายการงบปี ${yearBe} ของบัญชีกลุ่มนี้ — เพิ่มในงบประมาณก่อน`,
-      });
-
-    const occurredAt = endOfMonth(monthYm);
     const mm = monthYm.slice(5, 7);
     const yyyyCe = monthYm.slice(0, 4);
     const description = `ตรวจรับงานจ้าง OS · ${contract.areaGroup.name} · ${mm}/${yyyyCe}`;
@@ -759,15 +848,6 @@ osOutsourcingRouter.post(
     });
 
     const result = await prisma.$transaction(async (tx) => {
-      const txn = await tx.budgetTransaction.create({
-        data: {
-          yearLineId: yearLine.id,
-          amount,
-          occurredAt,
-          description,
-          refNo: contract.contractNo,
-        },
-      });
       const acceptance = await tx.osMonthlyAcceptance.create({
         data: {
           contractId,
@@ -775,7 +855,6 @@ osOutsourcingRouter.post(
           acceptedAmount: amount,
           acceptedAt: new Date(),
           remarks: req.body?.remarks != null ? String(req.body.remarks).trim() || null : null,
-          budgetTransactionId: txn.id,
         },
       });
 
@@ -938,24 +1017,10 @@ osOutsourcingRouter.patch("/acceptances/:id", requireAdmin, async (req, res, nex
     }
     if (Object.keys(data).length === 0) return res.status(400).json({ error: "ไม่มีข้อมูลแก้ไข" });
 
-    const updated = await prisma.$transaction(async (tx) => {
-      const row = await tx.osMonthlyAcceptance.update({
-        where: { id },
-        data,
-        include: acceptanceDocInclude,
-      });
-      if (existing.budgetTransactionId && data.acceptedAmount !== undefined) {
-        const mm = existing.monthYm.slice(5, 7);
-        const yyyyCe = existing.monthYm.slice(0, 4);
-        await tx.budgetTransaction.update({
-          where: { id: existing.budgetTransactionId },
-          data: {
-            amount: nextAmount,
-            description: `ตรวจรับงานจ้าง OS · ${existing.contract.areaGroup.name} · ${mm}/${yyyyCe}`,
-          },
-        });
-      }
-      return row;
+    const updated = await prisma.osMonthlyAcceptance.update({
+      where: { id },
+      data,
+      include: acceptanceDocInclude,
     });
 
     const actor = await resolveActorLabel(prisma, req.auth?.userId);

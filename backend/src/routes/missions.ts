@@ -234,6 +234,7 @@ async function missionSummary(missionId: string) {
       policeStationVendorCode: p.personnel.policeStation?.vendorCode ?? null,
       roleName: p.personnelRole.name,
       compensationRate: p.compensationRate.toString(),
+      assignedVehicleId: p.assignedVehicleId ?? null,
     })),
     policeStations: mission.policeStations.map((s) => ({
       policeStationId: s.policeStationId,
@@ -567,17 +568,22 @@ missionsRouter.get("/stats/year", async (req, res, next) => {
       },
       include: {
         destinations: true,
-        expenses: true,
+        expenses: { include: { expenseType: { select: { name: true } } } },
         vehicles: { select: { fuelLiters: true, fuelType: true } },
       },
     });
 
     const cargo: Prisma.Decimal[] = Array.from({ length: 12 }, () => new Prisma.Decimal(0));
     const expenses: Prisma.Decimal[] = Array.from({ length: 12 }, () => new Prisma.Decimal(0));
+    const truckHire: Prisma.Decimal[] = Array.from({ length: 12 }, () => new Prisma.Decimal(0));
     const containers: number[] = Array(12).fill(0);
     const missionCount: number[] = Array(12).fill(0);
     const fuelGasolineLiters: Prisma.Decimal[] = Array.from({ length: 12 }, () => new Prisma.Decimal(0));
     const fuelDieselLiters: Prisma.Decimal[] = Array.from({ length: 12 }, () => new Prisma.Decimal(0));
+    const areaMap = new Map<
+      string,
+      { cargo: Prisma.Decimal; containers: number; trips: number; missions: Set<string>; byMonth: Prisma.Decimal[] }
+    >();
 
     for (const m of missions) {
       const ref = m.plannedStart;
@@ -587,6 +593,29 @@ missionsRouter.get("/stats/year", async (req, res, next) => {
       for (const d of m.destinations) {
         cargo[mo] = cargo[mo].add(d.cargoValue);
         containers[mo] += d.containerCount;
+        // ที่อยู่เป็นรหัสพื้นที่ เช่น "ศรย" / "ศขก. ศขก" / "ศขก. ศนร" — หลายพื้นที่แบ่งยอดเท่ากัน
+        const codes = [...new Set(d.address.split(/[\s.,/]+/).map((s) => s.trim()).filter(Boolean))];
+        if (!codes.length) continue;
+        const share = new Prisma.Decimal(1).div(codes.length);
+        for (const code of codes) {
+          let a = areaMap.get(code);
+          if (!a) {
+            a = {
+              cargo: new Prisma.Decimal(0),
+              containers: 0,
+              trips: 0,
+              missions: new Set(),
+              byMonth: Array.from({ length: 12 }, () => new Prisma.Decimal(0)),
+            };
+            areaMap.set(code, a);
+          }
+          const part = d.cargoValue.mul(share);
+          a.cargo = a.cargo.add(part);
+          a.byMonth[mo] = a.byMonth[mo].add(part);
+          a.containers += d.containerCount / codes.length;
+          a.trips += 1;
+          a.missions.add(m.id);
+        }
       }
       // ใช้ budgetAmount (= คอลัมน์ «รวมค่าใช้จ่าย» ใน Excel) เป็นหลัก
       // ถ้าไม่มีค่อยรวมรายการ expenses — กันยอดเพี้ยนจากหมวดย่อยซ้ำ
@@ -596,6 +625,9 @@ missionsRouter.get("/stats/year", async (req, res, next) => {
         for (const e of m.expenses) {
           expenses[mo] = expenses[mo].add(e.amount);
         }
+      }
+      for (const e of m.expenses) {
+        if (e.expenseType.name.trim() === "ค่าจ้างรถบรรทุก") truckHire[mo] = truckHire[mo].add(e.amount);
       }
       for (const v of m.vehicles) {
         if (v.fuelLiters == null) continue;
@@ -620,6 +652,7 @@ missionsRouter.get("/stats/year", async (req, res, next) => {
     const yearTotals = {
       cargoValue: sumDec(cargo).toString(),
       expenses: sumDec(expenses).toString(),
+      truckHire: sumDec(truckHire).toString(),
       containers: containers.reduce((a, b) => a + b, 0),
       missionCount: missionCount.reduce((a, b) => a + b, 0),
       fuelGasolineLiters: sumDec(fuelGasolineLiters).toString(),
@@ -633,13 +666,153 @@ missionsRouter.get("/stats/year", async (req, res, next) => {
       cargoValue: cargo[i].toString(),
       containers: containers[i],
       expenses: expenses[i].toString(),
+      truckHire: truckHire[i].toString(),
       missionCount: missionCount[i],
       fuelGasolineLiters: fuelGasolineLiters[i].toString(),
       fuelDieselLiters: fuelDieselLiters[i].toString(),
       maintenanceCost: maintenanceCost[i].toString(),
     }));
 
-    res.json({ year, availableYears, months, yearTotals });
+    const areas = [...areaMap.entries()]
+      .filter(([, a]) => a.cargo.gt(0) || a.containers > 0)
+      .map(([code, a]) => ({
+        code,
+        cargoValue: a.cargo.toFixed(2),
+        containers: Math.round(a.containers * 10) / 10,
+        trips: a.trips,
+        missionCount: a.missions.size,
+        monthlyCargo: a.byMonth.map((v) => v.toFixed(2)),
+      }))
+      .sort((x, y) => Number(y.cargoValue) - Number(x.cargoValue) || y.containers - x.containers);
+
+    res.json({ year, availableYears, months, yearTotals, areas });
+  } catch (e) {
+    next(e);
+  }
+});
+
+/** รายละเอียดการ์ดสรุปทั้งปี — รายภารกิจ / น้ำมันรายคัน / บำรุงรถรายคัน */
+missionsRouter.get("/stats/year/details", async (req, res, next) => {
+  try {
+    const y = parseInt(String(req.query.year ?? ""), 10);
+    const year = Number.isFinite(y) && y >= 2000 && y <= 2100 ? y : new Date().getFullYear();
+    const start = new Date(Date.UTC(year, 0, 1, 0, 0, 0));
+    const end = new Date(Date.UTC(year + 1, 0, 1, 0, 0, 0));
+
+    const vehicleSelect = {
+      id: true,
+      licensePlate: true,
+      brandModel: true,
+      documents: {
+        where: { kind: "PHOTO" as const },
+        orderBy: [{ sortOrder: "asc" as const }, { createdAt: "asc" as const }],
+        take: 1,
+        select: { fileUrl: true },
+      },
+    };
+
+    const missions = await prisma.mission.findMany({
+      where: { plannedStart: { gte: start, lt: end } },
+      orderBy: { plannedStart: "asc" },
+      include: {
+        route: { select: { name: true, startLocation: true, endLocation: true } },
+        destinations: { select: { address: true, cargoValue: true, containerCount: true } },
+        expenses: { include: { expenseType: { select: { name: true } } } },
+        vehicles: { include: { vehicle: { select: vehicleSelect } } },
+      },
+    });
+
+    type VehicleAgg = {
+      vehicleId: string;
+      licensePlate: string;
+      brandModel: string;
+      photoUrl: string | null;
+      amount: Prisma.Decimal;
+      count: number;
+    };
+    const fuel: Record<"GASOLINE" | "DIESEL", Map<string, VehicleAgg>> = { GASOLINE: new Map(), DIESEL: new Map() };
+
+    const missionRows = missions.map((m) => {
+      let cargo = new Prisma.Decimal(0);
+      let containers = 0;
+      for (const d of m.destinations) {
+        cargo = cargo.add(d.cargoValue);
+        containers += d.containerCount;
+      }
+      const total =
+        m.budgetAmount ?? m.expenses.reduce((s, e) => s.add(e.amount), new Prisma.Decimal(0));
+      const truck = m.expenses
+        .filter((e) => e.expenseType.name.trim() === "ค่าจ้างรถบรรทุก")
+        .reduce((s, e) => s.add(e.amount), new Prisma.Decimal(0));
+      for (const mv of m.vehicles) {
+        if (mv.fuelLiters == null || (mv.fuelType !== "GASOLINE" && mv.fuelType !== "DIESEL")) continue;
+        const map = fuel[mv.fuelType];
+        let a = map.get(mv.vehicleId);
+        if (!a) {
+          a = {
+            vehicleId: mv.vehicleId,
+            licensePlate: mv.vehicle.licensePlate,
+            brandModel: mv.vehicle.brandModel,
+            photoUrl: mv.vehicle.documents[0]?.fileUrl ?? null,
+            amount: new Prisma.Decimal(0),
+            count: 0,
+          };
+          map.set(mv.vehicleId, a);
+        }
+        a.amount = a.amount.add(mv.fuelLiters);
+        a.count += 1;
+      }
+      const operating = total.sub(truck);
+      return {
+        id: m.id,
+        code: m.code,
+        title: m.title,
+        plannedStart: m.plannedStart,
+        route: m.route
+          ? m.route.name?.trim() || `${m.route.startLocation} → ${m.route.endLocation}`
+          : null,
+        areas: [...new Set(m.destinations.map((d) => d.address.trim()).filter(Boolean))],
+        cargoValue: cargo.toString(),
+        containers,
+        operatingExpense: (operating.lt(0) ? new Prisma.Decimal(0) : operating).toString(),
+        truckHire: truck.toString(),
+      };
+    });
+
+    const maintRows = await prisma.maintenanceLog.findMany({
+      where: { date: { gte: start, lt: end } },
+      include: { vehicle: { select: vehicleSelect } },
+    });
+    const maint = new Map<string, VehicleAgg>();
+    for (const r of maintRows) {
+      let a = maint.get(r.vehicleId);
+      if (!a) {
+        a = {
+          vehicleId: r.vehicleId,
+          licensePlate: r.vehicle.licensePlate,
+          brandModel: r.vehicle.brandModel,
+          photoUrl: r.vehicle.documents[0]?.fileUrl ?? null,
+          amount: new Prisma.Decimal(0),
+          count: 0,
+        };
+        maint.set(r.vehicleId, a);
+      }
+      a.amount = a.amount.add(r.cost);
+      a.count += 1;
+    }
+
+    const toList = (map: Map<string, VehicleAgg>) =>
+      [...map.values()]
+        .sort((x, y) => Number(y.amount.sub(x.amount)))
+        .map((a) => ({ ...a, amount: a.amount.toString() }));
+
+    res.json({
+      year,
+      missions: missionRows,
+      fuelGasoline: toList(fuel.GASOLINE),
+      fuelDiesel: toList(fuel.DIESEL),
+      maintenance: toList(maint),
+    });
   } catch (e) {
     next(e);
   }
@@ -998,7 +1171,18 @@ missionsRouter.get("/:id", async (req, res, next) => {
   }
 });
 
-type PersonnelIn = { personnelId: string; personnelRoleId: string; compensationRate?: string | number };
+type PersonnelIn = {
+  personnelId: string;
+  personnelRoleId: string;
+  compensationRate?: string | number;
+  assignedVehicleId?: string | null;
+};
+
+/** ประจำรถได้เฉพาะรถที่อยู่ในรายการยานพาหนะของภารกิจ */
+function assignedVehicleOf(p: PersonnelIn, vehicles: VehicleIn[]): string | null {
+  const id = p.assignedVehicleId ? String(p.assignedVehicleId) : "";
+  return id && vehicles.some((v) => v.vehicleId === id) ? id : null;
+}
 type VehicleIn = {
   vehicleId: string;
   vehicleRoleId: string;
@@ -1103,6 +1287,7 @@ missionsRouter.post("/", async (req, res, next) => {
             personnelId: p.personnelId,
             personnelRoleId: p.personnelRoleId,
             compensationRate: dec(p.compensationRate) ?? new Prisma.Decimal(0),
+            assignedVehicleId: assignedVehicleOf(p, vehiclesArr),
           })),
         },
         vehicles: {
@@ -1251,6 +1436,7 @@ missionsRouter.put("/:id", async (req, res, next) => {
               personnelId: p.personnelId,
               personnelRoleId: p.personnelRoleId,
               compensationRate: dec(p.compensationRate) ?? new Prisma.Decimal(0),
+              assignedVehicleId: assignedVehicleOf(p, vehiclesArr),
             })),
           },
           vehicles: {

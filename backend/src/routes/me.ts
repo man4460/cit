@@ -14,6 +14,7 @@ const meSelect = {
   fullName: true,
   avatarUrl: true,
   active: true,
+  permissions: true,
 } as const;
 
 function storedUploadRelPath(avatarUrl: string | null | undefined): string | null {

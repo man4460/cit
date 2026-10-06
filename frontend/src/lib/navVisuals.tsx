@@ -276,6 +276,7 @@ const ITEM_VISUALS: ({ match: RegExp } & ItemVisual)[] = [
   { match: /^\/missions/, icon: "mission", tone: "text-violet-600", chip: "bg-violet-500/12 text-violet-600 ring-violet-500/25" },
   { match: /^\/routes/, icon: "route", tone: "text-fuchsia-600", chip: "bg-fuchsia-500/12 text-fuchsia-600 ring-fuchsia-500/25" },
   { match: /^\/activities/, icon: "calendar", tone: "text-pink-600", chip: "bg-pink-500/12 text-pink-600 ring-pink-500/25" },
+  { match: /^\/executive-report/, icon: "chart", tone: "text-amber-600", chip: "bg-amber-500/12 text-amber-600 ring-amber-500/25" },
   { match: /^\/reports/, icon: "chart", tone: "text-indigo-600", chip: "bg-indigo-500/12 text-indigo-600 ring-indigo-500/25" },
   { match: /weekly-inspection/, icon: "car", tone: "text-sky-600", chip: "bg-sky-500/12 text-sky-600 ring-sky-500/25" },
   { match: /armor-monthly/, icon: "shield", tone: "text-teal-600", chip: "bg-teal-500/12 text-teal-600 ring-teal-500/25" },
@@ -325,6 +326,7 @@ const ITEM_VISUALS: ({ match: RegExp } & ItemVisual)[] = [
     tone: "text-cyan-700",
     chip: "bg-cyan-500/12 text-cyan-700 ring-cyan-500/25",
   },
+  { match: /^\/admin\/registrations/, icon: "admin", tone: "text-emerald-600", chip: "bg-emerald-500/12 text-emerald-600 ring-emerald-500/25" },
   { match: /^\/admin/, icon: "user", tone: "text-[#4d47b6]", chip: "bg-[#4d47b6]/12 text-[#4d47b6] ring-[#4d47b6]/25" },
   {
     match: /audit-trail/,

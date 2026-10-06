@@ -916,6 +916,7 @@ export interface MissionDetail {
     personnelId: string;
     personnelRoleId: string;
     compensationRate: string;
+    assignedVehicleId?: string | null;
   }>;
   vehicles: Array<{
     id: string;
@@ -981,6 +982,7 @@ export interface MissionSummary {
     policeStationVendorCode?: string | null;
     roleName: string;
     compensationRate: string;
+    assignedVehicleId?: string | null;
   }>;
   policeStations?: Array<{
     policeStationId: string;
@@ -1030,7 +1032,10 @@ export interface MissionYearMonthStat {
   label: string;
   cargoValue: string;
   containers: number;
+  /** รวมค่าใช้จ่ายทั้งหมด (รวมค่าจ้างรถบรรทุกแล้ว) */
   expenses: string;
+  /** ค่าจ้างรถบรรทุกสินค้า — ส่วนหนึ่งของ expenses */
+  truckHire?: string;
   missionCount: number;
   /** ลิตร — จากภารกิจ (เบนซิน) */
   fuelGasolineLiters?: string;
@@ -1043,6 +1048,7 @@ export interface MissionYearMonthStat {
 export interface MissionYearTotals {
   cargoValue: string;
   expenses: string;
+  truckHire?: string;
   containers: number;
   missionCount: number;
   fuelGasolineLiters: string;
@@ -1056,6 +1062,50 @@ export interface MissionYearStatsResponse {
   months: MissionYearMonthStat[];
   /** รวมทั้งปี — ถ้าไม่มีให้รวมจาก months ฝั่ง client */
   yearTotals?: MissionYearTotals;
+  /** ส่งทรัพย์สินรายพื้นที่ (รหัสปลายทาง เช่น ศรย) เรียงยอดมาก→น้อย */
+  areas?: MissionYearAreaStat[];
+}
+
+export interface MissionYearVehicleDetail {
+  vehicleId: string;
+  licensePlate: string;
+  brandModel: string;
+  photoUrl: string | null;
+  /** ลิตร (น้ำมัน) หรือ บาท (บำรุงรถ) */
+  amount: string;
+  /** จำนวนภารกิจ (น้ำมัน) หรือ จำนวนครั้ง (บำรุงรถ) */
+  count: number;
+}
+
+export interface MissionYearMissionDetail {
+  id: string;
+  code: string | null;
+  title: string | null;
+  plannedStart: string | null;
+  route: string | null;
+  areas: string[];
+  cargoValue: string;
+  containers: number;
+  operatingExpense: string;
+  truckHire: string;
+}
+
+export interface MissionYearDetailsResponse {
+  year: number;
+  missions: MissionYearMissionDetail[];
+  fuelGasoline: MissionYearVehicleDetail[];
+  fuelDiesel: MissionYearVehicleDetail[];
+  maintenance: MissionYearVehicleDetail[];
+}
+
+export interface MissionYearAreaStat {
+  code: string;
+  cargoValue: string;
+  containers: number;
+  /** จำนวนเที่ยวส่ง (ปลายทาง) */
+  trips: number;
+  missionCount: number;
+  monthlyCargo: string[];
 }
 
 export interface SecurityIncident {
@@ -1121,6 +1171,7 @@ export interface OsContract {
   startDate: string;
   endDate: string;
   monthlyAmount: number | null;
+  totalAmount: number | null;
   notes: string | null;
   active: boolean;
   documents?: OsContractDocumentLink[];

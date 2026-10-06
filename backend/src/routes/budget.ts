@@ -160,7 +160,7 @@ function enrichLine(line: LineWithRelations) {
 const lineInclude = {
   account: { include: { category: { select: { id: true, name: true } } } },
   fiscalYear: { select: { yearBe: true } },
-  snapshots: { orderBy: [{ asOfDate: "desc" as const }, { spentAmount: "desc" as const }, { createdAt: "desc" as const }], take: 1 },
+  snapshots: { orderBy: [{ asOfDate: "desc" as const }, { createdAt: "desc" as const }], take: 1 },
   transactions: { select: { amount: true, occurredAt: true } },
 };
 
@@ -947,17 +947,8 @@ budgetRouter.get("/year-lines/:id/snapshots", async (req, res, next) => {
       where: { yearLineId: id },
       orderBy: [{ asOfDate: "desc" }, { createdAt: "desc" }],
     });
-    /** ชีตคำขอ + ชีตสรุปใช้งบ อาจตัดยอดวันเดียวกันซ้ำ — แสดงวันละแถว เลือกยอดสูงกว่า */
-    const byDay = new Map<string, (typeof rows)[number]>();
-    for (const r of rows) {
-      const day = r.asOfDate.toISOString().slice(0, 10);
-      const prev = byDay.get(day);
-      if (!prev || num(r.spentAmount) > num(prev.spentAmount)) byDay.set(day, r);
-    }
     res.json(
-      [...byDay.values()]
-        .sort((a, b) => b.asOfDate.getTime() - a.asOfDate.getTime())
-        .map((r) => ({
+      rows.map((r) => ({
           id: r.id,
           asOfDate: r.asOfDate.toISOString(),
           spentAmount: num(r.spentAmount),
@@ -981,12 +972,13 @@ budgetRouter.post("/year-lines/:id/snapshots", requireAdmin, async (req, res, ne
     const asOf = req.body?.asOfDate ? new Date(String(req.body.asOfDate)) : new Date();
     if (Number.isNaN(asOf.getTime())) return res.status(400).json({ error: "วันที่ไม่ถูกต้อง" });
     const day = asOf.toISOString().slice(0, 10);
-    const sameDay = await prisma.budgetSpendSnapshot.findMany({
-      where: { yearLineId: id },
+    /** บันทึกเองแยกจากข้อมูลอัปโหลด — ทับเฉพาะยอดบันทึกเองของวันเดียวกัน */
+    const manual = await prisma.budgetSpendSnapshot.findMany({
+      where: { yearLineId: id, source: "MANUAL" },
       orderBy: { createdAt: "asc" },
     });
-    const match = sameDay.find((r) => r.asOfDate.toISOString().slice(0, 10) === day);
-    const source = req.body?.source === "IMPORT" ? "IMPORT" : "MANUAL";
+    const match = manual.find((r) => r.asOfDate.toISOString().slice(0, 10) === day);
+    const source = "MANUAL" as const;
     const notes = req.body?.notes != null ? String(req.body.notes) : null;
     const created = match
       ? await prisma.budgetSpendSnapshot.update({
@@ -1003,6 +995,58 @@ budgetRouter.post("/year-lines/:id/snapshots", requireAdmin, async (req, res, ne
       source: created.source,
       notes: created.notes,
     });
+  } catch (e) {
+    next(e);
+  }
+});
+
+budgetRouter.patch("/year-lines/:id/snapshots/:snapId", requireAdmin, async (req, res, next) => {
+  try {
+    const id = routeParam(req.params.id);
+    const snapId = routeParam(req.params.snapId);
+    const existing = await prisma.budgetSpendSnapshot.findFirst({ where: { id: snapId, yearLineId: id } });
+    if (!existing) return res.status(404).json({ error: "ไม่พบยอดตัด" });
+    if (existing.source === "IMPORT")
+      return res.status(400).json({ error: "ยอดจากระบบหลักแก้ไขไม่ได้ — อัปโหลดไฟล์ใหม่เพื่ออัปเดต" });
+    const data: Prisma.BudgetSpendSnapshotUpdateInput = {};
+    if (req.body?.spentAmount !== undefined) {
+      const spent = dec(req.body.spentAmount);
+      if (spent == null) return res.status(400).json({ error: "ยอดใช้ไปไม่ถูกต้อง" });
+      data.spentAmount = spent;
+    }
+    if (req.body?.asOfDate !== undefined) {
+      const asOf = new Date(String(req.body.asOfDate));
+      if (Number.isNaN(asOf.getTime())) return res.status(400).json({ error: "วันที่ไม่ถูกต้อง" });
+      const day = asOf.toISOString().slice(0, 10);
+      const others = await prisma.budgetSpendSnapshot.findMany({
+        where: { yearLineId: id, source: "MANUAL", NOT: { id: snapId } },
+      });
+      if (others.some((o) => o.asOfDate.toISOString().slice(0, 10) === day))
+        return res.status(409).json({ error: "มียอดตัดของวันที่นี้อยู่แล้ว — แก้ไขแถวนั้นแทน" });
+      data.asOfDate = asOf;
+    }
+    if (req.body?.notes !== undefined) data.notes = req.body.notes == null ? null : String(req.body.notes).trim() || null;
+    data.source = "MANUAL";
+    const r = await prisma.budgetSpendSnapshot.update({ where: { id: snapId }, data });
+    res.json({
+      id: r.id,
+      asOfDate: r.asOfDate.toISOString(),
+      spentAmount: num(r.spentAmount),
+      source: r.source,
+      notes: r.notes,
+    });
+  } catch (e) {
+    next(e);
+  }
+});
+
+budgetRouter.delete("/year-lines/:id/snapshots/:snapId", requireAdmin, async (req, res, next) => {
+  try {
+    const id = routeParam(req.params.id);
+    const snapId = routeParam(req.params.snapId);
+    const r = await prisma.budgetSpendSnapshot.deleteMany({ where: { id: snapId, yearLineId: id, source: "MANUAL" } });
+    if (!r.count) return res.status(404).json({ error: "ไม่พบยอดบันทึกเอง (ยอดจากระบบหลักลบไม่ได้)" });
+    res.status(204).end();
   } catch (e) {
     next(e);
   }
@@ -1669,19 +1713,6 @@ budgetRouter.post("/imports", requireAdmin, upload.single("file"), async (req, r
     const asOfDate = parsed.asOfDate ?? parseAsOfFromFileName(fileName) ?? new Date();
     const asOfDay = asOfDate.toISOString().slice(0, 10);
     const snapNote = `นำเข้าจากระบบหลัก${fileName ? ` · ${fileName}` : ""}`;
-
-    const newest = await prisma.budgetImportBatch.findFirst({
-      where: { yearBe },
-      orderBy: [{ asOfDate: "desc" }, { createdAt: "desc" }],
-      select: { asOfDate: true },
-    });
-    if (newest && newest.asOfDate.toISOString().slice(0, 10) > asOfDay) {
-      const fmtDay = (d: Date) => d.toLocaleDateString("th-TH", { day: "numeric", month: "short", year: "numeric" });
-      return res.status(409).json({
-        error: `ไฟล์นี้เป็นข้อมูล ณ ${fmtDay(asOfDate)} ซึ่งเก่ากว่าข้อมูลที่นำเข้าล่าสุด (ณ ${fmtDay(newest.asOfDate)}) — ไม่ได้บันทึก เพื่อไม่ให้ยอดย้อนกลับ`,
-      });
-    }
-
     const fy = await prisma.budgetFiscalYear.upsert({ where: { yearBe }, create: { yearBe }, update: {} });
     const lines = await prisma.budgetYearLine.findMany({
       where: { fiscalYearId: fy.id, fundingType: "ANNUAL" },
@@ -1797,16 +1828,16 @@ budgetRouter.post("/imports", requireAdmin, upload.single("file"), async (req, r
               midYearAmount: new Prisma.Decimal(row.midYear),
             },
           });
-          const snaps = await tx.budgetSpendSnapshot.findMany({ where: { yearLineId: m.line.id } });
-          const sameDay = snaps.find((s) => s.asOfDate.toISOString().slice(0, 10) === asOfDay);
-          const data = {
-            asOfDate,
-            spentAmount: new Prisma.Decimal(row.spent),
-            source: "IMPORT" as const,
-            notes: snapNote,
-          };
-          if (sameDay) await tx.budgetSpendSnapshot.update({ where: { id: sameDay.id }, data });
-          else await tx.budgetSpendSnapshot.create({ data: { ...data, yearLineId: m.line.id } });
+          await tx.budgetSpendSnapshot.deleteMany({ where: { yearLineId: m.line.id, source: "IMPORT" } });
+          await tx.budgetSpendSnapshot.create({
+            data: {
+              yearLineId: m.line.id,
+              asOfDate,
+              spentAmount: new Prisma.Decimal(row.spent),
+              source: "IMPORT",
+              notes: snapNote,
+            },
+          });
         }
 
         /** งบปีผูกพัน (ปีถัดไป) → บรรทัด COMMITMENT ของปีนี้ ให้หน้างบผูกพันมียอดตรงระบบหลัก */
@@ -1920,9 +1951,10 @@ budgetRouter.get("/imports/latest", async (req, res, next) => {
   try {
     const yearBe = parseYearBe(req.query.yearBe);
     if (yearBe == null) return res.status(400).json({ error: "ปีงบประมาณไม่ถูกต้อง" });
+    /** อัปโหลดล่าสุด = ข้อมูลปัจจุบัน (อัปโหลดซ้ำเพื่ออัปเดตทับได้เสมอ) */
     const history = await prisma.budgetImportBatch.findMany({
       where: { yearBe },
-      orderBy: [{ asOfDate: "desc" }, { createdAt: "desc" }],
+      orderBy: { createdAt: "desc" },
       take: 20,
     });
     const latest = history[0];

@@ -75,6 +75,7 @@ model Personnel {
   inspections             AssetInspection[]
   armorMonthlyInspections ArmorMonthlyInspection[]
   trainingEnrollments     TrainingEnrollment[]
+  activityParticipations  WorkTaskParticipant[]
 }
 
 // --- ทะเบียนการอบรม ---
@@ -201,6 +202,7 @@ model Vehicle {
   maintenanceLogs   MaintenanceLog[]
   fuelLogs          FuelConsumptionLog[]
   missionVehicles   MissionVehicle[]
+  missionCrew       MissionPersonnel[] @relation("MissionPersonnelVehicle")
   weeklyInspections VehicleWeeklyInspection[]
   dispositionLogs   VehicleDispositionLog[]
 }
@@ -765,6 +767,10 @@ model MissionPersonnel {
   /// อัตราค่าตอบแทน (บาท) ต่อคนในภารกิจนี้ — ใช้รวมเข้าหมวดค่าตอบแทนในค่าใช้จ่าย
   compensationRate Decimal @default(0)
 
+  /// รถที่ประจำในภารกิจนี้ (ต้องเป็นรถที่อยู่ในรายการยานพาหนะของภารกิจ)
+  assignedVehicleId String?
+  assignedVehicle   Vehicle? @relation("MissionPersonnelVehicle", fields: [assignedVehicleId], references: [id], onDelete: SetNull)
+
   @@unique([missionId, personnelId])
 }
 
@@ -1158,6 +1164,12 @@ enum UserRole {
   OPERATOR
 }
 
+enum UserStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
 model User {
   id           String   @id @default(uuid())
   username     String   @unique
@@ -1167,6 +1179,18 @@ model User {
   /// รูปโปรไฟล์ — path เช่น /uploads/uuid.png
   avatarUrl    String?
   active       Boolean  @default(true)
+  /// สิทธิ์รายโมดูล { [moduleKey]: "none" | "read" | "edit" | "delete" } — null = ใช้ได้ทุกโมดูล (ADMIN ไม่ถูกจำกัด)
+  permissions  Json?
+  /// สมัครเอง = PENDING จนแอดมินอนุมัติ — บัญชีที่แอดมินสร้าง = APPROVED
+  status       UserStatus @default(APPROVED)
+  firstName    String?
+  lastName     String?
+  employeeCode String?
+  position     String?
+  affiliation  String?
+  reviewedAt   DateTime?
+  reviewedBy   String?
+  rejectReason String?
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 }
@@ -1206,16 +1230,81 @@ model WorkTask {
   id          String          @id @default(uuid())
   title       String
   notionUrl   String?         @db.Text
+  youtubeUrl  String?         @db.Text
   description String?         @db.Text
   startsAt    DateTime?
   endsAt      DateTime?
   location    String?
   recordedBy  String?
   status      WorkTaskStatus  @default(TODO)
+  categoryId  String?
+  category    ActivityCategory? @relation(fields: [categoryId], references: [id], onDelete: Restrict)
+  /// งบประมาณที่ตั้ง/อนุมัติสำหรับกิจกรรม (บาท)
+  budgetAmount Decimal?       @db.Decimal(14, 2)
   sortOrder   Int             @default(0)
   createdAt   DateTime        @default(now())
   updatedAt   DateTime        @updatedAt
   photos      WorkTaskPhoto[]
+  expenses    WorkTaskExpense[]
+  attachments WorkTaskAttachment[]
+  participants WorkTaskParticipant[]
+}
+
+/// ผู้เข้าร่วมกิจกรรม — ลิงก์บุคลากร (personnelId) หรือพิมพ์ชื่อเอง (บุคคลภายนอก)
+model WorkTaskParticipant {
+  id          String     @id @default(uuid())
+  workTaskId  String
+  workTask    WorkTask   @relation(fields: [workTaskId], references: [id], onDelete: Cascade)
+  personnelId String?
+  personnel   Personnel? @relation(fields: [personnelId], references: [id], onDelete: SetNull)
+  /// ชื่อ ณ วันที่บันทึก (คงไว้แม้ลบบุคลากร)
+  name        String
+  /// ตำแหน่ง / หน่วยงาน (สำหรับบุคคลภายนอก)
+  affiliation String?
+  sortOrder   Int        @default(0)
+  createdAt   DateTime   @default(now())
+
+  @@index([workTaskId])
+  @@index([personnelId])
+}
+
+model ActivityCategory {
+  id        String     @id @default(uuid())
+  name      String     @unique
+  sortOrder Int        @default(0)
+  createdAt DateTime   @default(now())
+  tasks     WorkTask[]
+}
+
+/// รายการค่าใช้จ่ายของกิจกรรม — amount = quantity × unitPrice
+model WorkTaskExpense {
+  id         String   @id @default(uuid())
+  workTaskId String
+  workTask   WorkTask @relation(fields: [workTaskId], references: [id], onDelete: Cascade)
+  category   String?
+  item       String
+  quantity   Decimal  @default(1) @db.Decimal(12, 2)
+  unitPrice  Decimal  @default(0) @db.Decimal(14, 2)
+  amount     Decimal  @default(0) @db.Decimal(14, 2)
+  note       String?  @db.Text
+  sortOrder  Int      @default(0)
+  createdAt  DateTime @default(now())
+
+  @@index([workTaskId])
+}
+
+model WorkTaskAttachment {
+  id           String   @id @default(uuid())
+  workTaskId   String
+  workTask     WorkTask @relation(fields: [workTaskId], references: [id], onDelete: Cascade)
+  fileUrl      String
+  mimeType     String
+  originalName String?
+  fileSize     Int?
+  sortOrder    Int      @default(0)
+  createdAt    DateTime @default(now())
+
+  @@index([workTaskId])
 }
 
 model WorkTaskPhoto {
@@ -1225,6 +1314,8 @@ model WorkTaskPhoto {
   fileUrl      String
   mimeType     String
   originalName String?
+  /// ภาพปกการ์ดกิจกรรม (มีได้ 1 รูปต่อกิจกรรม)
+  isCover      Boolean  @default(false)
   sortOrder    Int      @default(0)
   createdAt    DateTime @default(now())
 }
@@ -1572,7 +1663,10 @@ model OsContract {
   title         String?
   startDate     DateTime
   endDate       DateTime
+  /// งวดปกติ (เลขกลม) — งวดสุดท้าย = totalAmount − monthlyAmount × (จำนวนงวด − 1)
   monthlyAmount Decimal?
+  /// มูลค่าสัญญารวม
+  totalAmount   Decimal?
   notes         String?     @db.Text
   active        Boolean     @default(true)
   createdAt     DateTime    @default(now())

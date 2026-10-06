@@ -5,9 +5,11 @@ import { useAuth } from "../context/AuthContext";
 import {
   filterGroupItems,
   findGroupForPath,
+  firstAllowedPath,
   navGroups,
   resolveGroupEntryPath,
 } from "../lib/navConfig";
+import { levelForPath } from "../lib/permissions";
 import { groupTone, NavGlyph } from "../lib/navVisuals";
 import { mediaUrl } from "../lib/uiTokens";
 import { APP_VERSION } from "../version";
@@ -97,7 +99,8 @@ export function Shell() {
   const [moduleHeaderCollapsed, setModuleHeaderCollapsed] = useState(readModuleHeaderCollapsed);
   const [dataEpoch, setDataEpoch] = useState(0);
   const [refreshing, setRefreshing] = useState(false);
-  const activeGroup = findGroupForPath(location.pathname, user?.role);
+  const activeGroup = findGroupForPath(location.pathname, user);
+  const pageLevel = levelForPath(user, location.pathname);
 
   useEffect(() => {
     const onRefresh = () => {
@@ -155,10 +158,10 @@ export function Shell() {
   const goGroup = (groupId: string) => {
     const group = navGroups.find((g) => g.id === groupId);
     if (!group) return;
-    const items = filterGroupItems(group, user?.role);
+    const items = filterGroupItems(group, user);
     if (!items.length) return;
     closeMobile();
-    navigate(resolveGroupEntryPath(group, user?.role));
+    navigate(resolveGroupEntryPath(group, user));
   };
 
   const navBody = (
@@ -168,7 +171,7 @@ export function Shell() {
         aria-label="หมวดเมนู"
       >
         {navGroups.map((group) => {
-          const items = filterGroupItems(group, user?.role);
+          const items = filterGroupItems(group, user);
           if (!items.length) return null;
           const isActive = activeGroup?.id === group.id;
           const tone = groupTone(group.id);
@@ -260,7 +263,7 @@ export function Shell() {
               className="mt-0.5 h-4 w-auto max-w-[min(100%,8rem)] object-contain object-left sm:h-5 sm:max-w-[9.5rem] lg:h-5 lg:max-w-[10.5rem]"
             />
           </div>
-          {moduleHeaderCollapsed ? <ModuleHeaderBarNav role={user?.role} /> : null}
+          {moduleHeaderCollapsed ? <ModuleHeaderBarNav viewer={user} /> : null}
         </div>
         <div className="flex min-w-0 shrink-0 items-center gap-1.5 border-l border-[#0000BF]/15 pl-2.5 sm:gap-2 sm:pl-3">
           <button
@@ -353,13 +356,34 @@ export function Shell() {
           style={{ paddingBottom: "max(1rem, env(safe-area-inset-bottom, 0px))" }}
         >
           <div className="w-full min-w-0 max-w-none print:max-w-none">
-            <ModuleSectionChrome role={user?.role} />
+            <ModuleSectionChrome viewer={user} />
             <div
               className={`app-card-surface w-full rounded-[1.5rem] border border-white/70 px-4 pb-4 sm:px-6 sm:pb-6 ${
                 moduleHeaderCollapsed ? "pt-3 sm:pt-4" : "pt-4 sm:pt-6"
               }`}
             >
-              <Outlet key={dataEpoch} />
+              {pageLevel === "none" ? (
+                <div className="py-12 text-center">
+                  <p className="text-base font-black text-[#1e1b4b]">ไม่มีสิทธิ์เข้าถึงหน้านี้</p>
+                  <p className="mt-1 text-sm text-slate-500">ติดต่อผู้ดูแลระบบหากต้องการใช้งานข้อมูลส่วนนี้</p>
+                  <button
+                    type="button"
+                    onClick={() => navigate(firstAllowedPath(user), { replace: true })}
+                    className="mt-4 rounded-xl border border-[#0000BF]/20 bg-white px-4 py-2 text-sm font-bold text-[#0000BF] hover:bg-indigo-50"
+                  >
+                    ไปหน้าที่ใช้งานได้
+                  </button>
+                </div>
+              ) : (
+                <>
+                  {pageLevel === "read" || pageLevel === "edit" ? (
+                    <p className="no-print mb-3 rounded-lg border border-amber-200 bg-amber-50/70 px-3 py-1.5 text-[12px] font-semibold text-amber-800">
+                      สิทธิ์ของคุณในส่วนนี้: {pageLevel === "read" ? "อ่านอย่างเดียว — เพิ่ม แก้ไข หรือลบข้อมูลไม่ได้" : "เพิ่มและแก้ไขได้ — ลบข้อมูลไม่ได้"}
+                    </p>
+                  ) : null}
+                  <Outlet key={dataEpoch} />
+                </>
+              )}
             </div>
           </div>
         </main>

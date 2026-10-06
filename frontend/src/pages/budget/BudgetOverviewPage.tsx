@@ -1,11 +1,16 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Link, Navigate, useParams } from "react-router-dom";
+import { Link, Navigate, useParams, useSearchParams } from "react-router-dom";
 import { PageHeaderBar } from "../../components/PageHeaderBar";
 import { BudgetOverviewSubNav } from "../../components/BudgetOverviewSubNav";
 import { BudgetStatCard, BUDGET_STAT_TONES } from "../../components/BudgetStatCard";
 import { FitSingleLine } from "../../components/FitSingleLine";
 import { apiJson } from "../../api/client";
-import { toolbarLinkBtnClass } from "../../lib/uiTokens";
+import {
+  brandGradientFillClass,
+  toolbarLinkBtnClass,
+  toolbarMasterBtnClass,
+  toolbarMasterGroupClass,
+} from "../../lib/uiTokens";
 import type { LoadOptions } from "../../lib/loadOptions";
 import { setLoadBusy } from "../../lib/loadOptions";
 import {
@@ -25,6 +30,8 @@ import {
 } from "./budgetCategories";
 import { BudgetExecutiveKindCards, BudgetExecutiveSummary } from "./BudgetExecutiveSummary";
 import type { BudgetImportData } from "./BudgetMainSystemImport";
+
+type OverviewView = "overview" | "majors" | "watch";
 
 function m(n: number | null | undefined): string {
   if (n == null || !Number.isFinite(n)) return "—";
@@ -51,6 +58,19 @@ export function BudgetOverviewPage() {
   const [selected, setSelected] = useState<BudgetMajor | null>(null);
 
   const [importData, setImportData] = useState<BudgetImportData | null>(null);
+  const [searchParams, setSearchParams] = useSearchParams();
+  const viewParam = searchParams.get("view");
+  const view: OverviewView = viewParam === "majors" || viewParam === "watch" ? viewParam : "overview";
+  const setView = (v: OverviewView) =>
+    setSearchParams(
+      (prev) => {
+        const next = new URLSearchParams(prev);
+        if (v === "overview") next.delete("view");
+        else next.set("view", v);
+        return next;
+      },
+      { replace: true },
+    );
 
   const load = useCallback(async (y: number, opts?: LoadOptions) => {
     setLoadBusy(setLoading, opts, true);
@@ -130,8 +150,159 @@ export function BudgetOverviewPage() {
   const amountLabel = isRequestYear ? "คำขอตั้ง" : "จัดสรร";
   const pageTitle = isRequestYear ? `สรุปคำขอตั้งงบปี ${yearBe}` : `สรุปงบปี ${yearBe}`;
 
+  const hasImport = Boolean(importData?.batch);
+  const views: { id: OverviewView; label: string }[] = [
+    { id: "overview", label: "ภาพรวม" },
+    { id: "majors", label: "หัวข้อใหญ่" },
+    ...(hasImport ? [{ id: "watch" as const, label: "ประเด็นติดตาม" }] : []),
+  ];
+  const activeView: OverviewView = view === "watch" && !hasImport ? "overview" : view;
+  const openMajors = (k: BudgetKind) => {
+    setKindFilter(k);
+    setView("majors");
+  };
+
+  const majorsPanel = (
+    <section className="flex min-h-[20rem] min-w-0 flex-col overflow-hidden rounded-[1.25rem] border border-[#e8e6fc] bg-white/90 lg:min-h-0">
+      <div className="shrink-0 border-b border-[#ecebff] bg-gradient-to-r from-[#faf9ff] to-[#fdf2f8] px-3 py-2">
+        <h2 className="text-xs font-black text-[#1e1b4b]">
+          หัวข้อใหญ่ · {kindLabel(kindFilter)}
+          <span className="ml-1.5 text-[11px] font-bold text-slate-500">
+            ({isExpenseView ? expenseMajors.length : capexMajors.length} รายการ) — คลิกเพื่อดูรายการย่อย
+          </span>
+        </h2>
+      </div>
+      <div className="min-h-0 flex-1 divide-y divide-[#ecebff] overflow-y-auto">
+        {(isExpenseView ? expenseMajors : capexMajors).map((block) => {
+          const pct = block.pctUsed;
+          return (
+            <button
+              key={block.key}
+              type="button"
+              onClick={() => setSelected(block)}
+              className="flex w-full items-center justify-between gap-2 px-3 py-1.5 text-left transition hover:bg-[#0000BF]/[0.04]"
+            >
+              <div className="min-w-0 flex-1">
+                <div className="truncate text-[13px] font-semibold leading-snug text-[#1e1b4b]">{block.name}</div>
+                <div className="mt-0.5 text-[10px] leading-none text-slate-500">{block.children.length} รายการย่อย</div>
+                {isTrackingYear ? (
+                  <div className="mt-1 h-1.5 max-w-xs overflow-hidden rounded-full bg-slate-100">
+                    <div
+                      className={`h-full rounded-full ${
+                        pct != null && pct >= 0.9 ? "bg-rose-500" : pct != null && pct >= 0.5 ? "bg-amber-400" : "bg-emerald-400"
+                      }`}
+                      style={{ width: `${Math.min(100, Math.max(0, (pct ?? 0) * 100))}%` }}
+                    />
+                  </div>
+                ) : null}
+              </div>
+              <div className="flex min-w-0 max-w-[55%] shrink-0 items-center gap-3 text-right text-xs sm:max-w-none">
+                <div className="min-w-0 w-[6.5rem] sm:w-[7.5rem]">
+                  <div className="text-[9px] font-bold uppercase leading-none text-slate-400">{amountLabel}</div>
+                  <FitSingleLine
+                    className="font-semibold tabular-nums leading-tight text-[#2e2a58]"
+                    maxPx={12}
+                    minPx={8}
+                    title={fmt(block.allocated)}
+                  >
+                    {fmt(block.allocated)}
+                  </FitSingleLine>
+                </div>
+                {isTrackingYear ? (
+                  <>
+                    <div className="min-w-0 w-[6.5rem] sm:w-[7.5rem]">
+                      <div className="text-[9px] font-bold uppercase leading-none text-slate-400">ใช้ไป</div>
+                      <FitSingleLine
+                        className={`font-semibold tabular-nums leading-tight ${pctToneClass(pct)}`}
+                        maxPx={12}
+                        minPx={8}
+                        title={fmt(block.spent)}
+                      >
+                        {fmt(block.spent)}
+                      </FitSingleLine>
+                    </div>
+                    <div className={`min-w-[2.75rem] text-[12px] font-bold ${pctToneClass(pct)}`}>{formatPct(pct)}</div>
+                  </>
+                ) : null}
+                <span className="text-[10px] font-bold text-[#4d47b6]">→</span>
+              </div>
+            </button>
+          );
+        })}
+        {!loading && (isExpenseView ? !expenseMajors.length : !capexMajors.length) ? (
+          <p className="px-4 py-8 text-center text-sm text-slate-500">ไม่พบหัวข้อในหมวดนี้</p>
+        ) : null}
+      </div>
+    </section>
+  );
+
+  const manualKindCards = (stacked: boolean) => (
+    <div className={stacked ? "grid gap-3 lg:min-h-0 lg:grid-rows-2" : "grid gap-3 md:grid-cols-2"}>
+      {kindStats.map((k) => {
+        const active = stacked && kindFilter === k.kind;
+        const isExpense = k.kind === "EXPENSE";
+        return (
+          <BudgetStatCard
+            key={k.kind}
+            label={k.label}
+            icon={isExpense ? "cash" : "equipment"}
+            tone={isExpense ? BUDGET_STAT_TONES.expense : BUDGET_STAT_TONES.capex}
+            onClick={() => (stacked ? setKindFilter(k.kind) : openMajors(k.kind))}
+            active={active}
+            trailing={
+              active ? (
+                <span className="rounded-full bg-gradient-to-r from-[#0000BF] via-[#8b5cf6] to-[#ec4899] px-2 py-0.5 text-[10px] font-bold text-white">
+                  กำลังดู
+                </span>
+              ) : (
+                <span className="text-[11px] font-bold text-[#4d47b6]">{stacked ? "คลิกเพื่อกรอง" : "ดูหัวข้อใหญ่ →"}</span>
+              )
+            }
+          >
+            <FitSingleLine
+              className="font-black tabular-nums text-[#1e1b4b]"
+              maxPx={26}
+              minPx={11}
+              title={`${fmt(k.allocated)} ${unit}`}
+            >
+              {fmt(k.allocated)} <span className="font-bold text-[#66638c]">{unit}</span>
+            </FitSingleLine>
+            {isTrackingYear ? (
+              <dl className="mt-2 grid grid-cols-3 gap-2 text-xs">
+                <div className="min-w-0">
+                  <dt className="text-slate-500">ใช้ไป</dt>
+                  <dd className={`font-semibold ${pctToneClass(k.pctUsed)}`}>
+                    <FitSingleLine className="font-semibold tabular-nums" maxPx={12} minPx={8} title={fmt(k.spent)}>
+                      {fmt(k.spent)}
+                    </FitSingleLine>
+                  </dd>
+                </div>
+                <div className="min-w-0">
+                  <dt className="text-slate-500">คงเหลือ</dt>
+                  <dd className="font-semibold text-[#2e2a58]">
+                    <FitSingleLine className="font-semibold tabular-nums" maxPx={12} minPx={8} title={fmt(k.remaining)}>
+                      {fmt(k.remaining)}
+                    </FitSingleLine>
+                  </dd>
+                </div>
+                <div className="min-w-0">
+                  <dt className="text-slate-500">% ใช้</dt>
+                  <dd className={`font-semibold ${pctToneClass(k.pctUsed)}`}>{formatPct(k.pctUsed)}</dd>
+                </div>
+              </dl>
+            ) : (
+              <p className="mt-2 text-xs text-slate-500">
+                {k.majorCount} หมวด · {isRequestYear ? "ยอดคำขอตั้ง" : "กรอบงบ"}
+              </p>
+            )}
+          </BudgetStatCard>
+        );
+      })}
+    </div>
+  );
+
   return (
-    <div className="space-y-4">
+    <div className="space-y-3">
       <PageHeaderBar
         title={pageTitle}
         filter={{
@@ -145,16 +316,60 @@ export function BudgetOverviewPage() {
             </button>
           ),
         }}
-        extras={<BudgetOverviewSubNav />}
+        extras={
+          <div className="flex flex-wrap items-center gap-1.5">
+            <BudgetOverviewSubNav />
+            <nav aria-label="มุมมองสรุปงบ" className={`${toolbarMasterGroupClass} print:hidden`}>
+              {views.map((v) => (
+                <button
+                  key={v.id}
+                  type="button"
+                  onClick={() => setView(v.id)}
+                  aria-current={activeView === v.id ? "page" : undefined}
+                  className={`${toolbarMasterBtnClass} ${activeView === v.id ? `${brandGradientFillClass} !text-white` : ""}`}
+                >
+                  {v.label}
+                </button>
+              ))}
+            </nav>
+          </div>
+        }
       />
 
       {err ? <p className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">{err}</p> : null}
       {loading ? <p className="text-sm text-slate-500">กำลังโหลด…</p> : null}
 
-      {importData?.batch ? (
-        <BudgetExecutiveSummary data={importData} yearBe={yearBe} fmt={fmt} unit={unit} />
+      <div className="lg:h-[calc(100dvh-10rem)] lg:min-h-[30rem]">
+      {activeView === "majors" ? (
+        <div className="grid gap-3 lg:h-full lg:grid-cols-12">
+          <div className="lg:col-span-4 lg:min-h-0 [&>div]:lg:h-full">
+            {hasImport && importData ? (
+              <BudgetExecutiveKindCards
+                data={importData}
+                yearBe={yearBe}
+                fmt={fmt}
+                unit={unit}
+                activeKind={kindFilter}
+                onSelectKind={setKindFilter}
+                className="grid gap-3 lg:grid-rows-2"
+              />
+            ) : (
+              manualKindCards(true)
+            )}
+          </div>
+          <div className="flex min-w-0 flex-col lg:col-span-8 lg:min-h-0 [&>section]:flex-1">{majorsPanel}</div>
+        </div>
+      ) : hasImport && importData ? (
+        <BudgetExecutiveSummary
+          data={importData}
+          yearBe={yearBe}
+          fmt={fmt}
+          unit={unit}
+          view={activeView === "watch" ? "watch" : "overview"}
+          onSelectKind={openMajors}
+        />
       ) : (
-      <>
+      <div className="space-y-3">
       {/* KPI รวม */}
       <div className={`grid gap-3 sm:grid-cols-2 ${isTrackingYear ? "lg:grid-cols-4" : "lg:grid-cols-2"}`}>
         <BudgetStatCard
@@ -221,159 +436,10 @@ export function BudgetOverviewPage() {
         ) : null}
       </div>
 
-      {/* การ์ดหมวด — คลิกกรอง */}
-      <div className="grid gap-3 md:grid-cols-2">
-        {kindStats.map((k) => {
-          const active = kindFilter === k.kind;
-          const isExpense = k.kind === "EXPENSE";
-          return (
-            <BudgetStatCard
-              key={k.kind}
-              label={k.label}
-              icon={isExpense ? "cash" : "equipment"}
-              tone={isExpense ? BUDGET_STAT_TONES.expense : BUDGET_STAT_TONES.capex}
-              onClick={() => setKindFilter(k.kind)}
-              active={active}
-              trailing={
-                active ? (
-                  <span className="rounded-full bg-gradient-to-r from-[#0000BF] via-[#8b5cf6] to-[#ec4899] px-2 py-0.5 text-[10px] font-bold text-white">
-                    กำลังดู
-                  </span>
-                ) : (
-                  <span className="text-[11px] font-bold text-[#4d47b6]">คลิกเพื่อกรอง</span>
-                )
-              }
-            >
-              <FitSingleLine
-                className="font-black tabular-nums text-[#1e1b4b]"
-                maxPx={26}
-                minPx={11}
-                title={`${fmt(k.allocated)} ${unit}`}
-              >
-                {fmt(k.allocated)} <span className="font-bold text-[#66638c]">{unit}</span>
-              </FitSingleLine>
-              {isTrackingYear ? (
-                <dl className="mt-2 grid grid-cols-3 gap-2 text-xs">
-                  <div className="min-w-0">
-                    <dt className="text-slate-500">ใช้ไป</dt>
-                    <dd className={`font-semibold ${pctToneClass(k.pctUsed)}`}>
-                      <FitSingleLine className="font-semibold tabular-nums" maxPx={12} minPx={8} title={fmt(k.spent)}>
-                        {fmt(k.spent)}
-                      </FitSingleLine>
-                    </dd>
-                  </div>
-                  <div className="min-w-0">
-                    <dt className="text-slate-500">คงเหลือ</dt>
-                    <dd className="font-semibold text-[#2e2a58]">
-                      <FitSingleLine className="font-semibold tabular-nums" maxPx={12} minPx={8} title={fmt(k.remaining)}>
-                        {fmt(k.remaining)}
-                      </FitSingleLine>
-                    </dd>
-                  </div>
-                  <div className="min-w-0">
-                    <dt className="text-slate-500">% ใช้</dt>
-                    <dd className={`font-semibold ${pctToneClass(k.pctUsed)}`}>{formatPct(k.pctUsed)}</dd>
-                  </div>
-                </dl>
-              ) : (
-                <p className="mt-2 text-xs text-slate-500">
-                  {k.majorCount} หมวด · {isRequestYear ? "ยอดคำขอตั้ง" : "กรอบงบ"}
-                </p>
-              )}
-            </BudgetStatCard>
-          );
-        })}
+      {manualKindCards(false)}
       </div>
-      </>
       )}
-
-      {importData?.batch ? (
-        <BudgetExecutiveKindCards
-          data={importData}
-          yearBe={yearBe}
-          fmt={fmt}
-          unit={unit}
-          activeKind={kindFilter}
-          onSelectKind={setKindFilter}
-        />
-      ) : null}
-
-      {/* รายการหัวข้อใหญ่ */}
-      <section className="overflow-hidden rounded-[1.25rem] border border-[#e8e6fc] bg-white/90">
-        <div className="border-b border-[#ecebff] bg-gradient-to-r from-[#faf9ff] to-[#fdf2f8] px-3 py-2">
-          <h2 className="text-xs font-black text-[#1e1b4b]">
-            หัวข้อใหญ่ · {kindLabel(kindFilter)}
-            <span className="ml-1.5 text-[11px] font-bold text-slate-500">
-              ({isExpenseView ? expenseMajors.length : capexMajors.length} รายการ)
-            </span>
-          </h2>
-        </div>
-        <div className="divide-y divide-[#ecebff]">
-          {(isExpenseView ? expenseMajors : capexMajors).map((block) => {
-            const pct = block.pctUsed;
-            return (
-              <button
-                key={block.key}
-                type="button"
-                onClick={() => setSelected(block)}
-                className="flex w-full items-center justify-between gap-2 px-3 py-1.5 text-left transition hover:bg-[#0000BF]/[0.04]"
-              >
-                <div className="min-w-0 flex-1">
-                  <div className="truncate text-[13px] font-semibold leading-snug text-[#1e1b4b]">{block.name}</div>
-                  <div className="mt-0.5 text-[10px] leading-none text-slate-500">
-                    {block.children.length} รายการย่อย
-                  </div>
-                  {isTrackingYear ? (
-                    <div className="mt-1 h-1.5 max-w-xs overflow-hidden rounded-full bg-slate-100">
-                      <div
-                        className={`h-full rounded-full ${
-                          pct != null && pct >= 0.9 ? "bg-rose-500" : pct != null && pct >= 0.5 ? "bg-amber-400" : "bg-emerald-400"
-                        }`}
-                        style={{ width: `${Math.min(100, Math.max(0, (pct ?? 0) * 100))}%` }}
-                      />
-                    </div>
-                  ) : null}
-                </div>
-                <div className="flex min-w-0 max-w-[55%] shrink-0 items-center gap-3 text-right text-xs sm:max-w-none">
-                  <div className="min-w-0 w-[6.5rem] sm:w-[7.5rem]">
-                    <div className="text-[9px] font-bold uppercase leading-none text-slate-400">{amountLabel}</div>
-                    <FitSingleLine
-                      className="font-semibold tabular-nums leading-tight text-[#2e2a58]"
-                      maxPx={12}
-                      minPx={8}
-                      title={fmt(block.allocated)}
-                    >
-                      {fmt(block.allocated)}
-                    </FitSingleLine>
-                  </div>
-                  {isTrackingYear ? (
-                    <>
-                      <div className="min-w-0 w-[6.5rem] sm:w-[7.5rem]">
-                        <div className="text-[9px] font-bold uppercase leading-none text-slate-400">ใช้ไป</div>
-                        <FitSingleLine
-                          className={`font-semibold tabular-nums leading-tight ${pctToneClass(pct)}`}
-                          maxPx={12}
-                          minPx={8}
-                          title={fmt(block.spent)}
-                        >
-                          {fmt(block.spent)}
-                        </FitSingleLine>
-                      </div>
-                      <div className={`min-w-[2.75rem] text-[12px] font-bold ${pctToneClass(pct)}`}>
-                        {formatPct(pct)}
-                      </div>
-                    </>
-                  ) : null}
-                  <span className="text-[10px] font-bold text-[#4d47b6]">→</span>
-                </div>
-              </button>
-            );
-          })}
-          {!loading && (isExpenseView ? !expenseMajors.length : !capexMajors.length) ? (
-            <p className="px-4 py-8 text-center text-sm text-slate-500">ไม่พบหัวข้อในหมวดนี้</p>
-          ) : null}
-        </div>
-      </section>
+      </div>
 
       {/* Popup รายละเอียดหัวข้อใหญ่ */}
       {selected ? (

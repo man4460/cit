@@ -1,5 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useState, type ReactNode } from "react";
 import { apiJson, getToken, setToken } from "../api/client";
+import type { PermissionMap } from "../lib/permissions";
 
 export type AuthUser = {
   id: string;
@@ -8,6 +9,8 @@ export type AuthUser = {
   fullName: string | null;
   avatarUrl: string | null;
   active: boolean;
+  /** null = ใช้ได้ทุกโมดูล */
+  permissions: PermissionMap | null;
 };
 
 type AuthState = {

@@ -9,6 +9,7 @@ import {
   type NavGroup,
 } from "../lib/navConfig";
 import { groupTone, itemVisual, NavGlyph } from "../lib/navVisuals";
+import type { PermissionViewer } from "../lib/permissions";
 import {
   brandGradientFillClass,
   moduleCollapseBtnClass,
@@ -46,17 +47,17 @@ function CollapseGlyph() {
   );
 }
 
-function moduleTabItems(group: NavGroup, role?: string) {
-  return filterGroupItems(group, role);
+function moduleTabItems(group: NavGroup, viewer?: PermissionViewer) {
+  return filterGroupItems(group, viewer);
 }
 
-function ModuleTabs({ group, role }: { group: NavGroup; role?: string }) {
+function ModuleTabs({ group, viewer }: { group: NavGroup; viewer?: PermissionViewer }) {
   if (group.id === "budget") {
-    return <BudgetModuleTabs isAdmin={role === "ADMIN"} />;
+    return <BudgetModuleTabs isAdmin={viewer?.role === "ADMIN"} />;
   }
 
   const { pathname } = useLocation();
-  const items = moduleTabItems(group, role);
+  const items = moduleTabItems(group, viewer);
 
   return (
     <nav aria-label={`เมนู${group.titleTh}`} className="print:hidden">
@@ -86,11 +87,11 @@ function ModuleTabs({ group, role }: { group: NavGroup; role?: string }) {
   );
 }
 
-export function ModuleHeaderBarNav({ role }: { role?: string }) {
+export function ModuleHeaderBarNav({ viewer }: { viewer?: PermissionViewer }) {
   const { pathname } = useLocation();
-  const group = findGroupForPath(pathname, role);
+  const group = findGroupForPath(pathname, viewer);
   if (!group) return null;
-  const items = moduleTabItems(group, role);
+  const items = moduleTabItems(group, viewer);
   const isBudget = group.id === "budget";
 
   return (
@@ -100,7 +101,7 @@ export function ModuleHeaderBarNav({ role }: { role?: string }) {
         aria-label={`เมนู${group.titleTh}`}
       >
         {isBudget ? (
-          <BudgetModuleTabs isAdmin={role === "ADMIN"} compact />
+          <BudgetModuleTabs isAdmin={viewer?.role === "ADMIN"} compact />
         ) : (
           <ul className="flex gap-0.5 sm:gap-1">
             {items.map((item) => {
@@ -144,9 +145,9 @@ export function ModuleHeaderBarNav({ role }: { role?: string }) {
   );
 }
 
-export function ModuleSectionChrome({ role }: { role?: string }) {
+export function ModuleSectionChrome({ viewer }: { viewer?: PermissionViewer }) {
   const { pathname } = useLocation();
-  const group = findGroupForPath(pathname, role);
+  const group = findGroupForPath(pathname, viewer);
   const [collapsed, setCollapsed] = useState(readModuleHeaderCollapsed);
 
   useEffect(() => {
@@ -201,7 +202,7 @@ export function ModuleSectionChrome({ role }: { role?: string }) {
         <div className={`h-1.5 w-full rounded-full bg-gradient-to-r ${tone.bar}`} />
       </div>
       <div className="mt-4 border-t border-white/40 pt-4">
-        <ModuleTabs group={group} role={role} />
+        <ModuleTabs group={group} viewer={viewer} />
       </div>
     </header>
   );

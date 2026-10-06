@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { useLocation, useNavigate } from "react-router-dom";
+import { Link, useLocation, useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 import { brandCtaButtonClass } from "../lib/uiTokens";
 
@@ -51,7 +51,7 @@ export function LoginPage() {
           />
         </div>
         <h1 className="mt-4 text-center text-xl font-black tracking-tight text-[#1e1b3a]">เข้าสู่ระบบ</h1>
-        <p className="mt-1 text-center text-sm font-medium text-slate-700">ใช้บัญชีที่ผู้ดูแลระบบสร้างให้</p>
+        <p className="mt-1 text-center text-sm font-medium text-slate-700">ใช้บัญชีที่ได้รับอนุมัติจากผู้ดูแลระบบ</p>
 
         <form onSubmit={onSubmit} className="mt-8 space-y-4">
           {err && (
@@ -85,6 +85,12 @@ export function LoginPage() {
           >
             {pending ? "กำลังเข้าสู่ระบบ…" : "เข้าสู่ระบบ"}
           </button>
+          <p className="text-center text-sm text-slate-600">
+            ยังไม่มีบัญชี?{" "}
+            <Link to="/register" className="font-bold text-[#0000BF] hover:underline">
+              สมัครสมาชิก
+            </Link>
+          </p>
         </form>
       </div>
     </div>

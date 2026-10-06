@@ -1,6 +1,7 @@
 import { Router } from "express";
 import { prisma } from "../lib/prisma.js";
 import { routeParam } from "../lib/routeParam.js";
+import { analyzeIncidents, type AnalysisIncident } from "../lib/incidentAnalysis.js";
 
 export const securityIncidentsRouter = Router();
 
@@ -39,6 +40,61 @@ function periodRangeLocal(period: string): { start: Date; end: Date; year: numbe
     start = new Date(now.getFullYear(), qStartMonth, 1, 0, 0, 0, 0);
   } else start = new Date(now.getFullYear(), 0, 1, 0, 0, 0, 0);
   return { start, end, year: start.getFullYear() };
+}
+
+type IncidentSearchFields = {
+  externalId: number;
+  title: string;
+  location: string | null;
+  incidentType: string | null;
+  impactLevel: string | null;
+  statusResolved: boolean;
+  cause: string | null;
+  details: string | null;
+  actionExecuted: string | null;
+  reportingOfficer: string | null;
+};
+
+const incidentSearchSelect = {
+  externalId: true,
+  title: true,
+  location: true,
+  incidentType: true,
+  impactLevel: true,
+  statusResolved: true,
+  cause: true,
+  details: true,
+  actionExecuted: true,
+  reportingOfficer: true,
+} as const;
+
+function normalizeSearch(s: string) {
+  return s.trim().toLowerCase().normalize("NFC");
+}
+
+/** ทุกคำในช่องกรองแดชบอร์ดต้องพบในข้อความของเหตุการณ์ (ตรรกะเดียวกับ rowMatchesFilter ฝั่งหน้าเว็บ) */
+function incidentMatchesSearch(tokens: string[], r: IncidentSearchFields, monthIndex: number) {
+  if (tokens.length === 0) return true;
+  const hay = [
+    String(r.externalId),
+    r.title,
+    (r.incidentType ?? "").trim() || "ไม่ระบุ",
+    (r.location ?? "").trim() || "ไม่ระบุ",
+    r.impactLevel,
+    r.cause,
+    r.details,
+    r.actionExecuted,
+    r.reportingOfficer,
+    r.statusResolved ? "ปิดแล้ว" : "เปิดอยู่",
+    MONTH_LABELS_TH[monthIndex],
+  ]
+    .map((p) => normalizeSearch(String(p ?? "")))
+    .join(" ");
+  return tokens.every((t) => hay.includes(t));
+}
+
+function searchTokens(raw: unknown) {
+  return normalizeSearch(String(raw ?? "")).split(/\s+/).filter(Boolean);
 }
 
 async function getDashboardYears(): Promise<number[]> {
@@ -80,6 +136,7 @@ securityIncidentsRouter.get("/stats/year", async (req, res, next) => {
       periodKey = period as PeriodKey;
     }
 
+    const tokens = searchTokens(req.query.q);
     const availableYears = await getDashboardYears();
 
     const rows = await prisma.securityIncident.findMany({
@@ -97,9 +154,7 @@ securityIncidentsRouter.get("/stats/year", async (req, res, next) => {
       select: {
         incidentAt: true,
         sourceCreatedAt: true,
-        statusResolved: true,
-        incidentType: true,
-        location: true,
+        ...incidentSearchSelect,
       },
     });
 
@@ -115,6 +170,7 @@ securityIncidentsRouter.get("/stats/year", async (req, res, next) => {
       const ref = r.incidentAt ?? r.sourceCreatedAt;
       if (!ref || ref < start || ref >= end) continue;
       const mo = periodWin ? ref.getMonth() : ref.getUTCMonth();
+      if (!incidentMatchesSearch(tokens, r, mo)) continue;
       count[mo] += 1;
       if (r.statusResolved) {
         resolved[mo] += 1;
@@ -159,6 +215,142 @@ securityIncidentsRouter.get("/stats/year", async (req, res, next) => {
       months,
       byType: sortDesc(byType),
       byLocation: sortDesc(byLocation),
+    });
+  } catch (e) {
+    next(e);
+  }
+});
+
+/** รายการเหตุการณ์สำหรับ popup แดชบอร์ด — ช่วงเวลาเดียวกับ /stats/year + กรองเดือน/ประเภท/สถานที่ */
+securityIncidentsRouter.get("/stats/year/incidents", async (req, res, next) => {
+  try {
+    const location = String(req.query.location ?? "").trim();
+    const period = String(req.query.period ?? "").trim().toLowerCase();
+    const periodWin = periodRangeLocal(period);
+    const y = parseInt(String(req.query.year ?? ""), 10);
+    const year = Number.isFinite(y) && y >= 2000 && y <= 2100 ? y : new Date().getFullYear();
+    let start = new Date(Date.UTC(year, 0, 1, 0, 0, 0));
+    let end = new Date(Date.UTC(year + 1, 0, 1, 0, 0, 0));
+    if (periodWin) {
+      start = periodWin.start;
+      end = new Date(periodWin.end.getTime() + 1);
+    }
+    const monthQ = parseInt(String(req.query.month ?? ""), 10);
+    const month = Number.isFinite(monthQ) && monthQ >= 1 && monthQ <= 12 ? monthQ : null;
+    const typeQ = String(req.query.type ?? "").trim();
+    const placeQ = String(req.query.place ?? "").trim();
+    const statusQ = String(req.query.status ?? "").trim().toLowerCase();
+    const tokens = searchTokens(req.query.q);
+
+    const rows = await prisma.securityIncident.findMany({
+      where: {
+        AND: [
+          location ? { location } : {},
+          {
+            OR: [
+              { incidentAt: { gte: start, lt: end } },
+              { AND: [{ incidentAt: null }, { sourceCreatedAt: { gte: start, lt: end } }] },
+            ],
+          },
+        ],
+      },
+      orderBy: [{ incidentAt: "desc" }, { externalId: "desc" }],
+      select: {
+        id: true,
+        externalId: true,
+        title: true,
+        location: true,
+        incidentAt: true,
+        sourceCreatedAt: true,
+        incidentType: true,
+        impactLevel: true,
+        statusResolved: true,
+        cause: true,
+        details: true,
+        actionExecuted: true,
+        reportingOfficer: true,
+      },
+    });
+
+    const filtered = rows.filter((r) => {
+      const ref = r.incidentAt ?? r.sourceCreatedAt;
+      if (!ref || ref < start || ref >= end) return false;
+      const mo = periodWin ? ref.getMonth() : ref.getUTCMonth();
+      if (month != null && mo + 1 !== month) return false;
+      if (!incidentMatchesSearch(tokens, r, mo)) return false;
+      if (typeQ && ((r.incidentType ?? "").trim() || "ไม่ระบุ") !== typeQ) return false;
+      if (placeQ && ((r.location ?? "").trim() || "ไม่ระบุ") !== placeQ) return false;
+      if (statusQ === "open" && r.statusResolved) return false;
+      if (statusQ === "resolved" && !r.statusResolved) return false;
+      return true;
+    });
+
+    res.json(filtered);
+  } catch (e) {
+    next(e);
+  }
+});
+
+const FALSE_ALARM_GROUP = "__false_alarm__";
+
+/** วิเคราะห์สาเหตุ — ช่วงเวลา/สถานที่/คำกรองเดียวกับ /stats/year; type = FALSE_ALARM_GROUP | ชื่อประเภท (ไม่สนตัวพิมพ์) | ว่าง = ทุกประเภท */
+securityIncidentsRouter.get("/stats/year/analysis", async (req, res, next) => {
+  try {
+    const location = String(req.query.location ?? "").trim();
+    const period = String(req.query.period ?? "").trim().toLowerCase();
+    const periodWin = periodRangeLocal(period);
+    const y = parseInt(String(req.query.year ?? ""), 10);
+    const year = Number.isFinite(y) && y >= 2000 && y <= 2100 ? y : new Date().getFullYear();
+    let start = new Date(Date.UTC(year, 0, 1, 0, 0, 0));
+    let end = new Date(Date.UTC(year + 1, 0, 1, 0, 0, 0));
+    if (periodWin) {
+      start = periodWin.start;
+      end = new Date(periodWin.end.getTime() + 1);
+    }
+    const tokens = searchTokens(req.query.q);
+    const typeQ = String(req.query.type ?? "").trim();
+
+    const rows = await prisma.securityIncident.findMany({
+      where: {
+        AND: [
+          location ? { location } : {},
+          {
+            OR: [
+              { incidentAt: { gte: start, lt: end } },
+              { AND: [{ incidentAt: null }, { sourceCreatedAt: { gte: start, lt: end } }] },
+            ],
+          },
+        ],
+      },
+      select: { incidentAt: true, sourceCreatedAt: true, ...incidentSearchSelect },
+    });
+
+    const inScope: AnalysisIncident[] = [];
+    const typeCounts = new Map<string, { name: string; count: number }>();
+    for (const r of rows) {
+      const ref = r.incidentAt ?? r.sourceCreatedAt;
+      if (!ref || ref < start || ref >= end) continue;
+      const mo = periodWin ? ref.getMonth() : ref.getUTCMonth();
+      if (!incidentMatchesSearch(tokens, r, mo)) continue;
+      const typeName = (r.incidentType ?? "").trim() || "ไม่ระบุ";
+      const tk = typeName.toLowerCase();
+      const tc = typeCounts.get(tk) ?? { name: typeName, count: 0 };
+      tc.count += 1;
+      typeCounts.set(tk, tc);
+      inScope.push({ ...r, ref, monthIndex: mo });
+    }
+
+    const selected = inScope.filter((r) => {
+      const t = ((r.incidentType ?? "").trim() || "ไม่ระบุ").toLowerCase();
+      if (!typeQ) return true;
+      if (typeQ === FALSE_ALARM_GROUP) return t.includes("false alarm");
+      return t === typeQ.toLowerCase();
+    });
+
+    res.json({
+      ...analyzeIncidents(selected, inScope.length),
+      types: [...typeCounts.values()].sort((a, b) => b.count - a.count),
+      falseAlarmCount: inScope.filter((r) => (r.incidentType ?? "").toLowerCase().includes("false alarm")).length,
     });
   } catch (e) {
     next(e);

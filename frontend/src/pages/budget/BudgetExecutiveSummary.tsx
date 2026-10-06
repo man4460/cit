@@ -1,9 +1,10 @@
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { Bar, BarChart, CartesianGrid, Legend, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { FitSingleLine } from "../../components/FitSingleLine";
+import { Modal } from "../../components/Modal";
 import { chartAxisFill, chartGridStroke } from "../../lib/uiTokens";
-import { formatBaht, formatPct, kindLabel, type BudgetKind } from "./budgetFormat";
+import { formatPct, kindLabel, type BudgetKind } from "./budgetFormat";
 import {
   AVAILABILITY_META,
   availabilityOf,
@@ -146,9 +147,9 @@ function Kpi({
   tone?: string;
 }) {
   return (
-    <div className="min-w-0 rounded-2xl border border-[#e8e6fc] bg-white/90 px-3 py-2.5">
+    <div className="min-w-0 rounded-2xl border border-[#e8e6fc] bg-white/90 px-3 py-2">
       <div className="text-[11px] font-bold text-slate-500">{label}</div>
-      <FitSingleLine className={`font-black tabular-nums ${tone}`} maxPx={24} minPx={11} title={`${value} ${unit}`}>
+      <FitSingleLine className={`font-black tabular-nums ${tone}`} maxPx={22} minPx={11} title={`${value} ${unit}`}>
         {value} <span className="text-[0.6em] font-bold text-[#66638c]">{unit}</span>
       </FitSingleLine>
       {sub ? <div className="mt-0.5 truncate text-[11px] text-slate-500">{sub}</div> : null}
@@ -162,7 +163,7 @@ function totalsByKind(data: BudgetImportData): Record<BudgetKind, Totals> {
   return out;
 }
 
-/** การ์ดค่าใช้จ่าย / สินทรัพย์ถาวร — คลิกเพื่อกรองหัวข้อใหญ่ที่อยู่ใต้การ์ด */
+/** การ์ดค่าใช้จ่าย / สินทรัพย์ถาวร — คลิกเพื่อกรองหัวข้อใหญ่ */
 export function BudgetExecutiveKindCards({
   data,
   yearBe,
@@ -170,19 +171,23 @@ export function BudgetExecutiveKindCards({
   unit,
   activeKind,
   onSelectKind,
+  className = "grid gap-3 md:grid-cols-2",
+  hint,
 }: {
   data: BudgetImportData;
   yearBe: number;
   fmt: Fmt;
   unit: string;
-  activeKind: BudgetKind;
+  activeKind?: BudgetKind | null;
   onSelectKind: (k: BudgetKind) => void;
+  className?: string;
+  hint?: string;
 }) {
   const byKind = useMemo(() => totalsByKind(data), [data]);
   if (!data.batch) return null;
   const elapsed = elapsedOfYear(yearBe, data.batch.asOfDate);
   return (
-    <div className="grid gap-3 md:grid-cols-2">
+    <div className={className}>
       {KINDS.map((k) => {
         const t = byKind[k];
         const p = ratio(t.spent, t.net);
@@ -193,7 +198,7 @@ export function BudgetExecutiveKindCards({
             key={k}
             type="button"
             onClick={() => onSelectKind(k)}
-            className={`min-w-0 rounded-[1.25rem] border p-4 text-left transition ${
+            className={`flex min-w-0 flex-col justify-center rounded-[1.25rem] border p-3 text-left transition ${
               active
                 ? "border-[#0000BF]/40 bg-gradient-to-br from-[#0000BF]/10 via-[#8b5cf6]/10 to-[#ec4899]/10 shadow-md ring-2 ring-[#0000BF]/20"
                 : "border-[#e8e6fc] bg-white/90 hover:border-[#0000BF]/25 hover:bg-[#0000BF]/[0.03]"
@@ -233,6 +238,7 @@ export function BudgetExecutiveKindCards({
                 </dd>
               </div>
             </dl>
+            {hint ? <p className="mt-1.5 text-[10.5px] font-bold text-[#4d47b6]">{hint}</p> : null}
           </button>
         );
       })}
@@ -240,19 +246,217 @@ export function BudgetExecutiveKindCards({
   );
 }
 
+function watchAdvice(w: AvailabilityItem, fmt: Fmt, unit: string, elapsed: number): { text: string; action: string } {
+  const r = w.row;
+  switch (w.status) {
+    case "OVER":
+      return {
+        text: `เบิกจ่าย/ผูกพันเกินงบสุทธิ ${fmt(Math.abs(w.free))} ${unit}`,
+        action: "หาเงินจากรายการที่มีเงินเหลือหรือยังไม่เริ่มใช้มาถัวเข้า และตรวจสอบว่ามีการผูกพันซ้ำหรือไม่",
+      };
+    case "IDLE":
+      return {
+        text: `ยังไม่มีการเบิกจ่าย PR PO หรือกันเงินเลย ทั้งที่ผ่านไปแล้ว ${formatPct(elapsed)} ของปีงบ`,
+        action: `สอบถามเจ้าของงบว่ามีแผนใช้ในปีนี้หรือไม่ — ถ้าไม่มี ถัวไปรายการอื่นได้ประมาณ ${fmt(w.free)} ${unit}`,
+      };
+    case "SAVINGS":
+      return {
+        text: `คงเหลือ ${fmt(r.remaining)} ${unit}${w.need > 0 ? ` · คาดว่าต้องใช้ต่อ ${fmt(w.need)} ${unit}` : ""}`,
+        action: `ถัวได้ประมาณ ${fmt(w.free)} ${unit} (รวมเงินเหลือจ่ายหลังทำสัญญา) — ยืนยันกับเจ้าของงบก่อนถัว`,
+      };
+    case "NEEDED":
+      return {
+        text: `คงเหลือ ${fmt(r.remaining)} ${unit} แต่คาดว่าต้องใช้ต่อจนสิ้นปี ${fmt(w.need)} ${unit} ตามอัตราเฉลี่ยรายไตรมาส`,
+        action: "ไม่ควรถัวออก — ติดตามอัตราการเบิกรายไตรมาส หากเร่งขึ้นอาจต้องหาเงินเพิ่ม",
+      };
+    default:
+      return { text: "ใช้/ผูกพันครบแล้ว", action: "—" };
+  }
+}
+
+function WatchDetailModal({
+  item,
+  yearBe,
+  fmt,
+  unit,
+  elapsed,
+  onClose,
+}: {
+  item: AvailabilityItem;
+  yearBe: number;
+  fmt: Fmt;
+  unit: string;
+  elapsed: number;
+  onClose: () => void;
+}) {
+  const r = item.row;
+  const meta = AVAILABILITY_META[item.status];
+  const advice = watchAdvice(item, fmt, unit, elapsed);
+  const bound = r.po + r.pr + r.reserved + r.earmark + r.carryOut;
+  const spentPct = ratio(r.spent, r.netBudget);
+  const quarters = [r.q1, r.q2, r.q3, r.q4];
+  const qMax = Math.max(1, ...quarters.map((q) => Math.abs(q)));
+  const t: Totals = {
+    net: r.netBudget,
+    spent: r.spent,
+    po: r.po,
+    pending: r.pr + r.reserved + r.earmark + r.carryOut,
+    remaining: r.remaining,
+    q: [r.q1, r.q2, r.q3, r.q4],
+  };
+  const cell = (label: string, value: number, tone = "text-[#1e1b4b]") => (
+    <div className="flex items-baseline justify-between gap-2 py-0.5">
+      <dt className="text-slate-500">{label}</dt>
+      <dd className={`font-semibold tabular-nums ${tone}`}>{fmt(value)}</dd>
+    </div>
+  );
+
+  return (
+    <Modal
+      open
+      onClose={onClose}
+      size="form"
+      title={
+        <span className="block min-w-0">
+          <span className="block truncate">{r.name}</span>
+          <span className="block text-[11px] font-semibold text-slate-500">
+            {[r.code, r.ciCode, r.kind ? kindLabel(r.kind as BudgetKind) : null].filter(Boolean).join(" · ")}
+          </span>
+        </span>
+      }
+    >
+      <div className="space-y-3 text-[12px]">
+        <div className="rounded-xl border border-[#ecebff] bg-[#faf9ff] p-3">
+          <span className={`inline-block rounded-full px-2 py-0.5 text-[10.5px] font-bold ring-1 ${meta.chip}`}>{meta.label}</span>
+          <p className="mt-1.5 font-semibold text-[#1e1b4b]">{advice.text}</p>
+          <p className="mt-1">
+            <span className="font-bold text-emerald-700">ควรทำ: </span>
+            {advice.action}
+          </p>
+        </div>
+
+        <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+          {[
+            { k: "งบสุทธิ", v: r.netBudget, tone: "text-[#1e1b4b]" },
+            { k: `เบิกแล้ว (${formatPct(spentPct)})`, v: r.spent, tone: "text-[#0000BF]" },
+            { k: "ผูกพัน", v: bound, tone: "text-violet-700" },
+            { k: "คงเหลือ", v: r.remaining, tone: r.remaining < 0 ? "text-rose-700" : "text-emerald-700" },
+          ].map((c) => (
+            <div key={c.k} className="min-w-0 rounded-xl border border-[#e8e6fc] bg-white px-2.5 py-1.5">
+              <div className="truncate text-[10.5px] font-bold text-slate-500">{c.k}</div>
+              <FitSingleLine className={`font-black tabular-nums ${c.tone}`} maxPx={16} minPx={10} title={fmt(c.v)}>
+                {fmt(c.v)}
+              </FitSingleLine>
+            </div>
+          ))}
+        </div>
+
+        <div>
+          <ProgressBar t={t} elapsed={elapsed} />
+          <div className="mt-1.5">
+            <Legend4 />
+          </div>
+        </div>
+
+        <div className="grid gap-3 sm:grid-cols-2">
+          <section className="rounded-xl border border-[#ecebff] p-2.5">
+            <h3 className="mb-1 text-[11px] font-black text-[#2e2a58]">ที่มาของงบ ({unit})</h3>
+            <dl>
+              {cell("อนุมัติ", r.approved)}
+              {cell("ยกมา", r.carryIn)}
+              {cell("ปรับระหว่างปี", r.midYear, r.midYear < 0 ? "text-rose-700" : r.midYear > 0 ? "text-emerald-700" : "text-[#1e1b4b]")}
+              <div className="mt-1 border-t border-[#ecebff] pt-1">{cell("งบสุทธิ", r.netBudget)}</div>
+            </dl>
+          </section>
+          <section className="rounded-xl border border-[#ecebff] p-2.5">
+            <h3 className="mb-1 text-[11px] font-black text-[#2e2a58]">การใช้งบ ({unit})</h3>
+            <dl>
+              {cell("เบิกจ่ายแล้ว", r.spent, "text-[#0000BF]")}
+              {cell("PO (ทำสัญญาแล้ว)", r.po, "text-violet-700")}
+              {cell("PR", r.pr, "text-amber-700")}
+              {cell("กันเงิน / สำรอง", r.reserved + r.earmark + r.carryOut, "text-amber-700")}
+              <div className="mt-1 border-t border-[#ecebff] pt-1">
+                {cell("คงเหลือ", r.remaining, r.remaining < 0 ? "text-rose-700" : "text-emerald-700")}
+              </div>
+            </dl>
+          </section>
+        </div>
+
+        <section className="rounded-xl border border-[#ecebff] p-2.5">
+          <h3 className="mb-1.5 text-[11px] font-black text-[#2e2a58]">เบิกจ่ายรายไตรมาส ({unit})</h3>
+          <div className="grid grid-cols-4 gap-2">
+            {quarters.map((q, i) => (
+              <div key={i} className="text-center">
+                <div className="flex h-14 items-end justify-center">
+                  <div
+                    className="w-8 rounded-t bg-[#8b5cf6]"
+                    style={{ height: `${(Math.abs(q) / qMax) * 100}%`, minHeight: q !== 0 ? 2 : 0 }}
+                  />
+                </div>
+                <div className="mt-0.5 text-[10px] text-slate-500">Q{i + 1}</div>
+                <div className="text-[11px] font-semibold tabular-nums text-[#1e1b4b]">{fmt(q)}</div>
+              </div>
+            ))}
+          </div>
+          {item.need > 0 ? (
+            <p className="mt-1.5 text-[11px] text-slate-500">คาดว่าต้องใช้ต่อจนสิ้นปี {fmt(item.need)} {unit} (ประมาณจากค่าเฉลี่ยไตรมาสที่ผ่านมา)</p>
+          ) : null}
+        </section>
+
+        {r.commitmentTotal > 0 ? (
+          <section className="rounded-xl border border-[#ecebff] p-2.5">
+            <h3 className="mb-1 text-[11px] font-black text-[#2e2a58]">
+              งบผูกพันปีถัดไป {fmt(r.commitmentTotal)} {unit}
+            </h3>
+            <div className="flex flex-wrap gap-1.5">
+              {r.commitmentYears.map((y) => (
+                <span key={y.yearAd} className="rounded-lg bg-[#f3f1ff] px-2 py-0.5 text-[11px]">
+                  <b>ปี {y.yearAd + 543}</b> <span className="tabular-nums">{fmt(y.amount)}</span>
+                </span>
+              ))}
+            </div>
+          </section>
+        ) : null}
+
+        <div className="flex justify-end">
+          <Link to={`/budget/year/${yearBe}?tab=availability`} className="text-[11px] font-bold text-[#0000BF] hover:underline">
+            เปิดในหน้ารายละเอียดปี {yearBe} →
+          </Link>
+        </div>
+      </div>
+    </Modal>
+  );
+}
+
+export type BudgetExecutiveView = "overview" | "watch";
+
+const WATCH_STATUSES: AvailabilityStatus[] = ["OVER", "IDLE", "SAVINGS", "NEEDED"];
+
+const panelClass = "flex min-h-0 min-w-0 flex-col rounded-[1.25rem] border border-[#e8e6fc] bg-white/90 p-3";
+const panelTitleClass = "text-xs font-black text-[#1e1b4b]";
+const watchGridClass =
+  "grid grid-cols-[minmax(10rem,1fr)_repeat(4,minmax(5.5rem,7.5rem))_0.75rem] gap-x-3 px-3 min-w-[38rem]";
+const moreLinkClass = "text-[11px] font-bold text-[#0000BF] hover:underline";
+
 export function BudgetExecutiveSummary({
   data,
   yearBe,
   fmt,
   unit,
+  view,
+  onSelectKind,
 }: {
   data: BudgetImportData;
   yearBe: number;
   fmt: Fmt;
   unit: string;
+  view: BudgetExecutiveView;
+  onSelectKind: (k: BudgetKind) => void;
 }) {
   const asOfIso = data.batch?.asOfDate ?? "";
   const elapsed = elapsedOfYear(yearBe, asOfIso);
+  const [pickedStatus, setWatchStatus] = useState<AvailabilityStatus | null>(null);
+  const [detail, setDetail] = useState<AvailabilityItem | null>(null);
 
   const byKind = useMemo(() => totalsByKind(data), [data]);
   const all = useMemo(() => totalsOf(data.rows.filter((r) => r.rowType === "SECTION" && r.kind !== "OTHER")), [data.rows]);
@@ -300,6 +504,124 @@ export function BudgetExecutiveSummary({
   const pace = paceOf(spentPct, elapsed);
   const base = `/budget/year/${yearBe}`;
 
+  const statusTotals = WATCH_STATUSES.map((s) => {
+    const list = items.filter((i) => i.status === s);
+    const amount = s === "NEEDED" ? list.reduce((a, i) => a + i.row.remaining, 0) : list.reduce((a, i) => a + i.free, 0);
+    return { status: s, count: list.length, amount };
+  });
+  const reallocatable = statusTotals
+    .filter((s) => s.status === "IDLE" || s.status === "SAVINGS")
+    .reduce((a, s) => a + s.amount, 0);
+
+  if (view === "watch") {
+    const watchStatus = pickedStatus ?? statusTotals.find((s) => s.count > 0)?.status ?? "OVER";
+    const list: AvailabilityItem[] = items
+      .filter((i) => i.status === watchStatus)
+      .sort((a, b) =>
+        watchStatus === "OVER" ? a.free - b.free : watchStatus === "NEEDED" ? b.row.remaining - a.row.remaining : b.free - a.free,
+      );
+    const activeMeta = AVAILABILITY_META[watchStatus];
+    return (
+      <div className="flex flex-col gap-3 lg:h-full">
+        <div className="grid shrink-0 gap-2 sm:grid-cols-2 lg:grid-cols-4">
+          {statusTotals.map((s) => {
+            const meta = AVAILABILITY_META[s.status];
+            const active = watchStatus === s.status;
+            return (
+              <button
+                key={s.status}
+                type="button"
+                onClick={() => setWatchStatus(s.status)}
+                title={meta.hint}
+                className={`rounded-xl border px-3 py-2 text-left transition ${
+                  active
+                    ? "border-[#0000BF]/40 bg-[#0000BF]/[0.05] shadow-sm ring-2 ring-[#0000BF]/20"
+                    : "border-[#ecebff] bg-white/90 hover:border-[#0000BF]/25"
+                }`}
+              >
+                <div className="flex items-center justify-between gap-2">
+                  <span className={`inline-block truncate rounded-full px-2 py-0.5 text-[10px] font-bold ring-1 ${meta.chip}`}>
+                    {meta.label}
+                  </span>
+                  <span className="shrink-0 text-[11px] tabular-nums text-slate-500">{s.count} รายการ</span>
+                </div>
+                <div className={`mt-1 text-right text-lg font-black tabular-nums ${meta.amountTone}`}>
+                  {fmt(s.amount)} <span className="text-[0.6em] font-bold text-[#66638c]">{unit}</span>
+                </div>
+              </button>
+            );
+          })}
+        </div>
+
+        <section className={`${panelClass} lg:flex-1`}>
+          <div className="flex shrink-0 flex-wrap items-center justify-between gap-2">
+            <div>
+              <h2 className={panelTitleClass}>
+                {activeMeta.label} <span className="font-bold text-slate-500">({list.length} รายการ)</span>
+              </h2>
+              <p className="text-[11px] text-slate-500">{activeMeta.hint}</p>
+            </div>
+            <Link to={`${base}?tab=availability`} className={moreLinkClass}>
+              ดูงบคงเหลือทั้งหมด →
+            </Link>
+          </div>
+          {list.length ? (
+            <div className="mt-2 min-h-0 flex-1 overflow-auto rounded-xl border border-[#ecebff]">
+              <div className={`${watchGridClass} sticky top-0 z-[1] border-b border-[#ecebff] bg-[#faf9ff] py-1.5 text-[10px] font-bold text-slate-500`}>
+                <span>รายการ</span>
+                <span className="text-right">งบสุทธิ</span>
+                <span className="text-right">เบิกแล้ว</span>
+                <span className="text-right">คงเหลือ</span>
+                <span className="text-right">
+                  {watchStatus === "OVER" ? "เกินงบ" : watchStatus === "NEEDED" ? "ต้องใช้ต่อ" : "ถัวได้"}
+                </span>
+                <span />
+              </div>
+              <ul className="divide-y divide-[#ecebff]">
+                {list.map((w) => (
+                  <li key={w.row.id}>
+                    <button
+                      type="button"
+                      onClick={() => setDetail(w)}
+                      title="คลิกดูรายละเอียด"
+                      className={`${watchGridClass} w-full items-center py-1.5 text-left transition hover:bg-[#0000BF]/[0.04]`}
+                    >
+                      <div className="min-w-0">
+                        <div className="truncate text-[12px] font-semibold text-[#1e1b4b]" title={w.row.name}>
+                          {w.row.code ? `${w.row.code} ` : ""}
+                          {w.row.name}
+                        </div>
+                        <div className="mt-0.5 text-[10px] text-slate-500">
+                          {w.row.kind ? kindLabel(w.row.kind as BudgetKind) : ""}
+                        </div>
+                      </div>
+                      <span className="text-right text-[12px] tabular-nums text-[#2e2a58]">{fmt(w.row.netBudget)}</span>
+                      <span className="text-right text-[12px] tabular-nums text-[#0000BF]">{fmt(w.row.spent)}</span>
+                      <span
+                        className={`text-right text-[12px] tabular-nums ${w.row.remaining < 0 ? "text-rose-700" : "text-emerald-700"}`}
+                      >
+                        {fmt(w.row.remaining)}
+                      </span>
+                      <span className={`text-right text-sm font-black tabular-nums ${activeMeta.amountTone}`}>
+                        {fmt(Math.abs(w.status === "NEEDED" ? w.need : w.free))}
+                      </span>
+                      <span className="text-right text-[10px] font-bold text-[#4d47b6]">→</span>
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ) : (
+            <p className="mt-3 text-[11px] text-slate-500">ไม่มีรายการในกลุ่มนี้</p>
+          )}
+        </section>
+        {detail ? (
+          <WatchDetailModal item={detail} yearBe={yearBe} fmt={fmt} unit={unit} elapsed={elapsed} onClose={() => setDetail(null)} />
+        ) : null}
+      </div>
+    );
+  }
+
   const chartData = (["ไตรมาส 1", "ไตรมาส 2", "ไตรมาส 3", "ไตรมาส 4"] as const).map((name, i) => ({
     name,
     EXPENSE: byKind.EXPENSE.q[i],
@@ -311,39 +633,22 @@ export function BudgetExecutiveSummary({
     return ratio(cum, all.net);
   });
   const currentQ = Math.min(3, Math.floor(new Date(asOfIso).getMonth() / 3));
-
-  const statusTotals = (["OVER", "IDLE", "SAVINGS", "NEEDED"] as AvailabilityStatus[]).map((s) => {
-    const list = items.filter((i) => i.status === s);
-    const amount = s === "NEEDED" ? list.reduce((a, i) => a + i.row.remaining, 0) : list.reduce((a, i) => a + i.free, 0);
-    return { status: s, count: list.length, amount };
-  });
-  const reallocatable = statusTotals
-    .filter((s) => s.status === "IDLE" || s.status === "SAVINGS")
-    .reduce((a, s) => a + s.amount, 0);
-
-  const watch: AvailabilityItem[] = [
-    ...items.filter((i) => i.status === "OVER").sort((a, b) => a.free - b.free),
-    ...items.filter((i) => i.status === "IDLE").sort((a, b) => b.free - a.free),
-    ...items.filter((i) => i.status === "SAVINGS").sort((a, b) => b.free - a.free),
-  ].slice(0, 6);
+  const watchCount = statusTotals.filter((s) => s.status !== "NEEDED").reduce((a, s) => a + s.count, 0);
 
   return (
-    <div className="space-y-4">
-      {/* ภาพรวมทั้งปี */}
-      <section className="rounded-[1.25rem] border border-[#e8e6fc] bg-gradient-to-br from-white via-[#faf9ff] to-[#fdf2f8]/60 p-4 shadow-sm">
+    <div className="flex flex-col gap-3 lg:h-full">
+      <section className="shrink-0 rounded-[1.25rem] border border-[#e8e6fc] bg-gradient-to-br from-white via-[#faf9ff] to-[#fdf2f8]/60 p-3 shadow-sm">
         <div className="flex flex-wrap items-start justify-between gap-2">
           <div>
             <h2 className="text-sm font-black text-[#1e1b4b]">ภาพรวมการใช้งบประมาณปี {yearBe}</h2>
-            <p className="text-[11px] text-slate-500">
-              ข้อมูลระบบหลัก ณ {formatThaiDate(asOfIso)} · ค่าใช้จ่าย + สินทรัพย์ถาวร
-            </p>
+            <p className="text-[11px] text-slate-500">ข้อมูลระบบหลัก ณ {formatThaiDate(asOfIso)} · ค่าใช้จ่าย + สินทรัพย์ถาวร</p>
           </div>
           <span className={`rounded-full px-2.5 py-1 text-xs font-bold ring-1 ${pace.chip}`} title={pace.hint}>
             {pace.label}
           </span>
         </div>
 
-        <div className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
+        <div className="mt-2 grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
           <Kpi label="งบสุทธิทั้งสิ้น" value={fmt(all.net)} unit={unit} sub="อนุมัติ + ยกมา + ระหว่างปี" />
           <Kpi
             label="เบิกจ่ายแล้ว"
@@ -368,24 +673,23 @@ export function BudgetExecutiveSummary({
           />
         </div>
 
-        <div className="mt-4">
-          <ProgressBar t={all} elapsed={elapsed} tall />
-          <div className="mt-2">
-            <Legend4 />
+        <div className="mt-2 flex flex-wrap items-end gap-x-4 gap-y-1">
+          <div className="min-w-[16rem] flex-1">
+            <ProgressBar t={all} elapsed={elapsed} tall />
           </div>
+          <Legend4 />
         </div>
       </section>
 
-      <div className="grid gap-3 lg:grid-cols-5">
-        {/* เบิกจ่ายรายไตรมาส */}
-        <section className="min-w-0 rounded-[1.25rem] border border-[#e8e6fc] bg-white/90 p-4 lg:col-span-3">
-          <div className="flex flex-wrap items-center justify-between gap-2">
-            <h2 className="text-xs font-black text-[#1e1b4b]">เบิกจ่ายรายไตรมาส</h2>
-            <Link to={`${base}?tab=quarter`} className="text-[11px] font-bold text-[#0000BF] hover:underline">
+      <div className="grid gap-3 lg:min-h-0 lg:flex-1 lg:grid-cols-12">
+        <section className={`${panelClass} h-72 lg:col-span-5 lg:h-auto`}>
+          <div className="flex shrink-0 items-center justify-between gap-2">
+            <h2 className={panelTitleClass}>เบิกจ่ายรายไตรมาส</h2>
+            <Link to={`${base}?tab=quarter`} className={moreLinkClass}>
               ดูรายละเอียด →
             </Link>
           </div>
-          <div className="mt-2 h-56">
+          <div className="mt-1 min-h-0 flex-1">
             <ResponsiveContainer width="100%" height="100%">
               <BarChart data={chartData} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
                 <CartesianGrid strokeDasharray="3 3" stroke={chartGridStroke} vertical={false} />
@@ -398,12 +702,9 @@ export function BudgetExecutiveSummary({
               </BarChart>
             </ResponsiveContainer>
           </div>
-          <div className="mt-2 grid grid-cols-4 gap-1 text-center text-[11px]">
+          <div className="mt-1 grid shrink-0 grid-cols-4 gap-1 text-center text-[11px]">
             {cumulative.map((c, i) => (
-              <div
-                key={i}
-                className={`rounded-lg px-1 py-1 ${i === currentQ ? "bg-[#0000BF]/[0.06] font-bold" : "bg-slate-50"}`}
-              >
+              <div key={i} className={`rounded-lg px-1 py-0.5 ${i === currentQ ? "bg-[#0000BF]/[0.06] font-bold" : "bg-slate-50"}`}>
                 <div className="text-slate-500">สะสม Q{i + 1}</div>
                 <div className="tabular-nums text-[#1e1b4b]">{i > currentQ ? "—" : formatPct(c)}</div>
               </div>
@@ -411,133 +712,93 @@ export function BudgetExecutiveSummary({
           </div>
         </section>
 
-        {/* ความเคลื่อนไหว + งบผูกพัน */}
-        <div className="flex min-w-0 flex-col gap-3 lg:col-span-2">
-          <section className="rounded-[1.25rem] border border-[#e8e6fc] bg-white/90 p-4">
+        <BudgetExecutiveKindCards
+          data={data}
+          yearBe={yearBe}
+          fmt={fmt}
+          unit={unit}
+          onSelectKind={onSelectKind}
+          hint="ดูหัวข้อใหญ่ →"
+          className="grid gap-3 lg:col-span-4 lg:min-h-0 lg:grid-rows-2"
+        />
+
+        <div className="flex min-w-0 flex-col gap-3 lg:col-span-3 lg:min-h-0">
+          <section className={`${panelClass} shrink-0`}>
             <div className="flex items-center justify-between gap-2">
-              <h2 className="text-xs font-black text-[#1e1b4b]">ปรับงบระหว่างปี</h2>
-              <Link to={`${base}?tab=movement`} className="text-[11px] font-bold text-[#0000BF] hover:underline">
-                ดูรายละเอียด →
+              <h2 className={panelTitleClass}>ปรับงบระหว่างปี</h2>
+              <Link to={`${base}?tab=movement`} className={moreLinkClass}>
+                รายละเอียด →
               </Link>
             </div>
             {moves.count ? (
-              <dl className="mt-2 grid grid-cols-3 gap-2 text-[11px]">
-                <div>
+              <dl className="mt-1.5 grid grid-cols-3 gap-2 text-[11px]">
+                <div className="min-w-0">
                   <dt className="text-slate-500">ได้รับเพิ่ม</dt>
-                  <dd className="font-bold tabular-nums text-emerald-700">+{fmt(moves.inc)}</dd>
+                  <dd className="truncate font-bold tabular-nums text-emerald-700">+{fmt(moves.inc)}</dd>
                 </div>
-                <div>
+                <div className="min-w-0">
                   <dt className="text-slate-500">โอนออก</dt>
-                  <dd className="font-bold tabular-nums text-rose-700">{fmt(moves.out)}</dd>
+                  <dd className="truncate font-bold tabular-nums text-rose-700">{fmt(moves.out)}</dd>
                 </div>
-                <div>
+                <div className="min-w-0">
                   <dt className="text-slate-500">สุทธิ</dt>
-                  <dd className={`font-bold tabular-nums ${moves.net < 0 ? "text-rose-700" : "text-[#1e1b4b]"}`}>
+                  <dd className={`truncate font-bold tabular-nums ${moves.net < 0 ? "text-rose-700" : "text-[#1e1b4b]"}`}>
                     {moves.net > 0 ? "+" : ""}
                     {fmt(moves.net)}
                   </dd>
                 </div>
               </dl>
             ) : (
-              <p className="mt-2 text-[11px] text-slate-500">ไม่มีการปรับงบระหว่างปี</p>
+              <p className="mt-1.5 text-[11px] text-slate-500">ไม่มีการปรับงบระหว่างปี</p>
             )}
-            {moves.count ? <p className="mt-1 text-[10px] text-slate-400">{moves.count} รายการ · หน่วย {unit}</p> : null}
+            {moves.count ? <p className="mt-0.5 text-[10px] text-slate-400">{moves.count} รายการ · หน่วย {unit}</p> : null}
           </section>
 
-          <section className="flex-1 rounded-[1.25rem] border border-[#e8e6fc] bg-white/90 p-4">
-            <div className="flex items-center justify-between gap-2">
-              <h2 className="text-xs font-black text-[#1e1b4b]">งบผูกพันปีถัดไป</h2>
-              <Link to={`${base}?funding=commitment`} className="text-[11px] font-bold text-[#0000BF] hover:underline">
-                ดูรายละเอียด →
+          <section className={`${panelClass} h-60 lg:h-auto lg:flex-1`}>
+            <div className="flex shrink-0 items-center justify-between gap-2">
+              <h2 className={panelTitleClass}>งบผูกพันปีถัดไป</h2>
+              <Link to={`${base}?funding=commitment`} className={moreLinkClass}>
+                รายละเอียด →
               </Link>
             </div>
             {commitment.total > 0 ? (
               <>
-                <FitSingleLine className="mt-1 font-black tabular-nums text-[#1e1b4b]" maxPx={20} minPx={11}>
-                  {fmt(commitment.total)} <span className="text-[0.6em] font-bold text-[#66638c]">{unit}</span>
-                </FitSingleLine>
-                <p className="text-[10px] text-slate-400">{commitment.count} รายการ</p>
-                <div className="mt-2 flex flex-wrap gap-1.5">
+                <div className="flex shrink-0 items-baseline justify-between gap-2">
+                  <FitSingleLine className="mt-0.5 font-black tabular-nums text-[#1e1b4b]" maxPx={18} minPx={11}>
+                    {fmt(commitment.total)} <span className="text-[0.6em] font-bold text-[#66638c]">{unit}</span>
+                  </FitSingleLine>
+                  <span className="shrink-0 text-[10px] text-slate-400">{commitment.count} รายการ</span>
+                </div>
+                <div className="mt-1 flex shrink-0 flex-wrap gap-1">
                   {commitment.years.map(([y, v]) => (
-                    <span key={y} className="rounded-lg bg-[#f3f1ff] px-2 py-1 text-[11px]">
-                      <b className="text-[#1e1b4b]">ปี {y + 543}</b>{" "}
-                      <span className="tabular-nums text-slate-600">{fmt(v)}</span>
+                    <span key={y} className="rounded-lg bg-[#f3f1ff] px-1.5 py-0.5 text-[10.5px]">
+                      <b className="text-[#1e1b4b]">ปี {y + 543}</b> <span className="tabular-nums text-slate-600">{fmt(v)}</span>
                     </span>
                   ))}
                 </div>
-                <ul className="mt-2 space-y-1 border-t border-[#ecebff] pt-2">
+                <ul className="mt-1.5 min-h-0 flex-1 space-y-1 overflow-y-auto border-t border-[#ecebff] pt-1.5">
                   {commitment.list.map((r) => (
                     <li key={r.id} className="flex items-baseline justify-between gap-2 text-[11px]">
                       <span className="min-w-0 truncate text-[#1e1b4b]" title={r.name}>
                         {r.name}
                       </span>
-                      <span className="shrink-0 font-semibold tabular-nums text-violet-700">
-                        {fmt(r.commitmentTotal)}
-                      </span>
+                      <span className="shrink-0 font-semibold tabular-nums text-violet-700">{fmt(r.commitmentTotal)}</span>
                     </li>
                   ))}
                 </ul>
               </>
             ) : (
-              <p className="mt-2 text-[11px] text-slate-500">ไม่มีงบผูกพันปีถัดไป</p>
+              <p className="mt-1.5 text-[11px] text-slate-500">ไม่มีงบผูกพันปีถัดไป</p>
             )}
           </section>
+
+          {watchCount > 0 ? (
+            <p className="shrink-0 rounded-xl border border-amber-200 bg-amber-50/80 px-3 py-1.5 text-[11px] text-amber-900">
+              มี <b>{watchCount}</b> รายการที่ควรติดตาม — ดูที่เมนู "ประเด็นติดตาม"
+            </p>
+          ) : null}
         </div>
       </div>
-
-      {/* ประเด็นที่ต้องติดตาม */}
-      <section className="rounded-[1.25rem] border border-[#e8e6fc] bg-white/90 p-4">
-        <div className="flex flex-wrap items-center justify-between gap-2">
-          <h2 className="text-xs font-black text-[#1e1b4b]">ประเด็นที่ผู้บริหารควรติดตาม</h2>
-          <Link to={`${base}?tab=availability`} className="text-[11px] font-bold text-[#0000BF] hover:underline">
-            ดูงบคงเหลือทั้งหมด →
-          </Link>
-        </div>
-        <div className="mt-2 grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
-          {statusTotals.map((s) => {
-            const meta = AVAILABILITY_META[s.status];
-            return (
-              <div key={s.status} className="rounded-xl border border-[#ecebff] px-3 py-2" title={meta.hint}>
-                <span className={`inline-block rounded-full px-2 py-0.5 text-[10px] font-bold ring-1 ${meta.chip}`}>
-                  {meta.label}
-                </span>
-                <div className="mt-1 flex items-baseline justify-between gap-2">
-                  <span className={`text-base font-black tabular-nums ${meta.amountTone}`}>{fmt(s.amount)}</span>
-                  <span className="text-[11px] text-slate-500">{s.count} รายการ</span>
-                </div>
-              </div>
-            );
-          })}
-        </div>
-        {watch.length ? (
-          <ul className="mt-3 divide-y divide-[#ecebff] overflow-hidden rounded-xl border border-[#ecebff]">
-            {watch.map((w) => {
-              const meta = AVAILABILITY_META[w.status];
-              return (
-                <li key={w.row.id} className="flex items-center justify-between gap-3 px-3 py-2">
-                  <div className="min-w-0">
-                    <div className="truncate text-[12px] font-semibold text-[#1e1b4b]">
-                      {w.row.code ? `${w.row.code} ` : ""}
-                      {w.row.name}
-                    </div>
-                    <div className="mt-0.5 flex flex-wrap items-center gap-1.5 text-[10px] text-slate-500">
-                      <span className={`rounded-full px-1.5 py-0.5 font-bold ring-1 ${meta.chip}`}>{meta.label}</span>
-                      <span>{w.row.kind ? kindLabel(w.row.kind as BudgetKind) : ""}</span>
-                      <span>· งบสุทธิ {formatBaht(w.row.netBudget)}</span>
-                    </div>
-                  </div>
-                  <div className="shrink-0 text-right">
-                    <div className="text-[10px] text-slate-500">{w.status === "OVER" ? "เกินงบ" : "ถัวได้"}</div>
-                    <div className={`text-sm font-black tabular-nums ${meta.amountTone}`}>{fmt(Math.abs(w.free))}</div>
-                  </div>
-                </li>
-              );
-            })}
-          </ul>
-        ) : (
-          <p className="mt-3 text-[11px] text-slate-500">ไม่มีรายการที่ต้องติดตามเป็นพิเศษ</p>
-        )}
-      </section>
     </div>
   );
 }

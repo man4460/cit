@@ -1,8 +1,10 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Navigate } from "react-router-dom";
+import { Link, Navigate } from "react-router-dom";
 import { apiJson } from "../api/client";
 import { Modal, ModalFormActions, ModalFormBody } from "../components/Modal";
 import { useAuth } from "../context/AuthContext";
+import { PermissionMatrix, permissionSummary } from "../components/PermissionMatrix";
+import { fullPermissions, type PermissionMap } from "../lib/permissions";
 import { PageHeaderBar } from "../components/PageHeaderBar";
 import { rowMatchesFilter } from "../lib/searchNormalize";
 import { listCardAccentClass, listCardClass, toolbarPrimaryBtnClass } from "../lib/uiTokens";
@@ -13,6 +15,11 @@ type AdminUserRow = {
   role: "ADMIN" | "OPERATOR";
   fullName: string | null;
   active: boolean;
+  permissions: PermissionMap | null;
+  status: "PENDING" | "APPROVED" | "REJECTED";
+  employeeCode: string | null;
+  position: string | null;
+  affiliation: string | null;
   createdAt: string;
 };
 
@@ -36,6 +43,7 @@ export function AdminPage() {
   const [newPassword, setNewPassword] = useState("");
   const [newRole, setNewRole] = useState<"ADMIN" | "OPERATOR">("OPERATOR");
   const [newFullName, setNewFullName] = useState("");
+  const [newPerms, setNewPerms] = useState<PermissionMap>(() => fullPermissions("read"));
   const [createErr, setCreateErr] = useState<string | null>(null);
 
   const [editUsername, setEditUsername] = useState("");
@@ -43,6 +51,7 @@ export function AdminPage() {
   const [editRole, setEditRole] = useState<"ADMIN" | "OPERATOR">("OPERATOR");
   const [editActive, setEditActive] = useState(true);
   const [editPassword, setEditPassword] = useState("");
+  const [editPerms, setEditPerms] = useState<PermissionMap>(() => fullPermissions("delete"));
   const [editErr, setEditErr] = useState<string | null>(null);
   const [listFilter, setListFilter] = useState("");
 
@@ -68,6 +77,7 @@ export function AdminPage() {
     setEditRole(r.role);
     setEditActive(r.active);
     setEditPassword("");
+    setEditPerms(r.permissions ?? fullPermissions("delete"));
   }
 
   async function createUser(e: React.FormEvent) {
@@ -81,12 +91,14 @@ export function AdminPage() {
           password: newPassword,
           role: newRole,
           fullName: newFullName || null,
+          ...(newRole === "OPERATOR" ? { permissions: newPerms } : {}),
         }),
       });
       setNewUsername("");
       setNewPassword("");
       setNewFullName("");
       setNewRole("OPERATOR");
+      setNewPerms(fullPermissions("read"));
       setCreateOpen(false);
       setRows((prev) => [...prev, created].sort((a, b) => a.username.localeCompare(b.username, "th")));
     } catch (e) {
@@ -105,6 +117,7 @@ export function AdminPage() {
         role: editRole,
         active: editActive,
       };
+      if (editRole === "OPERATOR") body.permissions = editPerms;
       if (editPassword.trim()) {
         if (editPassword.trim().length < 8) {
           setEditErr("รหัสผ่านใหม่ต้องมีอย่างน้อย 8 ตัวอักษร");
@@ -148,12 +161,16 @@ export function AdminPage() {
 
   const editingSelf = editTarget?.id === currentUser.id;
 
+  const pendingCount = rows.filter((r) => r.status === "PENDING").length;
   const filteredRows = useMemo(
     () =>
-      rows.filter((r) =>
+      rows.filter((r) => r.status === "APPROVED").filter((r) =>
         rowMatchesFilter(listFilter, [
           r.username,
           r.fullName,
+          r.employeeCode,
+          r.position,
+          r.affiliation,
           r.role,
           roleLabel(r.role),
           r.active ? "เปิดใช้งาน" : "ปิดใช้งาน",
@@ -187,7 +204,17 @@ export function AdminPage() {
         }
       />
 
-      <Modal open={createOpen} onClose={() => setCreateOpen(false)} title="เพิ่มผู้ใช้">
+      {pendingCount ? (
+        <Link
+          to="/admin/registrations"
+          className="mt-3 flex items-center justify-between rounded-xl border border-amber-200 bg-amber-50/80 px-4 py-2 text-sm font-bold text-amber-800 hover:bg-amber-100"
+        >
+          มีคำขอสมัครสมาชิกรออนุมัติ {pendingCount} รายการ
+          <span className="text-[12px]">ตรวจสอบ ›</span>
+        </Link>
+      ) : null}
+
+      <Modal open={createOpen} onClose={() => setCreateOpen(false)} title="เพิ่มผู้ใช้" size="wide">
         <form onSubmit={createUser}>
           <ModalFormBody>
             {createErr && <p className="text-sm text-rose-600">{createErr}</p>}
@@ -230,6 +257,14 @@ export function AdminPage() {
                 <option value="ADMIN">ADMIN</option>
               </select>
             </label>
+            <div>
+              <p className="mb-1 text-xs font-bold text-slate-600">สิทธิ์การใช้งานข้อมูล</p>
+              {newRole === "ADMIN" ? (
+                <p className="rounded-lg border border-indigo-100 bg-indigo-50/60 px-3 py-2 text-[12px] text-indigo-800">ผู้ดูแลระบบใช้งานและแก้ไขได้ทุกส่วน รวมถึงจัดการผู้ใช้</p>
+              ) : (
+                <PermissionMatrix value={newPerms} onChange={setNewPerms} />
+              )}
+            </div>
           </ModalFormBody>
           <ModalFormActions>
             <button type="submit" className="rounded-full bg-gradient-to-r from-[#0000BF] via-[#8b5cf6] to-[#ec4899] text-sm font-bold text-white shadow-lg shadow-fuchsia-500/25 hover:from-[#0000a3] hover:via-[#7c3aed] hover:to-[#db2777] px-4 py-2">
@@ -246,7 +281,7 @@ export function AdminPage() {
         </form>
       </Modal>
 
-      <Modal open={!!editTarget} onClose={() => setEditTarget(null)} title="แก้ไขผู้ใช้">
+      <Modal open={!!editTarget} onClose={() => setEditTarget(null)} title="แก้ไขผู้ใช้" size="wide">
         <form onSubmit={saveEdit}>
           <ModalFormBody>
             {editErr && <p className="text-sm text-rose-600">{editErr}</p>}
@@ -302,6 +337,14 @@ export function AdminPage() {
                 onChange={(e) => setEditPassword(e.target.value)}
               />
             </label>
+            <div>
+              <p className="mb-1 text-xs font-bold text-slate-600">สิทธิ์การใช้งานข้อมูล</p>
+              {editRole === "ADMIN" ? (
+                <p className="rounded-lg border border-indigo-100 bg-indigo-50/60 px-3 py-2 text-[12px] text-indigo-800">ผู้ดูแลระบบใช้งานและแก้ไขได้ทุกส่วน รวมถึงจัดการผู้ใช้</p>
+              ) : (
+                <PermissionMatrix value={editPerms} onChange={setEditPerms} />
+              )}
+            </div>
           </ModalFormBody>
           <ModalFormActions>
             <button type="submit" className="rounded-full bg-gradient-to-r from-[#0000BF] via-[#8b5cf6] to-[#ec4899] text-sm font-bold text-white shadow-lg shadow-fuchsia-500/25 hover:from-[#0000a3] hover:via-[#7c3aed] hover:to-[#db2777] px-4 py-2">
@@ -339,6 +382,11 @@ export function AdminPage() {
                       <div className="min-w-0">
                         <p className="truncate font-black tracking-tight text-[#1e1b4b]">{r.username}</p>
                         <p className="mt-0.5 truncate text-sm text-slate-600">{r.fullName?.trim() || "—"}</p>
+                        {r.employeeCode || r.position || r.affiliation ? (
+                          <p className="mt-0.5 truncate text-[11.5px] text-slate-500">
+                            {[r.employeeCode, r.position, r.affiliation].filter(Boolean).join(" · ")}
+                          </p>
+                        ) : null}
                       </div>
                       <span
                         className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] font-black ${
@@ -368,6 +416,9 @@ export function AdminPage() {
                       ) : null}
                     </div>
 
+                    <p className="text-[11.5px] text-slate-600">
+                      <span className="font-bold text-slate-500">สิทธิ์:</span> {permissionSummary(r.role, r.permissions)}
+                    </p>
                     <p className="text-[11px] text-slate-500">สร้างเมื่อ {formatCreatedAt(r.createdAt)}</p>
 
                     <div className="mt-auto flex flex-wrap gap-1.5 border-t border-[#ecebff] pt-3">

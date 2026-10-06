@@ -54,6 +54,8 @@ type PRow = {
   personnelRoleId: string;
   compensationRate: string;
   tabKey: MissionPersonnelTabKey;
+  /** รถที่ประจำ — ต้องอยู่ในรายการยานพาหนะของภารกิจ */
+  assignedVehicleId?: string;
 };
 
 function botAutoCompensationRate(
@@ -366,11 +368,49 @@ export function MissionFormPage() {
     () =>
       vehicles.map((v) => ({
         value: v.id,
-        label: `${v.licensePlate} — ${vehicleDisplayLabel(v)}`,
-        keywords: `${v.brand ?? ""} ${v.model ?? ""} ${v.licensePlate} ${v.brandModel ?? ""}`,
+        label: v.licensePlate,
+        keywords: `${v.brand ?? ""} ${v.model ?? ""} ${v.brandModel ?? ""} ${vehicleDisplayLabel(v)}`,
+        imageUrl: (v.documents ?? []).find((d) => d.kind === "PHOTO")?.fileUrl ?? null,
       })),
     [vehicles],
   );
+
+  const missionVehicleIds = useMemo(() => new Set(vRows.map((r) => r.vehicleId).filter(Boolean)), [vRows]);
+
+  /** รถในภารกิจขึ้นก่อน — เลือกรถนอกรายการจะถูกเพิ่มเข้าขั้นยานพาหนะให้อัตโนมัติ */
+  const crewVehicleOptions = useMemo(() => {
+    const inMission = vehicleSearchOptions.filter((o) => missionVehicleIds.has(o.value));
+    const others = vehicleSearchOptions.filter((o) => !missionVehicleIds.has(o.value));
+    return [...inMission, ...others];
+  }, [vehicleSearchOptions, missionVehicleIds]);
+
+  const crewByVehicle = useMemo(() => {
+    const map = new Map<string, string[]>();
+    for (const r of pRows) {
+      if (!r.assignedVehicleId || !r.personnelId) continue;
+      const p = personnel.find((x) => x.id === r.personnelId);
+      const name = p ? `${p.rank ? `${p.rank} ` : ""}${p.fullName}` : "—";
+      map.set(r.assignedVehicleId, [...(map.get(r.assignedVehicleId) ?? []), name]);
+    }
+    return map;
+  }, [pRows, personnel]);
+
+  const assignCrewVehicle = (idx: number, vehicleId: string) => {
+    setPRows((prev) => prev.map((r, i) => (i === idx ? { ...r, assignedVehicleId: vehicleId } : r)));
+    if (!vehicleId || missionVehicleIds.has(vehicleId)) return;
+    setVRows((prev) => {
+      const blank = prev.findIndex((r) => !r.vehicleId);
+      const row: VRow = {
+        vehicleId,
+        vehicleRoleId: (blank >= 0 ? prev[blank].vehicleRoleId : "") || vehicleRoleMasters[0]?.id || "",
+        fuelLiters: "",
+        fuelType: "",
+        fuelAmount: "",
+      };
+      if (blank >= 0) return prev.map((r, i) => (i === blank ? { ...r, ...row, fuelAmount: r.fuelAmount } : r));
+      return [...prev, row];
+    });
+  };
 
   useEffect(() => {
     setPRows((prev) =>
@@ -474,6 +514,7 @@ export function MissionFormPage() {
                 personnelRoleId: p.personnelRoleId,
                 compensationRate: String(p.compensationRate ?? "0"),
                 tabKey,
+                assignedVehicleId: p.assignedVehicleId ?? "",
               };
             })
           : [
@@ -624,6 +665,8 @@ export function MissionFormPage() {
         personnelId: r.personnelId,
         personnelRoleId: r.personnelRoleId,
         compensationRate: r.compensationRate === "" ? 0 : Number(r.compensationRate) || 0,
+        assignedVehicleId:
+          r.assignedVehicleId && vehiclesById.has(r.assignedVehicleId) ? r.assignedVehicleId : null,
       })),
       vehicles: vehiclesPayload.map((r) => ({
         vehicleId: r.vehicleId,
@@ -1063,13 +1106,23 @@ export function MissionFormPage() {
                 </div>
 
                 <div className="overflow-x-auto rounded-lg border border-slate-200">
-                  <div className="hidden min-w-[36rem] grid-cols-[minmax(0,1.4fr)_minmax(7rem,0.9fr)_5.5rem_2.5rem] gap-1.5 border-b border-slate-200 bg-slate-50 px-2 py-1.5 text-[10px] font-bold uppercase tracking-wide text-slate-600 sm:grid">
+                  <div className="hidden min-w-[48rem] grid-cols-[minmax(0,1.3fr)_minmax(7rem,0.8fr)_minmax(9rem,1fr)_5.5rem_2.5rem] gap-1.5 border-b border-slate-200 bg-slate-50 px-2 py-1.5 text-[10px] font-bold uppercase tracking-wide text-slate-600 sm:grid">
                     <span>บุคลากร</span>
                     <span>บทบาท</span>
+                    <span className="flex items-center justify-between gap-1">
+                      ประจำรถ
+                      <button
+                        type="button"
+                        className="normal-case tracking-normal text-[#0000BF] hover:underline"
+                        onClick={() => setStep(4)}
+                      >
+                        ไปยานพาหนะ →
+                      </button>
+                    </span>
                     <span>ค่าตอบแทน</span>
                     <span className="sr-only">ลบ</span>
                   </div>
-                  <ul className="min-w-[36rem] divide-y divide-slate-100">
+                  <ul className="min-w-[48rem] divide-y divide-slate-100">
                     {pRowsInActiveTab.length === 0 ? (
                       <li className="px-3 py-4 text-center text-xs text-slate-500">
                         ยังไม่มีรายชื่อในแถบนี้ — กด «+ เพิ่มบุคลากร»
@@ -1078,7 +1131,7 @@ export function MissionFormPage() {
                       pRowsInActiveTab.map(({ row, index: idx }) => (
                         <li
                           key={`${row.tabKey}-${idx}`}
-                          className="grid grid-cols-[minmax(0,1.4fr)_minmax(7rem,0.9fr)_5.5rem_2.5rem] items-center gap-1.5 px-2 py-1"
+                          className="grid grid-cols-[minmax(0,1.3fr)_minmax(7rem,0.8fr)_minmax(9rem,1fr)_5.5rem_2.5rem] items-center gap-1.5 px-2 py-1"
                         >
                           <SearchableSelect
                             value={row.personnelId}
@@ -1121,6 +1174,19 @@ export function MissionFormPage() {
                               </option>
                             ))}
                           </select>
+                          <SearchableSelect
+                            value={row.assignedVehicleId ?? ""}
+                            onChange={(v) => assignCrewVehicle(idx, v)}
+                            options={crewVehicleOptions}
+                            emptyLabel="— ไม่ระบุ —"
+                            allowEmpty
+                            aria-label={`ประจำรถแถว ${idx + 1}`}
+                            inputClassName={`w-full rounded-md border bg-white px-2 py-1 text-sm text-slate-900 ${
+                              row.assignedVehicleId && !missionVehicleIds.has(row.assignedVehicleId)
+                                ? "border-rose-300"
+                                : "border-slate-200"
+                            }`}
+                          />
                           <CommaNumberInput
                             aria-label={`ค่าตอบแทนแถว ${idx + 1}`}
                             className={`w-full rounded-md border border-slate-200 bg-white px-2 py-1 text-sm tabular-nums text-slate-900 ${
@@ -1458,6 +1524,27 @@ export function MissionFormPage() {
                         >
                           ลบ
                         </button>
+                        {row.vehicleId ? (
+                          <div className="col-span-full -mt-0.5 flex flex-wrap items-center gap-1 text-[11px] text-slate-500">
+                            <span className="font-semibold text-slate-600">ประจำรถ:</span>
+                            {crewByVehicle.get(row.vehicleId)?.length ? (
+                              crewByVehicle.get(row.vehicleId)!.map((n, i) => (
+                                <span key={i} className="rounded-full bg-[#0000BF]/[0.06] px-1.5 py-0.5 text-[#2e2a58]">
+                                  {n}
+                                </span>
+                              ))
+                            ) : (
+                              <span>ยังไม่ระบุ</span>
+                            )}
+                            <button
+                              type="button"
+                              className="ml-1 font-semibold text-[#0000BF] hover:underline"
+                              onClick={() => setStep(2)}
+                            >
+                              กำหนดในบุคลากร →
+                            </button>
+                          </div>
+                        ) : null}
                       </li>
                     ))}
                   </ul>

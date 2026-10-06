@@ -122,6 +122,7 @@ export const MissionEstimateEditor = forwardRef<MissionEstimateEditorHandle, Mis
     const savedCalcMetaRef = useRef<MissionEstimateRecord["calcMeta"] | null>(null);
 
     const totals = useMemo(() => computeEstimateTotals(lines), [lines]);
+    const manualPrevious = !previousInfo;
 
     useEffect(() => {
       onApprovalTotalChange?.(totals.approvalTotal);
@@ -191,14 +192,16 @@ export const MissionEstimateEditor = forwardRef<MissionEstimateEditorHandle, Mis
         );
         setLines((cur) => {
           const source = baseLines?.length ? baseLines : cur.length ? cur : templateToFormLines(data.template);
-          return applyPreviousAmounts(source, data.previous?.amountsByKey);
+          // ไม่มีประมาณการก่อนหน้าในระบบ — คงยอดก่อนหน้าที่ผู้ใช้กรอกเองไว้
+          if (!data.previous) return source;
+          return applyPreviousAmounts(source, data.previous.amountsByKey);
         });
         setPreviousMissionId(data.previous?.missionId ?? null);
         setPreviousInfo(data.previous);
         if (data.previous) {
           setPreviousLabel(data.previous.label ?? "");
           setPreviousDateRange(data.previous.dateRange ?? "");
-        } else {
+        } else if (!baseLines?.length) {
           setPreviousLabel("");
           setPreviousDateRange("");
         }
@@ -533,11 +536,23 @@ export const MissionEstimateEditor = forwardRef<MissionEstimateEditorHandle, Mis
               ใช้ยอดประมาณการก่อนหน้า
             </button>
           </div>
-        ) : routeId ? (
-          <p className="rounded-xl border border-dashed border-slate-200 bg-white px-3 py-2 text-sm text-slate-600">
-            ยังไม่มีประมาณการก่อนหน้าบนเส้นทางนี้
-          </p>
-        ) : null}
+        ) : (
+          <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-dashed border-amber-300 bg-amber-50/60 px-3 py-2 text-sm text-amber-900">
+            <p>
+              {routeId ? "ยังไม่มีประมาณการก่อนหน้าบนเส้นทางนี้ — " : ""}
+              กรอกยอดเปรียบเทียบเองได้ในคอลัมน์ «ก่อนหน้า» พร้อมป้ายและช่วงวันที่ด้านบน
+            </p>
+            {lines.some((l) => parseLooseNumber(l.previousAmount) > 0) ? (
+              <button
+                type="button"
+                className="rounded-lg border border-amber-300 bg-white px-2.5 py-1 text-xs font-semibold text-amber-800 hover:bg-amber-100"
+                onClick={() => setLines((cur) => cur.map((l) => ({ ...l, previousAmount: null })))}
+              >
+                ล้างยอดก่อนหน้า
+              </button>
+            ) : null}
+          </div>
+        )}
 
         <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white/95">
           <table className="w-full table-fixed border-collapse text-left text-xs">
@@ -661,8 +676,18 @@ export const MissionEstimateEditor = forwardRef<MissionEstimateEditorHandle, Mis
                         <p className="py-1 text-right text-sm font-semibold tabular-nums">{formatBaht(current)}</p>
                       )}
                     </td>
-                    <td className="border-b border-slate-100 px-2 py-1.5 text-right tabular-nums text-slate-600">
-                      {line.includeInTotal === false ? "" : formatBaht(previous, { empty: "—" })}
+                    <td className="border-b border-slate-100 px-2 py-1 text-right tabular-nums text-slate-600">
+                      {!booked ? null : manualPrevious ? (
+                        <CommaNumberInput
+                          aria-label={`ยอดก่อนหน้า ${line.name}`}
+                          className="w-full rounded-md border border-amber-200 bg-amber-50/40 px-2 py-1 text-right text-sm tabular-nums"
+                          value={line.previousAmount ?? ""}
+                          maxFractionDigits={2}
+                          onChange={(raw) => patchLine(idx, { previousAmount: raw.trim() ? raw : null })}
+                        />
+                      ) : (
+                        formatBaht(previous, { empty: "—" })
+                      )}
                     </td>
                     <td className={`border-b border-slate-100 px-2 py-1.5 text-right tabular-nums ${deltaClass(delta)}`}>
                       {Number.isFinite(delta) ? formatBaht(delta) : ""}

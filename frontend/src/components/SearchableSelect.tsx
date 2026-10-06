@@ -6,7 +6,25 @@ export type SearchableSelectOption = {
   label: string;
   /** ข้อความเพิ่มสำหรับการค้นหา (ไม่แสดง) */
   keywords?: string;
+  /** รูปย่อหน้าป้าย (null = แสดงกรอบว่าง) — ไม่ส่ง = ไม่มีช่องรูป */
+  imageUrl?: string | null;
 };
+
+function OptionThumb({ url, size }: { url: string | null | undefined; size: "sm" | "md" }) {
+  const cls = size === "md" ? "h-8 w-12" : "h-5 w-7";
+  const [broken, setBroken] = useState(false);
+  return url && !broken ? (
+    <img
+      src={url}
+      alt=""
+      loading="lazy"
+      onError={() => setBroken(true)}
+      className={`${cls} shrink-0 rounded object-cover`}
+    />
+  ) : (
+    <span className={`${cls} shrink-0 rounded bg-slate-100`} aria-hidden />
+  );
+}
 
 type SearchableSelectProps = {
   value: string;
@@ -149,7 +167,14 @@ export function SearchableSelect({
                 setFilterText("");
               }}
             >
-              {o.label}
+              {o.imageUrl !== undefined ? (
+                <span className="flex items-center gap-2">
+                  <OptionThumb url={o.imageUrl} size="md" />
+                  <span className="truncate">{o.label}</span>
+                </span>
+              ) : (
+                o.label
+              )}
             </li>
           ))
         )}
@@ -157,8 +182,15 @@ export function SearchableSelect({
       document.body,
     );
 
+  const showSelectedThumb = !open && selected?.imageUrl !== undefined && Boolean(selected);
+
   return (
     <div ref={containerRef} className={`relative ${className}`}>
+      {showSelectedThumb ? (
+        <span className="pointer-events-none absolute inset-y-0 left-1.5 flex items-center">
+          <OptionThumb url={selected?.imageUrl} size="sm" />
+        </span>
+      ) : null}
       <input
         ref={inputRef}
         id={id}
@@ -168,7 +200,7 @@ export function SearchableSelect({
         aria-expanded={open}
         aria-haspopup="listbox"
         role="combobox"
-        className={inputClassName}
+        className={`${inputClassName}${showSelectedThumb ? " !pl-10" : ""}`}
         placeholder={selected ? placeholder : emptyLabel}
         value={inputDisplay}
         onFocus={() => {

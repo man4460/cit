@@ -3,7 +3,6 @@ import { Link, useSearchParams } from "react-router-dom";
 import { apiJson } from "../api/client";
 import { PageHeaderBar } from "../components/PageHeaderBar";
 import { PickableDateInput } from "../components/PickableDateInput";
-import { ReportsSubNav } from "../components/ReportsSubNav";
 import { useAuth } from "../context/AuthContext";
 import { currentUserLabel } from "../lib/currentUserLabel";
 import { mondayOfWeekContaining } from "../lib/inspectionWeek";
@@ -226,13 +225,11 @@ export function VehicleWeeklyInspectionPage() {
           </div>
         }
         extras={
-          <>
-            <Link to="/reports/weekly" className={toolbarLinkBtnClass}>
-              รายงานสัปดาห์
-            </Link>
-            <ReportsSubNav />
-          </>
+          <Link to={`/reports/weekly?week=${encodeURIComponent(weekStart)}`} className={toolbarLinkBtnClass}>
+            รายงานสัปดาห์
+          </Link>
         }
+        backTo="/reports/weekly"
       />
 
       {err ? <p className="mt-3 text-sm text-rose-600 print:hidden">{err}</p> : null}

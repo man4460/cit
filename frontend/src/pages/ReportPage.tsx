@@ -5,7 +5,6 @@ import { Modal, ModalFormActions, ModalFormBody } from "../components/Modal";
 import { PageFilterPrintBar } from "../components/PageFilterPrintBar";
 import { PageHeaderBar } from "../components/PageHeaderBar";
 import { PickableDateInput } from "../components/PickableDateInput";
-import { ReportsSubNav } from "../components/ReportsSubNav";
 import { useAuth } from "../context/AuthContext";
 import { currentUserLabel } from "../lib/currentUserLabel";
 import { mondayOfWeekContaining } from "../lib/inspectionWeek";
@@ -14,6 +13,7 @@ import { ARMOR_MONTHLY_TOPICS } from "../lib/armorMonthlyTopics";
 import { VEHICLE_WEEKLY_TOPICS, type VehicleWeeklyTopicKey } from "../lib/vehicleWeeklyTopics";
 import { toolbarLinkBtnClass } from "../lib/uiTokens";
 import { REPORT_TYPES } from "./reportsConfig";
+import { ActivityGraduatesReportView } from "./reports/ActivityGraduatesReportView";
 import type { LoadOptions } from "../lib/loadOptions";
 import { setLoadBusy } from "../lib/loadOptions";
 import {
@@ -674,13 +674,15 @@ export function ReportPage() {
 
   const isWeeklyVehicleInspection = slug === "weekly";
   const isArmorMonthlyReport = slug === "monthly";
+  const graduatesKeyword = meta?.activityCategoryKeyword;
+  const hasOwnToolbar = isWeeklyVehicleInspection || isArmorMonthlyReport || Boolean(graduatesKeyword);
 
   return (
     <div>
       <PageHeaderBar
         title={title}
         filter={
-          !isWeeklyVehicleInspection && !isArmorMonthlyReport
+          !hasOwnToolbar
             ? {
                 value: listFilter,
                 onChange: setListFilter,
@@ -694,7 +696,8 @@ export function ReportPage() {
                 showSearch: false,
               }
         }
-        extras={<ReportsSubNav />}
+        backTo="/reports"
+        backLabel="กลับหน้ารายงาน"
       />
 
       {isWeeklyVehicleInspection ? (
@@ -704,6 +707,10 @@ export function ReportPage() {
       ) : isArmorMonthlyReport ? (
         <div className="mt-4">
           <ArmorMonthlyReportView reportTitle={title} />
+        </div>
+      ) : graduatesKeyword ? (
+        <div className="mt-4">
+          <ActivityGraduatesReportView key={slug} reportTitle={title} categoryKeyword={graduatesKeyword} />
         </div>
       ) : (
         <div className="mt-5 rounded-[1.5rem] border border-[#e8e6fc]/90 bg-gradient-to-br from-white/85 via-[#f5f3ff]/60 to-[#fdf2f8]/50 p-5 shadow-[0_16px_40px_-28px_rgba(30,27,75,0.28)] sm:p-6">

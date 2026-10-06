@@ -3,7 +3,6 @@ import { Link, useSearchParams } from "react-router-dom";
 import { apiJson } from "../api/client";
 import { PageHeaderBar } from "../components/PageHeaderBar";
 import { PickableDateInput } from "../components/PickableDateInput";
-import { ReportsSubNav } from "../components/ReportsSubNav";
 import { useAuth } from "../context/AuthContext";
 import { currentUserLabel } from "../lib/currentUserLabel";
 import { ARMOR_MONTHLY_TOPICS } from "../lib/armorMonthlyTopics";
@@ -221,13 +220,11 @@ export function ArmorMonthlyInspectionPage() {
           </div>
         }
         extras={
-          <>
-            <Link to="/reports/monthly" className={toolbarLinkBtnClass}>
-              รายงานเดือน
-            </Link>
-            <ReportsSubNav />
-          </>
+          <Link to={`/reports/monthly?month=${encodeURIComponent(monthYm)}`} className={toolbarLinkBtnClass}>
+            รายงานเดือน
+          </Link>
         }
+        backTo="/reports/monthly"
       />
 
       {err ? <p className="mt-3 text-sm text-rose-600 print:hidden">{err}</p> : null}

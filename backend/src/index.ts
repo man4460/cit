@@ -7,11 +7,14 @@ import cors from "cors";
 import { ensureUploadDir } from "./lib/upload.js";
 import { ensureBootstrapAdmin } from "./lib/bootstrapAdmin.js";
 import { authMiddleware } from "./middleware/auth.js";
+import { permissionMiddleware } from "./middleware/permission.js";
 import { auditTrailMiddleware } from "./middleware/auditTrail.js";
 import { authRouter } from "./routes/auth.js";
 import { meRouter } from "./routes/me.js";
 import { adminUsersRouter } from "./routes/adminUsers.js";
 import { tasksRouter } from "./routes/tasks.js";
+import { activityCategoriesRouter } from "./routes/activityCategories.js";
+import { seedActivityCategories } from "./lib/seedActivityCategories.js";
 import { seedPersonnelMasterData } from "./lib/seedPersonnelMasters.js";
 import { personnelRouter } from "./routes/personnel.js";
 import { personnelCategoriesRouter } from "./routes/personnelCategories.js";
@@ -72,6 +75,13 @@ app.use(express.json());
 
 const uploadDir = process.env.UPLOAD_DIR ?? path.join(process.cwd(), "uploads");
 app.use("/uploads", express.static(uploadDir));
+/** ฐานข้อมูลที่ดึงมาจากเซิร์ฟเวอร์จริงอาจไม่มีไฟล์ในเครื่อง — ให้ไปเอาจากต้นทางแทน */
+const uploadFallbackOrigin = process.env.UPLOAD_FALLBACK_ORIGIN?.trim().replace(/\/+$/, "");
+if (uploadFallbackOrigin) {
+  app.use("/uploads", (req, res) => {
+    res.redirect(302, `${uploadFallbackOrigin}/uploads${req.url}`);
+  });
+}
 
 app.get("/api/health", (_req, res) => {
   res.json({ ok: true, service: "cit-mission-api" });
@@ -83,6 +93,7 @@ app.use("/api/investigation-approval", investigationApprovalRouter);
 
 const secured = express.Router();
 secured.use(authMiddleware);
+secured.use(permissionMiddleware);
 secured.use(auditTrailMiddleware());
 secured.use(meRouter);
 secured.use("/personnel-categories", personnelCategoriesRouter);
@@ -115,6 +126,7 @@ secured.use("/police-stations", policeStationsRouter);
 secured.use("/mission-estimates", missionEstimatesRouter);
 secured.use("/missions", missionsRouter);
 secured.use("/tasks", tasksRouter);
+secured.use("/activity-categories", activityCategoriesRouter);
 secured.use("/admin/users", adminUsersRouter);
 secured.use("/audit-logs", auditLogsRouter);
 secured.use("/security-incidents", securityIncidentsRouter);
@@ -188,6 +200,7 @@ void ensureBootstrapAdmin()
   .then(() => seedInvestigationTeams())
   .then(() => seedInvestigationCategories())
   .then(() => seedOsAreaGroups())
+  .then(() => seedActivityCategories())
   .then(() => {
     app.listen(port, host, () => {
       const hint = host === "0.0.0.0" ? "ทุก interface (LAN ใช้ http://<IP-เครื่องนี้>:" + port + ")" : host;
