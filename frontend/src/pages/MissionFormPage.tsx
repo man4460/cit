@@ -15,12 +15,7 @@ import {
 import { PageHeaderBar } from "../components/PageHeaderBar";
 import { MissionsSubNav } from "../components/MissionsSubNav";
 import { SearchableSelect, personnelSelectLabel } from "../components/SearchableSelect";
-import {
-  isPoliceCommissionedRank,
-  EMPTY_ESTIMATE_PERSON_COUNTS,
-  EMPTY_BOT_LINE_AMOUNTS,
-  type BotLineAmounts,
-} from "../lib/estimatePersonCounts";
+import { EMPTY_BOT_LINE_AMOUNTS, type BotLineAmounts } from "../lib/estimatePersonCounts";
 import { formatBaht, formatInt, parseLooseNumber } from "../lib/formatNumber";
 import {
   BOT_SPECIAL_ALLOWANCE_PER_DAY,
@@ -36,9 +31,6 @@ import {
   type MissionPersonnelTabKey,
 } from "../lib/missionPersonnelTabs";
 import {
-  detectPoliceDestGroup,
-  EMPTY_ESTIMATE_CALC_META,
-  inferTripType,
   isSpecialOpsPoliceStationName,
   STATION_ESTIMATE_ITEM_OPTIONS,
   sumPolicePersonnelCompensation,
@@ -46,7 +38,6 @@ import {
   normalizeStationEstimateItemCode,
   splitSpecialOpsAdminVehicle,
 } from "../lib/policeCompensationRates";
-import { PERSONNEL_EXPENSE_LINK_HELP } from "../lib/personnelExpenseLinks";
 import { toolbarLinkBtnClass, toolbarPrimaryBtnClass } from "../lib/uiTokens";
 import type {
   MissionDetail,
@@ -315,17 +306,6 @@ export function MissionFormPage() {
       }, 0),
     [vRows],
   );
-
-  const estimateCalcMeta = useMemo(() => {
-    const text = selectedRoute
-      ? `${selectedRoute.name ?? ""} ${selectedRoute.startLocation} ${selectedRoute.endLocation}`
-      : "";
-    return {
-      ...EMPTY_ESTIMATE_CALC_META,
-      destinationGroup: detectPoliceDestGroup(text),
-      tripType: inferTripType(selectedRoute?.missionDays ?? routeMissionDays),
-    };
-  }, [selectedRoute, routeMissionDays]);
 
   const stationItemTotals = useMemo(() => sumStationItemTotals(psRows), [psRows]);
 
@@ -721,32 +701,6 @@ export function MissionFormPage() {
     }
   }
 
-  const suggestedEstimatePersonCounts = useMemo(() => {
-    const counts = { ...EMPTY_ESTIMATE_PERSON_COUNTS };
-    for (const row of pRows) {
-      if (!row.personnelId) continue;
-      if (row.tabKey === "bot") {
-        counts.bot += 1;
-      }
-      else if (row.tabKey === "driver") counts.driver += 1;
-      else if (row.tabKey === "highway" || row.tabKey === "crime" || row.tabKey === "special") {
-        const person = personnel.find((p) => p.id === row.personnelId);
-        const commissioned = isPoliceCommissionedRank(person?.rank);
-        if (row.tabKey === "highway") {
-          if (commissioned) counts.highwayCommissioned += 1;
-          else counts.highwayEnlisted += 1;
-        } else if (row.tabKey === "crime") {
-          if (commissioned) counts.crimeCommissioned += 1;
-          else counts.crimeEnlisted += 1;
-        } else {
-          if (commissioned) counts.specialCommissioned += 1;
-          else counts.specialEnlisted += 1;
-        }
-      }
-    }
-    return counts;
-  }, [pRows, personnel]);
-
   /** ยอดจากจนท.ธปท.: 5.1 จำนวนคน×ที่พัก · 5.2 ค่าพาหนะ · 5.3 เบี้ยเลี้ยง · 8.1 เบี้ยพิเศษ */
   const botLineAmounts = useMemo((): BotLineAmounts => {
     const days =
@@ -1052,16 +1006,7 @@ export function MissionFormPage() {
 
             {step === 2 && (
               <div className="space-y-2">
-                <div className="flex flex-wrap items-center justify-between gap-2">
-                  <div className="space-y-0.5 text-[11px] text-slate-600">
-                    <p className="font-medium text-slate-700">ลิงก์ไปเมนูค่าใช้จ่ายอัตโนมัติ</p>
-                    <p>{PERSONNEL_EXPENSE_LINK_HELP}</p>
-                    <p className="text-slate-500">
-                      อรินทราช/หนุมาน → 2.1 · ทางหลวง → 2.2 · กองปราบ → 2.3 =
-                      รวมค่าตอบแทนในแท็บนั้น · สถานี → 2.4/2.5 · กองกำกับฯ → 2.6+2.7 ·
-                      ทริป 2569: ค่าที่พัก/เบี้ย จนท.ธปท. (5.1–8.1) จาก Excel ไม่คูณอัตรา
-                    </p>
-                  </div>
+                <div className="flex flex-wrap items-center justify-end gap-2">
                   <button
                     type="button"
                     className="shrink-0 rounded-lg border border-slate-200 px-2.5 py-1 text-xs font-medium text-[#4d47b6] hover:bg-slate-100"
@@ -1239,10 +1184,6 @@ export function MissionFormPage() {
 
             {step === 3 && (
               <div className="space-y-2">
-                <p className="text-[11px] text-slate-600">
-                  สภ. ปลายทาง → 2.4 / 2.5 (ไม่เกิน 2,000) · กองกำกับต่อต้านก่อการร้าย / อรินทราช / หนุมาน →
-                  แยกอัตโนมัติเป็น 2.6 ค่าบริหาร 2,000 + 2.7 ค่าพาหนะที่เหลือ
-                </p>
                 <div className="flex flex-wrap items-center justify-end gap-2">
                   <button
                     type="button"
@@ -1413,8 +1354,7 @@ export function MissionFormPage() {
               <div className="space-y-3">
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <p className="text-[11px] text-slate-600">
-                    กรอก <span className="font-semibold text-[#4d47b6]">จำนวนเงินค่าน้ำมัน</span> แต่ละคัน —
-                    ยอดรวมลิงก์ไปข้อ 6 ในหน้าค่าใช้จ่าย
+                    กรอก <span className="font-semibold text-[#4d47b6]">จำนวนเงินค่าน้ำมัน</span> แต่ละคัน
                   </p>
                   <button
                     type="button"
@@ -1523,7 +1463,7 @@ export function MissionFormPage() {
                   </ul>
                 </div>
                 <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-amber-200 bg-amber-50/60 px-3 py-2.5">
-                  <p className="text-xs text-slate-600">รวมค่าน้ำมันเชื้อเพลิง (ลิงก์ข้อ 6)</p>
+                  <p className="text-xs text-slate-600">รวมค่าน้ำมันเชื้อเพลิง</p>
                   <p className="text-base font-black tabular-nums text-[#0000BF]">
                     {formatBaht(vehicleFuelTotal)} บาท
                   </p>
@@ -1559,10 +1499,6 @@ export function MissionFormPage() {
                 missionCode={missionCode}
                 missionTitle={title.trim() || "ภารกิจ"}
                 selectedRoute={selectedRoute}
-                suggestedPersonCounts={suggestedEstimatePersonCounts}
-                stationItemTotals={stationItemTotals}
-                botLineAmounts={botLineAmounts}
-                botAmountsLinked={hasBotPersonnel}
                 onApprovalTotalChange={handleEstimateTotalChange}
               />
             </div>

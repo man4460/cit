@@ -102,14 +102,14 @@ export function buildEstimateWorkbook(payload: EstimateExportPayload): Buffer {
   const ws: XLSX.WorkSheet = {};
   let row = 0;
 
-  merge(ws, row, 0, row, 6);
+  merge(ws, row, 0, row, 7);
   setCell(ws, row, 0, title, {
     font: { bold: true, sz: 14, color: { rgb: C.dark } },
     alignment: { horizontal: "left", vertical: "center" },
   });
   row++;
 
-  merge(ws, row, 0, row, 6);
+  merge(ws, row, 0, row, 7);
   setCell(ws, row, 0, "เทียบประมาณการครั้งนี้กับประมาณการก่อนหน้าในเส้นทางเดียวกัน", {
     font: { sz: 10, color: { rgb: C.slate } },
     alignment: { horizontal: "left", vertical: "center" },
@@ -123,7 +123,7 @@ export function buildEstimateWorkbook(payload: EstimateExportPayload): Buffer {
     border: thinBorder,
     alignment: { horizontal: "left", vertical: "center" },
   });
-  merge(ws, row, 3, row, 6);
+  merge(ws, row, 3, row, 7);
   setCell(ws, row, 3, "ประมาณการครั้งนี้", {
     fill: { fgColor: { rgb: C.currentBg } },
     font: { bold: true, sz: 9, color: { rgb: C.blue } },
@@ -139,7 +139,7 @@ export function buildEstimateWorkbook(payload: EstimateExportPayload): Buffer {
     border: thinBorder,
     alignment: { horizontal: "left", vertical: "center", wrapText: true },
   });
-  merge(ws, row, 3, row, 6);
+  merge(ws, row, 3, row, 7);
   setCell(ws, row, 3, payload.currentLabel || payload.currentTitle || "—", {
     fill: { fgColor: { rgb: C.currentBg } },
     font: { bold: true, color: { rgb: C.dark } },
@@ -155,7 +155,7 @@ export function buildEstimateWorkbook(payload: EstimateExportPayload): Buffer {
     border: thinBorder,
     alignment: { horizontal: "left", vertical: "center" },
   });
-  merge(ws, row, 3, row, 6);
+  merge(ws, row, 3, row, 7);
   setCell(ws, row, 3, payload.currentDateRange || "—", {
     fill: { fgColor: { rgb: C.currentBg } },
     font: { sz: 10, color: { rgb: C.slate } },
@@ -164,14 +164,23 @@ export function buildEstimateWorkbook(payload: EstimateExportPayload): Buffer {
   });
   row += 2;
 
-  const headers = ["ที่", "รายการ", "จำนวนคน", "อัตรา (บาท)", "ประมาณการครั้งนี้", "ประมาณการก่อนหน้า", "ผลต่าง"];
+  const headers = [
+    "ที่",
+    "รายการ",
+    "จำนวนคน",
+    "อัตรา (บาท)",
+    "ประมาณการครั้งนี้",
+    "ประมาณการก่อนหน้า",
+    "ผลต่าง",
+    "หมายเหตุ",
+  ];
   for (let c = 0; c < headers.length; c++) {
     setCell(ws, row, c, headers[c]!, {
       fill: { fgColor: { rgb: C.headerBg } },
       font: { bold: true, sz: 10, color: { rgb: C.slate } },
       border: thinBorder,
       alignment: {
-        horizontal: c >= 2 ? "right" : "left",
+        horizontal: c >= 2 && c <= 6 ? "right" : "left",
         vertical: "center",
         wrapText: true,
       },
@@ -274,6 +283,17 @@ export function buildEstimateWorkbook(payload: EstimateExportPayload): Buffer {
       },
     });
     setCell(ws, row, 6, delta === "" ? "" : delta, deltaStyle);
+    setCell(
+      ws,
+      row,
+      7,
+      isItem ? String(line.lineNote ?? "").trim() : "",
+      textStyle({
+        fill: { fgColor: { rgb: rowFill } },
+        font: { sz: 10, color: { rgb: C.slate } },
+        alignment: { horizontal: "left", vertical: "center", wrapText: true },
+      }),
+    );
     row++;
   }
 
@@ -305,7 +325,7 @@ export function buildEstimateWorkbook(payload: EstimateExportPayload): Buffer {
         },
       }),
     });
-    merge(ws, row, 4, row, 6);
+    merge(ws, row, 4, row, 7);
     setCell(ws, row, 4, hint, {
       fill: { fgColor: { rgb: C.totalBg } },
       font: { sz: 10, color: { rgb: C.slate } },
@@ -318,7 +338,7 @@ export function buildEstimateWorkbook(payload: EstimateExportPayload): Buffer {
   const notes = String(payload.notes ?? "").trim();
   if (notes) {
     row++;
-    merge(ws, row, 0, row, 6);
+    merge(ws, row, 0, row, 7);
     setCell(ws, row, 0, "หมายเหตุ", {
       fill: { fgColor: { rgb: C.notesBg } },
       font: { bold: true, color: { rgb: "92400E" } },
@@ -328,7 +348,7 @@ export function buildEstimateWorkbook(payload: EstimateExportPayload): Buffer {
     row++;
     for (const noteLine of notes.split(/\r?\n/)) {
       if (!noteLine.trim()) continue;
-      merge(ws, row, 0, row, 6);
+      merge(ws, row, 0, row, 7);
       setCell(ws, row, 0, noteLine, {
         fill: { fgColor: { rgb: C.notesBg } },
         font: { sz: 10, color: { rgb: "78350F" } },
@@ -339,7 +359,7 @@ export function buildEstimateWorkbook(payload: EstimateExportPayload): Buffer {
     }
   }
 
-  ws["!ref"] = XLSX.utils.encode_range({ s: { r: 0, c: 0 }, e: { r: row - 1, c: 6 } });
+  ws["!ref"] = XLSX.utils.encode_range({ s: { r: 0, c: 0 }, e: { r: row - 1, c: 7 } });
   ws["!cols"] = [
     { wch: 8 },
     { wch: 48 },
@@ -348,6 +368,7 @@ export function buildEstimateWorkbook(payload: EstimateExportPayload): Buffer {
     { wch: 18 },
     { wch: 18 },
     { wch: 14 },
+    { wch: 28 },
   ];
   ws["!rows"] = [{ hpt: 22 }, { hpt: 16 }];
   if (headerRow >= 0) ws["!rows"][headerRow] = { hpt: 28 };

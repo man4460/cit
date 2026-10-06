@@ -1,11 +1,11 @@
-import { useCallback, useEffect, useMemo, useState, Fragment } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, Fragment } from "react";
 import { Link, Navigate, useParams, useSearchParams } from "react-router-dom";
 import { PickableDateInput } from "../../components/PickableDateInput";
 import { BudgetStatCard, BUDGET_STAT_TONES } from "../../components/BudgetStatCard";
 import { PageHeaderBar } from "../../components/PageHeaderBar";
 import { FitSingleLine } from "../../components/FitSingleLine";
 import { ModuleDocumentsModal } from "../../components/ModuleDocumentsModal";
-import { apiJson } from "../../api/client";
+import { apiFormJson, apiJson } from "../../api/client";
 import { useAuth } from "../../context/AuthContext";
 import { MODULE_DOCUMENT_CATEGORIES } from "../../lib/moduleDocumentCategories";
 import { NavGlyph } from "../../lib/navVisuals";
@@ -46,6 +46,20 @@ import {
   type BudgetKind,
   type BudgetYearLineRow,
 } from "./budgetFormat";
+import {
+  BudgetAvailabilityPanel,
+  BudgetCommitmentBreakdown,
+  BudgetCommitmentPanel,
+  BudgetImportResultModal,
+  BudgetImportRowBreakdown,
+  BudgetMovementPanel,
+  BudgetQuarterModal,
+  BudgetQuarterStrip,
+  formatThaiDate,
+  type BudgetImportData,
+  type BudgetImportResult,
+  type Quarter,
+} from "./BudgetMainSystemImport";
 
 type Tx = { id: string; amount: number; occurredAt: string; description: string | null; refNo: string | null };
 type Snap = { id: string; asOfDate: string; spentAmount: number; source: string; notes: string | null };
@@ -128,6 +142,15 @@ function budgetLineDisplayName(name: string, fallbackIndex: number, nested: bool
   return nested ? trimmed : `${fallbackIndex}. ${trimmed}`;
 }
 
+type AnnualTab = "overview" | "movement" | "availability" | "quarter";
+
+const ANNUAL_TABS: { id: AnnualTab; label: string }[] = [
+  { id: "overview", label: "หัวข้อใหญ่" },
+  { id: "movement", label: "ความเคลื่อนไหวงบ" },
+  { id: "availability", label: "งบคงเหลือ" },
+  { id: "quarter", label: "เบิกจ่ายรายไตรมาส" },
+];
+
 export function BudgetYearPage() {
   const { yearBe: yearParam, view: viewParam } = useParams();
   const [searchParams, setSearchParams] = useSearchParams();
@@ -153,6 +176,15 @@ export function BudgetYearPage() {
     setSearchParams(nextParams, { replace: true });
   };
 
+  const tabParam = searchParams.get("tab");
+  const annualTab: AnnualTab = ANNUAL_TABS.some((t) => t.id === tabParam) ? (tabParam as AnnualTab) : "overview";
+  const setAnnualTab = (next: AnnualTab) => {
+    const nextParams = new URLSearchParams(searchParams);
+    if (next === "overview") nextParams.delete("tab");
+    else nextParams.set("tab", next);
+    setSearchParams(nextParams, { replace: true });
+  };
+
   const [lines, setLines] = useState<BudgetYearLineRow[]>([]);
   const [requestsByAccount, setRequestsByAccount] = useState<Map<string, RequestItem>>(new Map());
   const [filter, setFilter] = useState("");
@@ -174,6 +206,11 @@ export function BudgetYearPage() {
   const [catMgrKind, setCatMgrKind] = useState<BudgetKind>("EXPENSE");
   const [docsOpen, setDocsOpen] = useState(false);
   const [catForm, setCatForm] = useState<CatFormState | null>(null);
+  const [importData, setImportData] = useState<BudgetImportData | null>(null);
+  const [importing, setImporting] = useState(false);
+  const [importResult, setImportResult] = useState<BudgetImportResult | null>(null);
+  const [quarterOpen, setQuarterOpen] = useState<Quarter | null>(null);
+  const importInputRef = useRef<HTMLInputElement>(null);
 
   const requestedOf = useCallback(
     (row: BudgetYearLineRow) => {
@@ -189,15 +226,17 @@ export function BudgetYearPage() {
     setLoadBusy(setLoading, opts, true);
     setErr(null);
     try {
-      const [res, catRes, yearsRes] = await Promise.all([
+      const [res, catRes, yearsRes, importRes] = await Promise.all([
         apiJson<{ label: string; lines: BudgetYearLineRow[] }>(
           `/api/budget/lines?bucket=${bucket}&fundingType=${fundingType}`,
         ),
         apiJson<{ items: BudgetCategoryRow[] }>(`/api/budget/categories`),
         apiJson<{ years: { yearBe: number }[]; maxYearBe: number | null }>("/api/budget/years").catch(() => null),
+        apiJson<BudgetImportData>(`/api/budget/imports/latest?yearBe=${yearBe}`).catch(() => null),
       ]);
       setLines(res.lines);
       setCategories(catRes.items);
+      setImportData(importRes?.batch ? importRes : null);
       if (yearsRes) {
         setYearCount(yearsRes.years?.length ?? 0);
         setMaxYearBe(yearsRes.maxYearBe);
@@ -227,7 +266,14 @@ export function BudgetYearPage() {
     setKindFilter("EXPENSE");
   }, [load]);
 
-  const displayLines = lines;
+  /** มีข้อมูลระบบหลัก: ใช้งบสุทธิ (อนุมัติ + เหลื่อมปี + จัดสรรระหว่างปี) ให้ยอดตรงระบบหลัก */
+  const useNetBudget = !isCommitment && Boolean(importData?.batch);
+  const showAnnualTabs = useNetBudget;
+  const budgetLabel = useNetBudget ? "งบสุทธิ" : "อนุมัติ";
+  const displayLines = useMemo(
+    () => (useNetBudget ? lines.map((l) => ({ ...l, allocatedAmount: l.totalBudget })) : lines),
+    [lines, useNetBudget],
+  );
 
   const expenseMajors = useMemo(
     () => buildManagedMajors(displayLines, categories, "EXPENSE"),
@@ -310,6 +356,35 @@ export function BudgetYearPage() {
       setErr(e instanceof Error ? e.message : "โหลดรายละเอียดไม่สำเร็จ");
     }
   };
+
+  const importMainSystemFile = async (file: File) => {
+    if (!isAdmin) return;
+    setImporting(true);
+    setErr(null);
+    try {
+      const fd = new FormData();
+      fd.append("file", file);
+      fd.append("yearBe", String(yearBe));
+      const result = await apiFormJson<BudgetImportResult>(`/api/budget/imports`, fd);
+      setImportResult(result);
+      await load({ silent: true });
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : "นำเข้าไฟล์ไม่สำเร็จ");
+    } finally {
+      setImporting(false);
+      if (importInputRef.current) importInputRef.current.value = "";
+    }
+  };
+
+  const selectedImportRow = useMemo(() => {
+    if (!selected || !importData) return null;
+    if (isCommitment) {
+      return selected.ciCode
+        ? importData.rows.find((r) => r.rowType === "ITEM" && r.ciCode === selected.ciCode) ?? null
+        : null;
+    }
+    return importData.rows.find((r) => r.yearLineId === selected.id) ?? null;
+  }, [selected, importData, isCommitment]);
 
   const resetTxForm = () => {
     setEditingTxId(null);
@@ -413,7 +488,8 @@ export function BudgetYearPage() {
     });
   };
 
-  const openEditForm = (row: BudgetYearLineRow) => {
+  const openEditForm = (displayRow: BudgetYearLineRow) => {
+    const row = lines.find((l) => l.id === displayRow.id) ?? displayRow;
     setLineForm({
       mode: "edit",
       line: row,
@@ -687,6 +763,29 @@ export function BudgetYearPage() {
               <button type="button" className={toolbarLinkBtnClass} onClick={() => setDocsOpen(true)}>
                 เอกสาร
               </button>
+              {!isCommitment ? (
+                <>
+                  <input
+                    ref={importInputRef}
+                    type="file"
+                    accept=".xlsx,.xls"
+                    className="hidden"
+                    onChange={(e) => {
+                      const f = e.target.files?.[0];
+                      if (f) void importMainSystemFile(f);
+                    }}
+                  />
+                  <button
+                    type="button"
+                    className={toolbarLinkBtnClass}
+                    disabled={importing}
+                    title="อัปโหลดรายงานการใช้งบประมาณที่ export จากระบบหลัก"
+                    onClick={() => importInputRef.current?.click()}
+                  >
+                    {importing ? "กำลังนำเข้า…" : "นำเข้าไฟล์ระบบหลัก"}
+                  </button>
+                </>
+              ) : null}
               <button type="button" className={toolbarPrimaryBtnClass} onClick={() => openCreateForm()}>
                 เพิ่มรายการ
               </button>
@@ -697,6 +796,13 @@ export function BudgetYearPage() {
 
       {err ? <p className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">{err}</p> : null}
       {loading ? <p className="text-sm text-slate-500">กำลังโหลด…</p> : null}
+      {importData?.batch ? (
+        <p className="text-[11px] text-slate-500">
+          ข้อมูลระบบหลักล่าสุด ณ {formatThaiDate(importData.batch.asOfDate)}
+          {importData.batch.fileName ? ` · ${importData.batch.fileName}` : ""}
+          {` · นำเข้าเมื่อ ${formatThaiDate(importData.batch.createdAt)}`}
+        </p>
+      ) : null}
 
       <div
         className={`grid gap-3 sm:grid-cols-2 ${
@@ -704,7 +810,13 @@ export function BudgetYearPage() {
         }`}
       >
         <BudgetStatCard
-          label={isNewestYear ? "งบอนุมัติทั้งสิ้น (ยังไม่อนุมัติ)" : "งบอนุมัติทั้งสิ้น"}
+          label={
+            isNewestYear
+              ? "งบอนุมัติทั้งสิ้น (ยังไม่อนุมัติ)"
+              : useNetBudget
+                ? "งบสุทธิทั้งสิ้น"
+                : "งบอนุมัติทั้งสิ้น"
+          }
           labelHint={
             showRequestFields ? (
               <span className="tabular-nums" title={`คำขอ ${fmt(totals.requested)} ${unit}`}>
@@ -808,6 +920,66 @@ export function BudgetYearPage() {
         })}
       </div>
 
+      {importData && isCommitment ? (
+        <BudgetCommitmentPanel
+          data={importData}
+          onOpenRow={(r) => {
+            const line = displayLines.find((l) => l.ciCode && l.ciCode === r.ciCode);
+            if (line) void openDetail(line);
+          }}
+        />
+      ) : null}
+
+      {showAnnualTabs && importData ? (
+        <>
+          <nav
+            className="flex flex-wrap gap-1 rounded-[1.25rem] border border-[#e8e6fc] bg-white/90 p-1"
+            aria-label="มุมมองงบประจำปี"
+          >
+            {ANNUAL_TABS.map((t) => {
+              const active = annualTab === t.id;
+              return (
+                <button
+                  key={t.id}
+                  type="button"
+                  onClick={() => setAnnualTab(t.id)}
+                  aria-current={active ? "page" : undefined}
+                  className={`rounded-xl px-3 py-1.5 text-xs font-bold transition ${
+                    active
+                      ? "bg-gradient-to-r from-[#0000BF] via-[#8b5cf6] to-[#ec4899] text-white shadow-sm"
+                      : "text-[#4b4880] hover:bg-[#f3f1ff]"
+                  }`}
+                >
+                  {t.label}
+                </button>
+              );
+            })}
+          </nav>
+          {annualTab === "movement" ? (
+            <BudgetMovementPanel
+              data={importData}
+              kind={kindFilter}
+              systemNet={kindStats.find((k) => k.kind === kindFilter)?.allocated ?? 0}
+              systemSpent={kindStats.find((k) => k.kind === kindFilter)?.spent ?? 0}
+            />
+          ) : null}
+          {annualTab === "availability" ? (
+            <BudgetAvailabilityPanel
+              data={importData}
+              kind={kindFilter}
+              onOpenRow={(r) => {
+                const line = displayLines.find((l) => l.id === r.yearLineId);
+                if (line) void openDetail(line);
+              }}
+            />
+          ) : null}
+          {annualTab === "quarter" ? (
+            <BudgetQuarterStrip data={importData} kind={kindFilter} onOpenQuarter={setQuarterOpen} />
+          ) : null}
+        </>
+      ) : null}
+
+      {(isCommitment && importData?.batch) || (showAnnualTabs && annualTab !== "overview") ? null : (
       <section className="overflow-hidden rounded-[1.25rem] border border-[#e8e6fc] bg-white/90">
         <div className="border-b border-[#ecebff] bg-gradient-to-r from-[#faf9ff] to-[#fdf2f8] px-3 py-2">
           <h2 className="text-xs font-black text-[#1e1b4b]">
@@ -833,7 +1005,7 @@ export function BudgetYearPage() {
                 </div>
                 <div className="flex min-w-0 max-w-[55%] shrink-0 items-center gap-3 text-right text-xs sm:max-w-none">
                   <div className="min-w-0 w-[5.5rem] sm:w-[6.5rem]">
-                    <div className="text-[9px] font-bold uppercase leading-none text-slate-400">อนุมัติ</div>
+                    <div className="text-[9px] font-bold uppercase leading-none text-slate-400">{budgetLabel}</div>
                     <FitSingleLine
                       className="font-semibold tabular-nums leading-tight text-[#2e2a58]"
                       maxPx={12}
@@ -871,6 +1043,7 @@ export function BudgetYearPage() {
           ) : null}
         </div>
       </section>
+      )}
 
       {/* Popup หมวด — แบบหน้าสรุป */}
       {popupMajor ? (
@@ -941,7 +1114,7 @@ export function BudgetYearPage() {
                   </div>
                 ) : null}
                 <div className="rounded-xl border border-[#e8e6fc] bg-white/90 px-3 py-2">
-                  <div className="text-[10px] font-bold text-slate-500">อนุมัติ</div>
+                  <div className="text-[10px] font-bold text-slate-500">{budgetLabel}</div>
                   <div className="text-sm font-black tabular-nums text-[#1e1b4b]">
                     {fmt(popupMajor.allocated)} {unit}
                   </div>
@@ -1041,7 +1214,7 @@ export function BudgetYearPage() {
                                 </div>
                               ) : null}
                               <div className="min-w-[4.5rem]">
-                                <div className="text-[9px] font-bold text-slate-400">อนุมัติ</div>
+                                <div className="text-[9px] font-bold text-slate-400">{budgetLabel}</div>
                                 <div className="tabular-nums text-slate-700">{fmt(displayAllocated)}</div>
                               </div>
                               {isTracking ? (
@@ -1137,7 +1310,7 @@ export function BudgetYearPage() {
                   )}
                 </div>
                 <div className="mt-1 text-sm text-slate-600">
-                  อนุมัติ {fmt(selected.allocatedAmount)} {unit}
+                  {budgetLabel} {fmt(selected.allocatedAmount)} {unit}
                   {showRequestFields ? <> · คำขอ {fmt(requestedOf(selected))} {unit}</> : null}
                   {isTracking ? (
                     <>
@@ -1163,6 +1336,13 @@ export function BudgetYearPage() {
             </div>
 
             <div className="flex-1 space-y-4 overflow-y-auto p-4">
+              {selectedImportRow ? (
+                isCommitment ? (
+                  <BudgetCommitmentBreakdown row={selectedImportRow} asOfDate={importData?.batch?.asOfDate ?? null} />
+                ) : (
+                  <BudgetImportRowBreakdown row={selectedImportRow} asOfDate={importData?.batch?.asOfDate ?? null} />
+                )
+              ) : null}
               {snaps.length ? (
                 <section>
                   <h3 className="text-xs font-black uppercase tracking-wide text-[#66638c]">ยอดตัดจากไฟล์งบ</h3>
@@ -1615,6 +1795,18 @@ export function BudgetYearPage() {
           </div>
         </div>
       ) : null}
+
+      {quarterOpen && importData ? (
+        <BudgetQuarterModal
+          data={importData}
+          kind={kindFilter}
+          quarter={quarterOpen}
+          onChangeQuarter={setQuarterOpen}
+          onClose={() => setQuarterOpen(null)}
+        />
+      ) : null}
+
+      {importResult ? <BudgetImportResultModal result={importResult} onClose={() => setImportResult(null)} /> : null}
 
       <ModuleDocumentsModal
         open={docsOpen}

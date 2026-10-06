@@ -32,6 +32,7 @@ export type BudgetYearLineRow = {
   isSummary: boolean;
   allocatedAmount: number;
   carryInAmount: number;
+  midYearAmount?: number;
   commitmentAmount: number;
   totalBudget: number;
   buyerName: string | null;

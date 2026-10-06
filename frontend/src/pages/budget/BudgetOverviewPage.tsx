@@ -23,6 +23,8 @@ import {
   sectionOf,
   type BudgetMajor,
 } from "./budgetCategories";
+import { BudgetExecutiveKindCards, BudgetExecutiveSummary } from "./BudgetExecutiveSummary";
+import type { BudgetImportData } from "./BudgetMainSystemImport";
 
 function m(n: number | null | undefined): string {
   if (n == null || !Number.isFinite(n)) return "—";
@@ -48,12 +50,19 @@ export function BudgetOverviewPage() {
   const [kindFilter, setKindFilter] = useState<BudgetKind>("EXPENSE");
   const [selected, setSelected] = useState<BudgetMajor | null>(null);
 
+  const [importData, setImportData] = useState<BudgetImportData | null>(null);
+
   const load = useCallback(async (y: number, opts?: LoadOptions) => {
     setLoadBusy(setLoading, opts, true);
     setErr(null);
     try {
-      const res = await apiJson<{ lines: BudgetYearLineRow[] }>(`/api/budget/lines?bucket=${y}`);
-      setLines(res.lines);
+      const [res, imp] = await Promise.all([
+        apiJson<{ lines: BudgetYearLineRow[] }>(`/api/budget/lines?bucket=${y}`),
+        apiJson<BudgetImportData>(`/api/budget/imports/latest?yearBe=${y}`).catch(() => null),
+      ]);
+      const hasImport = Boolean(imp?.batch);
+      setImportData(hasImport ? imp : null);
+      setLines(hasImport ? res.lines.map((l) => ({ ...l, allocatedAmount: l.totalBudget })) : res.lines);
     } catch (e) {
       setErr(e instanceof Error ? e.message : "โหลดไม่สำเร็จ");
     } finally {
@@ -142,6 +151,10 @@ export function BudgetOverviewPage() {
       {err ? <p className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">{err}</p> : null}
       {loading ? <p className="text-sm text-slate-500">กำลังโหลด…</p> : null}
 
+      {importData?.batch ? (
+        <BudgetExecutiveSummary data={importData} yearBe={yearBe} fmt={fmt} unit={unit} />
+      ) : (
+      <>
       {/* KPI รวม */}
       <div className={`grid gap-3 sm:grid-cols-2 ${isTrackingYear ? "lg:grid-cols-4" : "lg:grid-cols-2"}`}>
         <BudgetStatCard
@@ -271,6 +284,19 @@ export function BudgetOverviewPage() {
           );
         })}
       </div>
+      </>
+      )}
+
+      {importData?.batch ? (
+        <BudgetExecutiveKindCards
+          data={importData}
+          yearBe={yearBe}
+          fmt={fmt}
+          unit={unit}
+          activeKind={kindFilter}
+          onSelectKind={setKindFilter}
+        />
+      ) : null}
 
       {/* รายการหัวข้อใหญ่ */}
       <section className="overflow-hidden rounded-[1.25rem] border border-[#e8e6fc] bg-white/90">
@@ -297,6 +323,16 @@ export function BudgetOverviewPage() {
                   <div className="mt-0.5 text-[10px] leading-none text-slate-500">
                     {block.children.length} รายการย่อย
                   </div>
+                  {isTrackingYear ? (
+                    <div className="mt-1 h-1.5 max-w-xs overflow-hidden rounded-full bg-slate-100">
+                      <div
+                        className={`h-full rounded-full ${
+                          pct != null && pct >= 0.9 ? "bg-rose-500" : pct != null && pct >= 0.5 ? "bg-amber-400" : "bg-emerald-400"
+                        }`}
+                        style={{ width: `${Math.min(100, Math.max(0, (pct ?? 0) * 100))}%` }}
+                      />
+                    </div>
+                  ) : null}
                 </div>
                 <div className="flex min-w-0 max-w-[55%] shrink-0 items-center gap-3 text-right text-xs sm:max-w-none">
                   <div className="min-w-0 w-[6.5rem] sm:w-[7.5rem]">

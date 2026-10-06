@@ -3,7 +3,12 @@ import { Prisma, type BudgetAccountKind, type BudgetFundingType } from "@prisma/
 import { prisma } from "../lib/prisma.js";
 import { requireAdmin } from "../middleware/auth.js";
 import { routeParam } from "../lib/routeParam.js";
-import { persistUpload, publicUploadPath, unlinkUploadFile, upload } from "../lib/upload.js";
+import { decodeMultipartFilename, persistUpload, publicUploadPath, unlinkUploadFile, upload } from "../lib/upload.js";
+import {
+  looseBudgetName,
+  parseAsOfFromFileName,
+  parseMainSystemBudgetWorkbook,
+} from "../lib/budgetMainSystemImport.js";
 
 export const budgetRouter = Router();
 
@@ -66,6 +71,7 @@ type LineWithRelations = {
   fundingType: BudgetFundingType;
   allocatedAmount: Prisma.Decimal;
   carryInAmount: Prisma.Decimal;
+  midYearAmount: Prisma.Decimal;
   commitmentAmount: Prisma.Decimal;
   buyerName: string | null;
   requestingUnit: string | null;
@@ -102,7 +108,8 @@ function ymdLocal(d: Date): string {
 function enrichLine(line: LineWithRelations) {
   const allocated = num(line.allocatedAmount);
   const carryIn = num(line.carryInAmount);
-  const totalBudget = allocated + carryIn;
+  const midYear = num(line.midYearAmount);
+  const totalBudget = allocated + carryIn + midYear;
   const latestSnap = line.snapshots[0] ?? null;
   const snapshotSpent = latestSnap ? num(latestSnap.spentAmount) : null;
   const snapYmd = latestSnap ? ymdLocal(latestSnap.asOfDate) : null;
@@ -133,6 +140,7 @@ function enrichLine(line: LineWithRelations) {
     isSummary: line.account.isSummary,
     allocatedAmount: allocated,
     carryInAmount: carryIn,
+    midYearAmount: midYear,
     commitmentAmount: num(line.commitmentAmount),
     totalBudget,
     buyerName: line.buyerName,
@@ -1586,6 +1594,352 @@ function mapBudgetDoc(row: {
 }
 
 const budgetDocInclude = { category: { select: { id: true, name: true } } } as const;
+
+const IMPORT_NUM_FIELDS = [
+  "approved",
+  "carryIn",
+  "midYear",
+  "netBudget",
+  "spent",
+  "q1",
+  "q2",
+  "q3",
+  "q4",
+  "pr",
+  "po",
+  "reserved",
+  "carryOut",
+  "earmark",
+  "remaining",
+  "commitmentTotal",
+] as const;
+
+function serializeImportRow(r: Prisma.BudgetImportRowGetPayload<object>) {
+  const out: Record<string, unknown> = {
+    id: r.id,
+    sortOrder: r.sortOrder,
+    rowType: r.rowType,
+    kind: r.kind,
+    code: r.code,
+    name: r.name,
+    ciCode: r.ciCode,
+    parentCi: r.parentCi,
+    yearLineId: r.yearLineId,
+    pctSpent: r.pctSpent,
+    commitmentYears: Array.isArray(r.commitmentYears) ? r.commitmentYears : [],
+  };
+  for (const f of IMPORT_NUM_FIELDS) out[f] = num(r[f]);
+  return out;
+}
+
+function serializeImportBatch(b: { id: string; yearBe: number; asOfDate: Date; fileName: string | null; unitLabel: string | null; createdAt: Date }) {
+  return {
+    id: b.id,
+    yearBe: b.yearBe,
+    asOfDate: b.asOfDate.toISOString(),
+    fileName: b.fileName,
+    unitLabel: b.unitLabel,
+    createdAt: b.createdAt.toISOString(),
+  };
+}
+
+/** นำเข้ารายงานการใช้งบจากระบบหลัก — จับคู่ CI → อัปเดตงบอนุมัติ/เหลื่อมปี + ยอดใช้ไป ณ วันที่ในไฟล์ */
+budgetRouter.post("/imports", requireAdmin, upload.single("file"), async (req, res, next) => {
+  try {
+    const file = req.file;
+    if (!file?.buffer?.length) return res.status(400).json({ error: "กรุณาเลือกไฟล์ Excel" });
+    const fileName = decodeMultipartFilename(file.originalname || "");
+    if (!/\.xlsx?$/i.test(fileName)) return res.status(400).json({ error: "รองรับเฉพาะไฟล์ .xlsx / .xls" });
+
+    let parsed: ReturnType<typeof parseMainSystemBudgetWorkbook>;
+    try {
+      parsed = parseMainSystemBudgetWorkbook(file.buffer);
+    } catch (e) {
+      return res.status(400).json({ error: e instanceof Error ? e.message : "อ่านไฟล์ไม่สำเร็จ" });
+    }
+
+    const pageYear = parseYearBe(req.body?.yearBe);
+    if (parsed.yearBe != null && pageYear != null && parsed.yearBe !== pageYear) {
+      return res.status(400).json({
+        error: `ไฟล์นี้เป็นงบปี ${parsed.yearBe} แต่กำลังนำเข้าในหน้าปี ${pageYear}`,
+      });
+    }
+    const yearBe = parsed.yearBe ?? pageYear;
+    if (yearBe == null) return res.status(400).json({ error: "ระบุปีงบประมาณจากไฟล์ไม่ได้" });
+    const asOfDate = parsed.asOfDate ?? parseAsOfFromFileName(fileName) ?? new Date();
+    const asOfDay = asOfDate.toISOString().slice(0, 10);
+    const snapNote = `นำเข้าจากระบบหลัก${fileName ? ` · ${fileName}` : ""}`;
+
+    const newest = await prisma.budgetImportBatch.findFirst({
+      where: { yearBe },
+      orderBy: [{ asOfDate: "desc" }, { createdAt: "desc" }],
+      select: { asOfDate: true },
+    });
+    if (newest && newest.asOfDate.toISOString().slice(0, 10) > asOfDay) {
+      const fmtDay = (d: Date) => d.toLocaleDateString("th-TH", { day: "numeric", month: "short", year: "numeric" });
+      return res.status(409).json({
+        error: `ไฟล์นี้เป็นข้อมูล ณ ${fmtDay(asOfDate)} ซึ่งเก่ากว่าข้อมูลที่นำเข้าล่าสุด (ณ ${fmtDay(newest.asOfDate)}) — ไม่ได้บันทึก เพื่อไม่ให้ยอดย้อนกลับ`,
+      });
+    }
+
+    const fy = await prisma.budgetFiscalYear.upsert({ where: { yearBe }, create: { yearBe }, update: {} });
+    const lines = await prisma.budgetYearLine.findMany({
+      where: { fiscalYearId: fy.id, fundingType: "ANNUAL" },
+      include: { account: true },
+      orderBy: [{ account: { sortOrder: "asc" } }],
+    });
+
+    const byCi = new Map<string, typeof lines>();
+    const summaryByName = new Map<string, (typeof lines)[number]>();
+    const noCiByName = new Map<string, (typeof lines)[number]>();
+    for (const l of lines) {
+      const ci = l.account.ciCode?.trim();
+      if (ci) {
+        const list = byCi.get(ci) ?? [];
+        list.push(l);
+        byCi.set(ci, list);
+      } else if (l.account.isSummary) {
+        summaryByName.set(looseBudgetName(l.account.name), l);
+      } else {
+        noCiByName.set(looseBudgetName(l.account.name), l);
+      }
+    }
+    for (const list of byCi.values()) list.sort((a, b) => Number(a.account.isSummary) - Number(b.account.isSummary));
+
+    const used = new Set<string>();
+    const matches = new Map<number, { line: (typeof lines)[number]; setCi: boolean }>();
+    for (const row of parsed.rows) {
+      const loose = looseBudgetName(row.name);
+      let hit: (typeof lines)[number] | undefined;
+      let setCi = false;
+      if (row.rowType === "ITEM" && row.ciCode) {
+        hit = byCi.get(row.ciCode)?.find((l) => !used.has(l.id));
+        if (!hit) {
+          const byName = noCiByName.get(loose);
+          if (byName && !used.has(byName.id)) {
+            hit = byName;
+            setCi = true;
+          }
+        }
+      } else if (row.rowType === "GROUP" || row.rowType === "SECTION") {
+        const s = summaryByName.get(loose);
+        if (s && !used.has(s.id) && (row.rowType === "GROUP" || s.account.kind === row.kind)) hit = s;
+      }
+      if (hit) {
+        used.add(hit.id);
+        matches.set(row.sortOrder, { line: hit, setCi });
+      }
+    }
+
+    const createdItems: { code: string | null; name: string; ciCode: string | null; categoryName: string | null }[] = [];
+
+    const batch = await prisma.$transaction(
+      async (tx) => {
+        /** รายการที่มีในระบบหลักแต่ยังไม่มีในระบบเรา (เช่น จัดสรรเพิ่มระหว่างปี / ใช้นอกแผน) — สร้างให้ เพื่อให้ยอดรวมครบ */
+        const fallbackCategory = new Map<string, { id: string; name: string }>();
+        for (const row of parsed.rows) {
+          if (row.rowType !== "ITEM" || !row.ciCode || matches.has(row.sortOrder)) continue;
+          if (row.kind !== "EXPENSE" && row.kind !== "CAPEX") continue;
+          const sibling = parsed.rows
+            .filter((r) => r.rowType === "ITEM" && r.parentCi === row.parentCi && r.sortOrder !== row.sortOrder)
+            .map((r) => matches.get(r.sortOrder)?.line)
+            .find((l) => l?.account.categoryId);
+          let categoryId = sibling?.account.categoryId ?? null;
+          let categoryName: string | null = null;
+          if (!categoryId) {
+            let cat = fallbackCategory.get(row.kind);
+            if (!cat) {
+              const name = "รายการจากระบบหลัก";
+              cat =
+                (await tx.budgetCategory.findFirst({ where: { name, kind: row.kind }, select: { id: true, name: true } })) ??
+                (await tx.budgetCategory.create({
+                  data: { name, kind: row.kind, sortOrder: 999 },
+                  select: { id: true, name: true },
+                }));
+              fallbackCategory.set(row.kind, cat);
+            }
+            categoryId = cat.id;
+            categoryName = cat.name;
+          }
+          const account = await tx.budgetAccount.create({
+            data: {
+              name: row.name,
+              kind: row.kind,
+              ciCode: row.ciCode,
+              superiorCi: row.parentCi,
+              categoryId,
+              parentId: sibling?.account.parentId ?? null,
+              sortOrder: (sibling?.account.sortOrder ?? 900) + 1,
+            },
+          });
+          const line = await tx.budgetYearLine.create({
+            data: { fiscalYearId: fy.id, accountId: account.id, fundingType: "ANNUAL" },
+            include: { account: true },
+          });
+          matches.set(row.sortOrder, { line, setCi: false });
+          createdItems.push({ code: row.code, name: row.name, ciCode: row.ciCode, categoryName });
+        }
+
+        for (const row of parsed.rows) {
+          const m = matches.get(row.sortOrder);
+          if (!m) continue;
+          if (m.setCi) {
+            await tx.budgetAccount.update({
+              where: { id: m.line.accountId },
+              data: { ciCode: row.ciCode, superiorCi: row.parentCi ?? m.line.account.superiorCi },
+            });
+          }
+          await tx.budgetYearLine.update({
+            where: { id: m.line.id },
+            data: {
+              allocatedAmount: new Prisma.Decimal(row.approved),
+              carryInAmount: new Prisma.Decimal(row.carryIn),
+              midYearAmount: new Prisma.Decimal(row.midYear),
+            },
+          });
+          const snaps = await tx.budgetSpendSnapshot.findMany({ where: { yearLineId: m.line.id } });
+          const sameDay = snaps.find((s) => s.asOfDate.toISOString().slice(0, 10) === asOfDay);
+          const data = {
+            asOfDate,
+            spentAmount: new Prisma.Decimal(row.spent),
+            source: "IMPORT" as const,
+            notes: snapNote,
+          };
+          if (sameDay) await tx.budgetSpendSnapshot.update({ where: { id: sameDay.id }, data });
+          else await tx.budgetSpendSnapshot.create({ data: { ...data, yearLineId: m.line.id } });
+        }
+
+        /** งบปีผูกพัน (ปีถัดไป) → บรรทัด COMMITMENT ของปีนี้ ให้หน้างบผูกพันมียอดตรงระบบหลัก */
+        const existingCommitments = await tx.budgetYearLine.findMany({
+          where: { fiscalYearId: fy.id, fundingType: "COMMITMENT" },
+          select: { id: true, accountId: true },
+        });
+        const commitmentByAccount = new Map(existingCommitments.map((c) => [c.accountId, c.id]));
+        for (const row of parsed.rows) {
+          if (row.rowType !== "ITEM") continue;
+          const m = matches.get(row.sortOrder);
+          if (!m) continue;
+          const existingId = commitmentByAccount.get(m.line.accountId);
+          if (!existingId && Math.abs(row.commitmentTotal) < 0.005) continue;
+          const amount = new Prisma.Decimal(row.commitmentTotal);
+          if (existingId) {
+            await tx.budgetYearLine.update({ where: { id: existingId }, data: { allocatedAmount: amount } });
+          } else {
+            await tx.budgetYearLine.create({
+              data: { fiscalYearId: fy.id, accountId: m.line.accountId, fundingType: "COMMITMENT", allocatedAmount: amount },
+            });
+          }
+        }
+
+        const dayStart = new Date(`${asOfDay}T00:00:00.000Z`);
+        await tx.budgetImportBatch.deleteMany({
+          where: { yearBe, asOfDate: { gte: dayStart, lt: new Date(dayStart.getTime() + 86_400_000) } },
+        });
+
+        return tx.budgetImportBatch.create({
+          data: {
+            yearBe,
+            asOfDate,
+            fileName: fileName || null,
+            unitLabel: parsed.unitLabel,
+            rows: {
+              create: parsed.rows.map((r) => ({
+                sortOrder: r.sortOrder,
+                rowType: r.rowType,
+                kind: r.kind,
+                code: r.code,
+                name: r.name,
+                ciCode: r.ciCode,
+                parentCi: r.parentCi,
+                yearLineId: matches.get(r.sortOrder)?.line.id ?? null,
+                approved: r.approved,
+                carryIn: r.carryIn,
+                midYear: r.midYear,
+                netBudget: r.netBudget,
+                spent: r.spent,
+                q1: r.q1,
+                q2: r.q2,
+                q3: r.q3,
+                q4: r.q4,
+                pr: r.pr,
+                po: r.po,
+                reserved: r.reserved,
+                carryOut: r.carryOut,
+                earmark: r.earmark,
+                remaining: r.remaining,
+                pctSpent: r.pctSpent,
+                commitmentTotal: r.commitmentTotal,
+                commitmentYears: r.commitmentYears,
+              })),
+            },
+          },
+        });
+      },
+      { timeout: 60_000 },
+    );
+
+    const unmatched = parsed.rows
+      .filter((r) => r.rowType === "ITEM" && !matches.has(r.sortOrder))
+      .map((r) => ({ code: r.code, name: r.name, ciCode: r.ciCode, kind: r.kind, spent: r.spent, netBudget: r.netBudget }));
+
+    const fileCis = new Set(parsed.rows.map((r) => r.ciCode).filter(Boolean));
+    const linkedIds = new Set([...matches.values()].map((m) => m.line.id));
+    const missingInFile = lines
+      .filter(
+        (l) =>
+          !l.account.isSummary &&
+          !linkedIds.has(l.id) &&
+          l.account.ciCode &&
+          /^\d{10}$/.test(l.account.ciCode) &&
+          !fileCis.has(l.account.ciCode) &&
+          num(l.allocatedAmount) + num(l.carryInAmount) + num(l.midYearAmount) !== 0,
+      )
+      .map((l) => ({
+        name: l.account.name,
+        ciCode: l.account.ciCode,
+        kind: l.account.kind,
+        netBudget: num(l.allocatedAmount) + num(l.carryInAmount) + num(l.midYearAmount),
+      }));
+
+    res.status(201).json({
+      batch: serializeImportBatch(batch),
+      missingInFile,
+      totalRows: parsed.rows.length,
+      itemCount: parsed.rows.filter((r) => r.rowType === "ITEM").length,
+      matchedCount: matches.size,
+      matchedItemCount: parsed.rows.filter((r) => r.rowType === "ITEM" && matches.has(r.sortOrder)).length,
+      createdItems,
+      unmatched,
+    });
+  } catch (e) {
+    next(e);
+  }
+});
+
+budgetRouter.get("/imports/latest", async (req, res, next) => {
+  try {
+    const yearBe = parseYearBe(req.query.yearBe);
+    if (yearBe == null) return res.status(400).json({ error: "ปีงบประมาณไม่ถูกต้อง" });
+    const history = await prisma.budgetImportBatch.findMany({
+      where: { yearBe },
+      orderBy: [{ asOfDate: "desc" }, { createdAt: "desc" }],
+      take: 20,
+    });
+    const latest = history[0];
+    if (!latest) return res.json({ batch: null, rows: [], history: [] });
+    const rows = await prisma.budgetImportRow.findMany({
+      where: { batchId: latest.id },
+      orderBy: { sortOrder: "asc" },
+    });
+    res.json({
+      batch: serializeImportBatch(latest),
+      rows: rows.map(serializeImportRow),
+      history: history.map(serializeImportBatch),
+    });
+  } catch (e) {
+    next(e);
+  }
+});
 
 budgetRouter.get("/document-categories", async (_req, res, next) => {
   try {

@@ -22,38 +22,7 @@ import {
   lineCurrentAmount,
   mergeLegacyEnlistedEstimateLines,
   templateToFormLines,
-  ESTIMATE_BOT_LODGING_RATE,
 } from "../lib/missionEstimate";
-import {
-  applyBotLineAmountsToLines,
-  applyPersonCountsToLines,
-  EMPTY_BOT_LINE_AMOUNTS,
-  EMPTY_ESTIMATE_PERSON_COUNTS,
-  ESTIMATE_PERSON_TYPES,
-  ESTIMATE_QTY_SOURCE_BY_ITEM,
-  normalizePersonCounts,
-  totalPersonCount,
-  type BotLineAmounts,
-  type EstimatePersonCounts,
-  type EstimatePersonKey,
-} from "../lib/estimatePersonCounts";
-import {
-  applyPoliceExpenseLinks,
-  applyStationTotalsToEstimateLines,
-  detectPoliceDestGroup,
-  EMPTY_ESTIMATE_CALC_META,
-  EMPTY_STATION_ITEM_TOTALS,
-  inferTripType,
-  mergePersonCountsPayload,
-  parseCalcMeta,
-  policeRateFor,
-  POLICE_DEST_GROUPS,
-  STATION_ESTIMATE_ITEM_CODES,
-  type EstimateCalcMeta,
-  type PoliceDestGroupId,
-  type PoliceTripType,
-  type StationItemTotals,
-} from "../lib/policeCompensationRates";
 import { toolbarLinkBtnClass } from "../lib/uiTokens";
 import { blankEstimateQuantities } from "../lib/trip2569Amounts";
 import type {
@@ -68,10 +37,6 @@ function deltaClass(n: number): string {
   if (!Number.isFinite(n) || n === 0) return "text-slate-600";
   return n > 0 ? "font-semibold text-rose-700" : "font-semibold text-emerald-700";
 }
-
-// แถวค่าตอบแทนตำรวจที่ระบบคำนวณจาก "จำนวนคน" (ไม่ใช่ให้ผู้ใช้กรอกเอง)
-const POLICE_COMP_ITEM_CODES = new Set(["2.1", "2.2", "2.3"]);
-const BOT_AMOUNT_LINK_CODES = new Set(["5.1", "5.2", "5.3", "8.1"]);
 
 type TemplateApiResponse = {
   template: MissionEstimateTemplate;
@@ -122,11 +87,6 @@ export type MissionEstimateEditorProps = {
   missionCode?: string | null;
   missionTitle: string;
   selectedRoute?: RouteMaster | null;
-  /** จำนวนคนจากแถบบุคลากรในฟอร์มภารกิจ — ใช้เติมค่าเริ่มต้น */
-  suggestedPersonCounts?: Partial<EstimatePersonCounts> | null;
-  stationItemTotals?: StationItemTotals;
-  botLineAmounts?: BotLineAmounts;
-  botAmountsLinked?: boolean;
   /** ส่งยอดรวมขออนุมัติขึ้นฟอร์มภารกิจ (แสดงในแถบเมนู) */
   onApprovalTotalChange?: (total: number) => void;
 };
@@ -141,10 +101,6 @@ export const MissionEstimateEditor = forwardRef<MissionEstimateEditorHandle, Mis
       missionCode,
       missionTitle,
       selectedRoute,
-      suggestedPersonCounts,
-      stationItemTotals = EMPTY_STATION_ITEM_TOTALS,
-      botLineAmounts = EMPTY_BOT_LINE_AMOUNTS,
-      botAmountsLinked = false,
       onApprovalTotalChange,
     },
     ref,
@@ -157,98 +113,19 @@ export const MissionEstimateEditor = forwardRef<MissionEstimateEditorHandle, Mis
     const [previousMissionId, setPreviousMissionId] = useState<string | null>(null);
     const [previousInfo, setPreviousInfo] = useState<MissionEstimatePrevious | null>(null);
     const [lines, setLines] = useState<MissionEstimateRecord["lines"]>([]);
-    const [personCounts, setPersonCounts] = useState<EstimatePersonCounts>({
-      ...EMPTY_ESTIMATE_PERSON_COUNTS,
-    });
-    const [calcMeta, setCalcMeta] = useState<EstimateCalcMeta>({ ...EMPTY_ESTIMATE_CALC_META });
     const [loading, setLoading] = useState(true);
     const [previewOpen, setPreviewOpen] = useState(false);
     const [err, setErr] = useState<string | null>(null);
     const loadTokenRef = useRef(0);
-    const personCountsHydratedRef = useRef(false);
-    const destinationGroupTouchedRef = useRef(false);
+    // ส่งข้อมูลจำนวนคนที่เคยบันทึกกลับไปตามเดิม — ไม่ใช้คำนวณแล้ว แต่ไม่ให้ข้อมูลเก่าหาย
+    const savedPersonCountsRef = useRef<MissionEstimateRecord["personCounts"] | null>(null);
+    const savedCalcMetaRef = useRef<MissionEstimateRecord["calcMeta"] | null>(null);
 
     const totals = useMemo(() => computeEstimateTotals(lines), [lines]);
-    const grandTotal = useMemo(() => totalPersonCount(personCounts), [personCounts]);
 
     useEffect(() => {
       onApprovalTotalChange?.(totals.approvalTotal);
     }, [totals.approvalTotal, onApprovalTotalChange]);
-
-    const commissionedRate = policeRateFor(calcMeta.destinationGroup, calcMeta.tripType, "commissioned");
-    const enlistedRate = policeRateFor(calcMeta.destinationGroup, calcMeta.tripType, "enlisted");
-
-    const recalcLines = useCallback((counts: EstimatePersonCounts, meta: EstimateCalcMeta, totals: StationItemTotals = stationItemTotals) => {
-      setLines((cur) =>
-        applyBotLineAmountsToLines(
-          applyStationTotalsToEstimateLines(
-            applyPoliceExpenseLinks(applyPersonCountsToLines(cur, counts), counts, meta),
-            totals,
-          ),
-          botLineAmounts,
-          botAmountsLinked,
-          { defaultLodgingRate: ESTIMATE_BOT_LODGING_RATE },
-        ),
-      );
-    }, [stationItemTotals, botLineAmounts, botAmountsLinked]);
-
-    const patchCalcMeta = useCallback(
-      (patch: Partial<EstimateCalcMeta>) => {
-        setCalcMeta((cur) => {
-          const next = { ...cur, ...patch };
-          recalcLines(personCounts, next);
-          return next;
-        });
-      },
-      [personCounts, recalcLines],
-    );
-
-    const setPersonCount = useCallback(
-      (key: EstimatePersonKey, raw: string) => {
-        const n = parseLooseNumber(raw);
-        setPersonCounts((cur) => {
-          const next = {
-            ...cur,
-            [key]: Number.isFinite(n) && n > 0 ? Math.floor(n) : 0,
-          };
-          recalcLines(next, calcMeta);
-          return next;
-        });
-      },
-      [calcMeta, recalcLines],
-    );
-
-    const applySuggestedCounts = useCallback(() => {
-      if (!suggestedPersonCounts) return;
-      const next = normalizePersonCounts({
-        ...EMPTY_ESTIMATE_PERSON_COUNTS,
-        ...suggestedPersonCounts,
-      });
-      setPersonCounts(next);
-      recalcLines(next, calcMeta);
-    }, [suggestedPersonCounts, calcMeta, recalcLines]);
-
-    useEffect(() => {
-      if (loading || !suggestedPersonCounts || personCountsHydratedRef.current) return;
-      const next = normalizePersonCounts({
-        ...EMPTY_ESTIMATE_PERSON_COUNTS,
-        ...suggestedPersonCounts,
-      });
-      setPersonCounts(next);
-      personCountsHydratedRef.current = true;
-    }, [suggestedPersonCounts, loading]);
-
-    useEffect(() => {
-      if (loading) return;
-      setLines((cur) =>
-        applyBotLineAmountsToLines(
-          applyStationTotalsToEstimateLines(cur, stationItemTotals),
-          botLineAmounts,
-          botAmountsLinked,
-          { defaultLodgingRate: ESTIMATE_BOT_LODGING_RATE },
-        ),
-      );
-    }, [stationItemTotals, botLineAmounts, botAmountsLinked, loading]);
 
     const applyTemplate = useCallback(
       (
@@ -342,10 +219,8 @@ export const MissionEstimateEditor = forwardRef<MissionEstimateEditorHandle, Mis
       setPreviousMissionId(null);
       setPreviousInfo(null);
       setLines([]);
-      setPersonCounts({ ...EMPTY_ESTIMATE_PERSON_COUNTS });
-      setCalcMeta({ ...EMPTY_ESTIMATE_CALC_META });
-      personCountsHydratedRef.current = false;
-      destinationGroupTouchedRef.current = false;
+      savedPersonCountsRef.current = null;
+      savedCalcMetaRef.current = null;
       setErr(null);
       // ไม่ set loading=true ค้างไว้ — effect โหลดจะเปิดเองเมื่อมี routeId/missionId
       setLoading(false);
@@ -369,8 +244,9 @@ export const MissionEstimateEditor = forwardRef<MissionEstimateEditorHandle, Mis
         previousDateRange,
         notes,
         previousMissionId,
-        personCounts: mergePersonCountsPayload(personCounts, calcMeta),
-        calcMeta,
+        ...(savedPersonCountsRef.current
+          ? { personCounts: { ...savedPersonCountsRef.current, ...(savedCalcMetaRef.current ?? {}) } }
+          : {}),
         lines: lines.map((line, i) => ({
           ...line,
           sortOrder: i,
@@ -391,26 +267,6 @@ export const MissionEstimateEditor = forwardRef<MissionEstimateEditorHandle, Mis
     }, [selectedRoute, currentLabel]);
 
     useEffect(() => {
-      if (!selectedRoute) return;
-      const text = `${selectedRoute.name ?? ""} ${selectedRoute.startLocation} ${selectedRoute.endLocation}`;
-      const dest = detectPoliceDestGroup(text);
-      const trip = inferTripType(selectedRoute.missionDays);
-      setCalcMeta((cur) => {
-        // ถ้าผู้ใช้เลือกปลายทางเอง ให้คง destinationGroup ไว้
-        if (destinationGroupTouchedRef.current && cur.destinationGroup) {
-          return { ...cur, tripType: trip };
-        }
-        return { ...cur, destinationGroup: dest || cur.destinationGroup, tripType: trip };
-      });
-    }, [selectedRoute]);
-
-    useEffect(() => {
-      if (loading) return;
-      recalcLines(personCounts, calcMeta);
-      // eslint-disable-next-line react-hooks/exhaustive-deps -- คำนวณใหม่เมื่อเปลี่ยนปลายทาง/เที่ยว
-    }, [calcMeta.destinationGroup, calcMeta.tripType]);
-
-    useEffect(() => {
       const token = ++loadTokenRef.current;
       let cancelled = false;
       (async () => {
@@ -429,17 +285,12 @@ export const MissionEstimateEditor = forwardRef<MissionEstimateEditorHandle, Mis
               setPreviousDateRange(saved.previousDateRange ?? "");
               setNotes(saved.notes ?? "");
               setPreviousMissionId(saved.previousMissionId);
-              setLines(forceLumpSumEstimateLines(mergeLegacyEnlistedEstimateLines(saved.lines)));
-              const savedCounts = normalizePersonCounts(saved.personCounts);
-              setPersonCounts(savedCounts);
-              setCalcMeta(parseCalcMeta(saved.calcMeta ?? saved.personCounts));
-              personCountsHydratedRef.current = true;
+              const savedLines = forceLumpSumEstimateLines(mergeLegacyEnlistedEstimateLines(saved.lines));
+              setLines(savedLines);
+              savedPersonCountsRef.current = saved.personCounts ?? null;
+              savedCalcMetaRef.current = saved.calcMeta ?? null;
               if (routeId) {
-                await loadTemplateForRoute(routeId, plannedStart, missionId, saved.lines);
-                recalcLines(
-                  savedCounts,
-                  parseCalcMeta(saved.calcMeta ?? saved.personCounts),
-                );
+                await loadTemplateForRoute(routeId, plannedStart, missionId, savedLines);
               }
               return;
             }
@@ -464,15 +315,6 @@ export const MissionEstimateEditor = forwardRef<MissionEstimateEditorHandle, Mis
             });
             if (data.trip2569) {
               applyTrip2569MetaOnly(data.trip2569, { setCurrentDateRange, setCurrentLabel });
-            }
-            if (!personCountsHydratedRef.current && suggestedPersonCounts) {
-              setPersonCounts(
-                normalizePersonCounts({
-                  ...EMPTY_ESTIMATE_PERSON_COUNTS,
-                  ...suggestedPersonCounts,
-                }),
-              );
-              personCountsHydratedRef.current = true;
             }
           } else {
             const qs = templateQueryParams({ missionId, missionCode });
@@ -500,8 +342,7 @@ export const MissionEstimateEditor = forwardRef<MissionEstimateEditorHandle, Mis
       return () => {
         cancelled = true;
       };
-      // โหลดใหม่เฉพาะเมื่อภารกิจ/เส้นทาง/วันเริ่มเปลี่ยน — อย่าใส่ calcMeta / suggestedPersonCounts
-      // (จะทำให้โหลดวนลูปแล้วค้างที่ «กำลังโหลดประมาณการ…»)
+      // โหลดใหม่เฉพาะเมื่อภารกิจ/เส้นทาง/วันเริ่มเปลี่ยน
     }, [missionId, missionCode, routeId, plannedStart, applyTemplate, loadTemplateForRoute]);
 
     function patchLine(index: number, patch: Partial<MissionEstimateRecord["lines"][number]>) {
@@ -636,147 +477,6 @@ export const MissionEstimateEditor = forwardRef<MissionEstimateEditorHandle, Mis
           </button>
         </div>
 
-        <section className="rounded-xl border border-[#0000BF]/20 bg-[#0000BF]/5 p-3">
-          <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1">
-            <p className="text-sm font-bold text-[#1e1b3a]">จำนวนคนตามประเภท</p>
-            {suggestedPersonCounts ? (
-              <button
-                type="button"
-                className="rounded-lg border border-[#0000BF]/25 bg-white px-2.5 py-1 text-xs font-semibold text-[#4d47b6] hover:bg-[#eef2ff]"
-                onClick={applySuggestedCounts}
-              >
-                ดึงจากบุคลากรในภารกิจ
-              </button>
-            ) : null}
-          </div>
-
-          {/* ปลายทาง + ลักษณะการเดินทาง — inline row */}
-          <div className="mt-2 flex flex-wrap items-center gap-3 rounded-lg border border-white/70 bg-white/80 px-3 py-2">
-            <label className="flex items-center gap-1.5 text-xs text-slate-700">
-              <span className="whitespace-nowrap font-medium">ปลายทาง</span>
-              <select
-                className="rounded border border-slate-200 bg-white px-1.5 py-1 text-xs"
-                value={calcMeta.destinationGroup}
-                onChange={(e) => {
-                  destinationGroupTouchedRef.current = true;
-                  patchCalcMeta({ destinationGroup: e.target.value as PoliceDestGroupId | "" });
-                }}
-              >
-                <option value="">— อัตโนมัติ —</option>
-                {POLICE_DEST_GROUPS.map((g) => (
-                  <option key={g.id} value={g.id}>{g.label}</option>
-                ))}
-              </select>
-            </label>
-            <label className="flex items-center gap-1.5 text-xs text-slate-700">
-              <span className="whitespace-nowrap font-medium">การเดินทาง</span>
-              <select
-                className="rounded border border-slate-200 bg-white px-1.5 py-1 text-xs"
-                value={calcMeta.tripType}
-                onChange={(e) => patchCalcMeta({ tripType: e.target.value as PoliceTripType })}
-              >
-                <option value="oneWay">เที่ยวเดียว</option>
-                <option value="roundTrip">ไป-กลับ</option>
-              </select>
-            </label>
-            {calcMeta.destinationGroup ? (
-              <span className="text-[10px] text-slate-500">
-                สัญญาบัตร {commissionedRate.toLocaleString("th-TH")} · ประทวน {enlistedRate.toLocaleString("th-TH")} ฿/คน
-              </span>
-            ) : null}
-          </div>
-
-          {/* ตารางจำนวนคน compact */}
-          <div className="mt-2 overflow-x-auto rounded-lg border border-white/70 bg-white/80">
-            <table className="w-full table-fixed border-collapse text-xs">
-              <colgroup>
-                <col />
-                <col className="w-24" />
-                <col className="w-24" />
-                <col className="w-16" />
-              </colgroup>
-              <thead>
-                <tr className="border-b border-slate-200 bg-[#eef2ff] text-[11px] text-[#1e1b4b]">
-                  <th className="px-2 py-1.5 text-left font-semibold">ประเภท</th>
-                  <th className="px-2 py-1.5 text-center font-semibold">สัญญาบัตร</th>
-                  <th className="px-2 py-1.5 text-center font-semibold">ประทวน</th>
-                  <th className="px-2 py-1.5 text-center font-semibold">รวม</th>
-                </tr>
-              </thead>
-              <tbody>
-                {/* จนท.ธปท. — ไม่แยกชั้นยศ */}
-                <tr className="border-b border-slate-100">
-                  <td className="px-2 py-1 text-slate-700">จนท.ธปท.</td>
-                  <td colSpan={2} className="px-2 py-1 text-center">
-                    <CommaNumberInput
-                      aria-label="จำนวน จนท.ธปท."
-                      className="w-full rounded border border-slate-200 px-1.5 py-0.5 text-center text-xs tabular-nums"
-                      value={personCounts.bot ? String(personCounts.bot) : ""}
-                      maxFractionDigits={0}
-                      onChange={(raw) => setPersonCount("bot", raw)}
-                    />
-                  </td>
-                  <td className="px-2 py-1 text-center tabular-nums text-slate-600">{personCounts.bot || "—"}</td>
-                </tr>
-                {ESTIMATE_PERSON_TYPES.filter((t) => t.kind === "police").map((t) => {
-                  if (t.kind !== "police") return null;
-                  const comm = personCounts[t.commissionedKey];
-                  const enl = personCounts[t.enlistedKey];
-                  return (
-                    <tr key={t.key} className="border-b border-slate-100">
-                      <td className="px-2 py-1 text-slate-700">{t.label}</td>
-                      <td className="px-2 py-1">
-                        <CommaNumberInput
-                          aria-label={`${t.label} สัญญาบัตร`}
-                          className="w-full rounded border border-slate-200 px-1.5 py-0.5 text-center text-xs tabular-nums"
-                          value={comm ? String(comm) : ""}
-                          maxFractionDigits={0}
-                          onChange={(raw) => setPersonCount(t.commissionedKey, raw)}
-                        />
-                      </td>
-                      <td className="px-2 py-1">
-                        <CommaNumberInput
-                          aria-label={`${t.label} ประทวน`}
-                          className="w-full rounded border border-slate-200 px-1.5 py-0.5 text-center text-xs tabular-nums"
-                          value={enl ? String(enl) : ""}
-                          maxFractionDigits={0}
-                          onChange={(raw) => setPersonCount(t.enlistedKey, raw)}
-                        />
-                      </td>
-                      <td className="px-2 py-1 text-center tabular-nums text-slate-600">{(comm + enl) || "—"}</td>
-                    </tr>
-                  );
-                })}
-                {/* พลขับ */}
-                <tr className="border-b border-slate-100">
-                  <td className="px-2 py-1 text-slate-700">พลขับรถสินค้า</td>
-                  <td colSpan={2} className="px-2 py-1 text-center">
-                    <CommaNumberInput
-                      aria-label="จำนวน พลขับรถสินค้า"
-                      className="w-full rounded border border-slate-200 px-1.5 py-0.5 text-center text-xs tabular-nums"
-                      value={personCounts.driver ? String(personCounts.driver) : ""}
-                      maxFractionDigits={0}
-                      onChange={(raw) => setPersonCount("driver", raw)}
-                    />
-                  </td>
-                  <td className="px-2 py-1 text-center tabular-nums text-slate-600">{personCounts.driver || "—"}</td>
-                </tr>
-                {/* รวม */}
-                <tr className="bg-[#f5f3ff]">
-                  <td className="px-2 py-1 font-semibold text-[#1e1b3a]">รวม</td>
-                  <td className="px-2 py-1 text-center tabular-nums font-semibold text-[#2e2a58]">
-                    {(personCounts.highwayCommissioned + personCounts.crimeCommissioned + personCounts.specialCommissioned) || "—"}
-                  </td>
-                  <td className="px-2 py-1 text-center tabular-nums font-semibold text-[#2e2a58]">
-                    {(personCounts.highwayEnlisted + personCounts.crimeEnlisted + personCounts.specialEnlisted) || "—"}
-                  </td>
-                  <td className="px-2 py-1 text-center tabular-nums font-bold text-[#0000BF]">{grandTotal || "—"}</td>
-                </tr>
-              </tbody>
-            </table>
-          </div>
-        </section>
-
         <section className="grid gap-3 rounded-xl border border-slate-200 bg-white/90 p-3 sm:grid-cols-2">
           <label>
             <span className="text-xs font-medium text-slate-700">ป้ายประมาณการครั้งนี้</span>
@@ -872,13 +572,6 @@ export const MissionEstimateEditor = forwardRef<MissionEstimateEditorHandle, Mis
                 const isGroup = line.kind === "GROUP";
                 const isItem = isEstimateItemLine(line);
                 const groupTotal = totals.groupSubtotals.get(line.groupCode ?? "");
-                const itemCode = line.itemCode ?? "";
-                const linkedByPersonCounts =
-                  (itemCode ? Boolean(ESTIMATE_QTY_SOURCE_BY_ITEM[itemCode]) : false) ||
-                  POLICE_COMP_ITEM_CODES.has(itemCode) ||
-                  STATION_ESTIMATE_ITEM_CODES.has(itemCode) ||
-                  (botAmountsLinked && BOT_AMOUNT_LINK_CODES.has(itemCode));
-                const emphasize = isItem && !linkedByPersonCounts;
                 const isLastGroup8 = line.groupCode === "8" && lines[idx + 1]?.groupCode !== "8";
                 return (
                   <Fragment key={`${line.kind}-${line.itemCode ?? line.groupCode}-${idx}`}>
@@ -932,9 +625,7 @@ export const MissionEstimateEditor = forwardRef<MissionEstimateEditorHandle, Mis
                       {line.qtyEditable ? (
                         <CommaNumberInput
                           aria-label={`จำนวนคน ${line.name}`}
-                          className={`w-full max-w-[3.25rem] rounded-md border px-1 py-1 text-right text-xs tabular-nums ${
-                            emphasize ? "border-[#f59e0b] ring-2 ring-[#f59e0b]/20" : "border-slate-200"
-                          }`}
+                          className="w-full max-w-[3.25rem] rounded-md border border-slate-200 px-1 py-1 text-right text-xs tabular-nums"
                           value={line.quantity ?? ""}
                           maxFractionDigits={0}
                           onChange={(raw) => patchLine(idx, { quantity: raw })}
@@ -945,9 +636,7 @@ export const MissionEstimateEditor = forwardRef<MissionEstimateEditorHandle, Mis
                       {line.rateEditable ? (
                         <CommaNumberInput
                           aria-label={`อัตรา ${line.name}`}
-                          className={`w-full max-w-[4rem] rounded-md border px-1 py-1 text-right text-xs tabular-nums ${
-                            emphasize ? "border-[#f59e0b] ring-2 ring-[#f59e0b]/20" : "border-slate-200"
-                          }`}
+                          className="w-full max-w-[4rem] rounded-md border border-slate-200 px-1 py-1 text-right text-xs tabular-nums"
                           value={line.unitPrice ?? ""}
                           maxFractionDigits={2}
                           onChange={(raw) => patchLine(idx, { unitPrice: raw })}
@@ -963,9 +652,7 @@ export const MissionEstimateEditor = forwardRef<MissionEstimateEditorHandle, Mis
                         !(line.qtyEditable && line.rateEditable) ? (
                         <CommaNumberInput
                           aria-label={`จำนวนเงิน ${line.name}`}
-                          className={`w-full rounded-md border px-2 py-1 text-right text-sm tabular-nums ${
-                            emphasize ? "border-[#f59e0b] ring-2 ring-[#f59e0b]/20" : "border-slate-200"
-                          }`}
+                          className="w-full rounded-md border border-slate-200 px-2 py-1 text-right text-sm tabular-nums"
                           value={line.amount}
                           maxFractionDigits={2}
                           onChange={(raw) => patchLine(idx, { amount: raw })}

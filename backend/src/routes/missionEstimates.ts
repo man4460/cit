@@ -73,6 +73,7 @@ function serializeLine(line: {
   includeInTotal: boolean;
   isReserve: boolean;
   expenseTypeName: string | null;
+  lineNote?: string | null;
 }) {
   return {
     sortOrder: line.sortOrder,
@@ -91,6 +92,7 @@ function serializeLine(line: {
     includeInTotal: line.includeInTotal,
     isReserve: line.isReserve,
     expenseTypeName: line.expenseTypeName,
+    lineNote: line.lineNote ?? null,
   };
 }
 
@@ -202,6 +204,7 @@ function parseLines(raw: unknown): EstimateLineInput[] {
       includeInTotal: r.includeInTotal !== false,
       isReserve: Boolean(r.isReserve),
       expenseTypeName: r.expenseTypeName ?? null,
+      lineNote: typeof r.lineNote === "string" && r.lineNote.trim() ? r.lineNote.trim() : null,
       sortOrder: typeof r.sortOrder === "number" ? r.sortOrder : i,
     };
   });
@@ -564,6 +567,7 @@ async function upsertEstimate(opts: {
     includeInTotal: line.includeInTotal !== false,
     isReserve: Boolean(line.isReserve),
     expenseTypeName: line.expenseTypeName ?? null,
+    lineNote: line.lineNote ?? null,
   }));
 
   let estimateId: string;

@@ -911,6 +911,7 @@ model MissionEstimateLine {
   includeInTotal  Boolean @default(true)
   isReserve       Boolean @default(false)
   expenseTypeName String?
+  lineNote        String? @db.Text
 
   @@index([estimateId, sortOrder])
 }
@@ -1031,6 +1032,8 @@ model BudgetYearLine {
   fundingType      BudgetFundingType @default(ANNUAL)
   allocatedAmount  Decimal           @default(0)
   carryInAmount    Decimal           @default(0)
+  /// งบจัดสรรระหว่างปี (+ รับโอน / − โอนออก) — งบสุทธิ = อนุมัติ + เหลื่อมปี + จัดสรรระหว่างปี
+  midYearAmount    Decimal           @default(0)
   /// ยอดผูกพันสำรอง (ใช้เมื่อ fundingType=ANNUAL และมีคอลัมน์คู่ขนาน) — รายการ COMMITMENT ใส่ยอดใน allocatedAmount
   commitmentAmount Decimal           @default(0)
   buyerName        String?
@@ -1077,6 +1080,57 @@ model BudgetTransaction {
   osMonthlyAcceptance OsMonthlyAcceptance?
 
   @@index([yearLineId, occurredAt])
+}
+
+/// ไฟล์รายงานการใช้งบที่ export จากระบบหลัก (1 ไฟล์ = 1 batch)
+model BudgetImportBatch {
+  id        String            @id @default(uuid())
+  yearBe    Int
+  asOfDate  DateTime
+  fileName  String?
+  unitLabel String?
+  createdAt DateTime          @default(now())
+
+  rows BudgetImportRow[]
+
+  @@index([yearBe, asOfDate])
+}
+
+/// แถวในไฟล์ระบบหลัก — rowType: TOTAL | SECTION | GROUP | ITEM · kind: EXPENSE | CAPEX | OTHER
+model BudgetImportRow {
+  id              String            @id @default(uuid())
+  batchId         String
+  batch           BudgetImportBatch @relation(fields: [batchId], references: [id], onDelete: Cascade)
+  sortOrder       Int
+  rowType         String
+  kind            String?
+  code            String?
+  name            String            @db.Text
+  ciCode          String?
+  parentCi        String?
+  yearLineId      String?
+  approved        Decimal           @default(0)
+  carryIn         Decimal           @default(0)
+  midYear         Decimal           @default(0)
+  netBudget       Decimal           @default(0)
+  spent           Decimal           @default(0)
+  q1              Decimal           @default(0)
+  q2              Decimal           @default(0)
+  q3              Decimal           @default(0)
+  q4              Decimal           @default(0)
+  pr              Decimal           @default(0)
+  po              Decimal           @default(0)
+  reserved        Decimal           @default(0)
+  carryOut        Decimal           @default(0)
+  earmark         Decimal           @default(0)
+  remaining       Decimal           @default(0)
+  pctSpent        Float?
+  commitmentTotal Decimal           @default(0)
+  /// [{ yearAd: 2027, amount: 123 }, …]
+  commitmentYears Json?
+
+  @@index([batchId, sortOrder])
+  @@index([yearLineId])
 }
 
 model BudgetRequest {

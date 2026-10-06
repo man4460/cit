@@ -42,6 +42,7 @@ export type EstimateLineInput = {
   includeInTotal?: boolean;
   isReserve?: boolean;
   expenseTypeName?: string | null;
+  lineNote?: string | null;
   sortOrder?: number;
 };
 
@@ -278,7 +279,7 @@ export function defaultEstimateTemplate(): EstimateTemplate {
       sortOrder: 16,
       groupCode: "1",
       itemCode: "1.6",
-      name: "อาหารเย็น จนท.ตร. (เดินทางไป) (ศหญ.)",
+      name: "อาหารเย็น จนท.ตร. (เดินทางไป)",
       payoutMethod: ADVANCE,
       quantity: 26,
       unitPrice: 120,
@@ -292,7 +293,7 @@ export function defaultEstimateTemplate(): EstimateTemplate {
       sortOrder: 17,
       groupCode: "1",
       itemCode: "1.7",
-      name: "อาหารกลางวัน (เดินทางกลับ) (สพฐ.)",
+      name: "อาหารกลางวัน (เดินทางกลับ)",
       payoutMethod: ADVANCE,
       quantity: 27,
       unitPrice: 150,
@@ -306,7 +307,7 @@ export function defaultEstimateTemplate(): EstimateTemplate {
       sortOrder: 18,
       groupCode: "1",
       itemCode: "1.8",
-      name: "อาหารเย็น จนท.ตร. (เดินทางกลับ) (สพฐ.)",
+      name: "อาหารเย็น จนท.ตร. (เดินทางกลับ)",
       payoutMethod: ADVANCE,
       quantity: 27,
       unitPrice: 150,
@@ -320,7 +321,7 @@ export function defaultEstimateTemplate(): EstimateTemplate {
       sortOrder: 19,
       groupCode: "1",
       itemCode: "1.9",
-      name: "ที่พักจนท.ตร.ที่ร่วมภารกิจฯ (ศหญ.)",
+      name: "ที่พักจนท.ตร.ที่ร่วมภารกิจฯ",
       payoutMethod: ADVANCE,
       quantity: 0,
       unitPrice: 1400,
