@@ -438,6 +438,25 @@ const watchGridClass =
   "grid grid-cols-[minmax(10rem,1fr)_repeat(4,minmax(5.5rem,7.5rem))_0.75rem] gap-x-3 px-3 min-w-[38rem]";
 const moreLinkClass = "text-[11px] font-bold text-[#0000BF] hover:underline";
 
+function availabilityItems(data: BudgetImportData) {
+  const asOfIso = data.batch?.asOfDate ?? "";
+  const asOf = asOfIso ? new Date(asOfIso) : new Date();
+  return data.rows
+    .filter(
+      (r) =>
+        r.rowType === "ITEM" &&
+        (r.kind === "EXPENSE" || r.kind === "CAPEX") &&
+        (r.netBudget !== 0 || r.spent !== 0 || r.remaining !== 0),
+    )
+    .map((r) => availabilityOf(r, asOf));
+}
+
+/** จำนวนรายการที่ควรติดตาม (ไม่นับ "ต้องการงบเพิ่ม") — ใช้แสดงเป็น badge ที่เมนูประเด็นติดตาม */
+export function budgetWatchCount(data: BudgetImportData | null | undefined): number {
+  if (!data?.batch) return 0;
+  return availabilityItems(data).filter((i) => i.status !== "NEEDED" && WATCH_STATUSES.includes(i.status)).length;
+}
+
 export function BudgetExecutiveSummary({
   data,
   yearBe,
@@ -461,17 +480,7 @@ export function BudgetExecutiveSummary({
   const byKind = useMemo(() => totalsByKind(data), [data]);
   const all = useMemo(() => totalsOf(data.rows.filter((r) => r.rowType === "SECTION" && r.kind !== "OTHER")), [data.rows]);
 
-  const items = useMemo(() => {
-    const asOf = asOfIso ? new Date(asOfIso) : new Date();
-    return data.rows
-      .filter(
-        (r) =>
-          r.rowType === "ITEM" &&
-          (r.kind === "EXPENSE" || r.kind === "CAPEX") &&
-          (r.netBudget !== 0 || r.spent !== 0 || r.remaining !== 0),
-      )
-      .map((r) => availabilityOf(r, asOf));
-  }, [data.rows, asOfIso]);
+  const items = useMemo(() => availabilityItems(data), [data]);
 
   const moves = useMemo(() => {
     const list = data.rows.filter(
@@ -633,7 +642,6 @@ export function BudgetExecutiveSummary({
     return ratio(cum, all.net);
   });
   const currentQ = Math.min(3, Math.floor(new Date(asOfIso).getMonth() / 3));
-  const watchCount = statusTotals.filter((s) => s.status !== "NEEDED").reduce((a, s) => a + s.count, 0);
 
   return (
     <div className="flex flex-col gap-3 lg:h-full">
@@ -791,12 +799,6 @@ export function BudgetExecutiveSummary({
               <p className="mt-1.5 text-[11px] text-slate-500">ไม่มีงบผูกพันปีถัดไป</p>
             )}
           </section>
-
-          {watchCount > 0 ? (
-            <p className="shrink-0 rounded-xl border border-amber-200 bg-amber-50/80 px-3 py-1.5 text-[11px] text-amber-900">
-              มี <b>{watchCount}</b> รายการที่ควรติดตาม — ดูที่เมนู "ประเด็นติดตาม"
-            </p>
-          ) : null}
         </div>
       </div>
     </div>

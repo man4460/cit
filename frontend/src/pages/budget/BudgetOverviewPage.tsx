@@ -28,7 +28,7 @@ import {
   sectionOf,
   type BudgetMajor,
 } from "./budgetCategories";
-import { BudgetExecutiveKindCards, BudgetExecutiveSummary } from "./BudgetExecutiveSummary";
+import { BudgetExecutiveKindCards, BudgetExecutiveSummary, budgetWatchCount } from "./BudgetExecutiveSummary";
 import type { BudgetImportData } from "./BudgetMainSystemImport";
 
 type OverviewView = "overview" | "majors" | "watch";
@@ -151,6 +151,7 @@ export function BudgetOverviewPage() {
   const pageTitle = isRequestYear ? `สรุปคำขอตั้งงบปี ${yearBe}` : `สรุปงบปี ${yearBe}`;
 
   const hasImport = Boolean(importData?.batch);
+  const watchCount = budgetWatchCount(importData);
   const views: { id: OverviewView; label: string }[] = [
     { id: "overview", label: "ภาพรวม" },
     { id: "majors", label: "หัวข้อใหญ่" },
@@ -328,7 +329,20 @@ export function BudgetOverviewPage() {
                   aria-current={activeView === v.id ? "page" : undefined}
                   className={`${toolbarMasterBtnClass} ${activeView === v.id ? `${brandGradientFillClass} !text-white` : ""}`}
                 >
+                  {v.id === "watch" && watchCount > 0 ? (
+                    <svg viewBox="0 0 20 20" fill="currentColor" aria-hidden className="h-3 w-3 shrink-0 text-amber-500">
+                      <path d="M10 2a5 5 0 0 0-5 5v2.6l-1.3 2.6A1 1 0 0 0 4.6 14h10.8a1 1 0 0 0 .9-1.8L15 9.6V7a5 5 0 0 0-5-5Zm0 16a2.5 2.5 0 0 0 2.45-2h-4.9A2.5 2.5 0 0 0 10 18Z" />
+                    </svg>
+                  ) : null}
                   {v.label}
+                  {v.id === "watch" && watchCount > 0 ? (
+                    <span
+                      title={`${watchCount} รายการที่ควรติดตาม`}
+                      className="ml-0.5 inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-amber-500 px-1 text-[10px] font-black leading-none text-white"
+                    >
+                      {watchCount}
+                    </span>
+                  ) : null}
                 </button>
               ))}
             </nav>
