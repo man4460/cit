@@ -412,12 +412,15 @@ export function rollupAllocated(row: BudgetYearLineRow, kids: BudgetYearLineRow[
   return kids.reduce((s, k) => s + k.allocatedAmount, 0);
 }
 
+/**
+ * ยอดใช้บนหัวข้อหลัก
+ * - มี snapshot ระบบหลัก: ใช้ยอดหลัก (backend บวกรายการของย่อยหลังวันตัดยอดให้แล้ว) — ย่อยอาจไม่ครบ เช่น จ่ายจากงบเหลื่อมปี
+ * - ไม่มี: รวมจากย่อย (ไม่บวกซ้ำกับยอดหลัก)
+ */
 export function rollupSpent(row: BudgetYearLineRow, kids: BudgetYearLineRow[]): number {
-  if (!kids.length) return row.spent;
+  if (!kids.length || row.snapshotSpent != null) return row.spent;
   const kidsSpent = kids.reduce((s, k) => s + k.spent, 0);
-  /** มีย่อยแล้วใช้ยอดย่อย — snapshot หัวข้อหลักมักเป็นผลรวมกลุ่มอยู่แล้ว ห้ามบวกซ้ำ */
-  if (kidsSpent !== 0) return kidsSpent;
-  return row.spent;
+  return kidsSpent !== 0 ? kidsSpent : row.spent;
 }
 
 export function rollupRequested(

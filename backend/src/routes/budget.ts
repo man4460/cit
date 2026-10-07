@@ -9,6 +9,7 @@ import {
   parseAsOfFromFileName,
   parseMainSystemBudgetWorkbook,
 } from "../lib/budgetMainSystemImport.js";
+import { installmentAmount, monthWithinContract } from "./osOutsourcing.js";
 
 export const budgetRouter = Router();
 
@@ -94,7 +95,7 @@ type LineWithRelations = {
     isSummary: boolean;
   };
   snapshots: { id: string; asOfDate: Date; spentAmount: Prisma.Decimal; source: string; notes: string | null }[];
-  transactions: { amount: Prisma.Decimal; occurredAt: Date }[];
+  transactions: { id?: string; amount: Prisma.Decimal; occurredAt: Date }[];
 };
 
 /** เทียบแค่วันที่ (ไม่เอาเวลา) — snapshot ณ 31 ก.ค. รวมการใช้ถึงวันนั้นแล้ว */
@@ -103,6 +104,52 @@ function ymdLocal(d: Date): string {
   const m = String(d.getMonth() + 1).padStart(2, "0");
   const day = String(d.getDate()).padStart(2, "0");
   return `${y}-${m}-${day}`;
+}
+
+/**
+ * หัวข้อหลักที่มียอดจากระบบหลัก (snapshot) รวมการใช้ของกลุ่มย่อยถึงวันตัดยอดแล้ว
+ * แต่รายการที่กลุ่มย่อยบันทึกหลังวันตัดยอด (เช่น ตรวจรับ OS เดือนถัดไป) ยังไม่อยู่ใน snapshot — บวกเพิ่มให้หัวข้อหลัก
+ */
+function enrichLinesWithChildren(lines: LineWithRelations[], os?: OsGroupStats | null) {
+  const enriched = lines.map(enrichLine);
+  const byAccount = new Map(lines.map((l) => [l.account.id, l]));
+  return enriched.map((e) => {
+    const osStat = os?.byAccount.get(e.accountId);
+    if (osStat) {
+      const spent = osStat.accepted + osStat.manual;
+      return {
+        ...e,
+        snapshotSpent: null,
+        snapshotAsOf: null,
+        transactionTotal: osStat.manual,
+        spent,
+        remaining: e.totalBudget - spent,
+        pctUsed: e.totalBudget > 0 ? spent / e.totalBudget : null,
+        osContractAmount: osStat.contract,
+        osAcceptedAmount: osStat.accepted,
+        osAcceptedMonths: osStat.acceptedMonths,
+      };
+    }
+    const parentLine = byAccount.get(e.accountId);
+    if (!parentLine || e.snapshotSpent == null) return e;
+    const snapYmd = ymdLocal(parentLine.snapshots[0]!.asOfDate);
+    /** กลุ่มที่ผูก OS ไม่บวกเข้าหัวข้อหลัก — หัวข้อหลักใช้ยอดตามไฟล์ระบบหลัก กลุ่มย่อยใช้เทียบ */
+    const kids = lines.filter((l) => l.account.parentId === e.accountId && !os?.byAccount.has(l.account.id));
+    if (!kids.length) return e;
+    const childAfterSnapshot = kids.reduce(
+      (s, k) => s + k.transactions.reduce((a, t) => (ymdLocal(t.occurredAt) > snapYmd ? a + num(t.amount) : a), 0),
+      0,
+    );
+    if (!childAfterSnapshot) return e;
+    const spent = e.spent + childAfterSnapshot;
+    return {
+      ...e,
+      transactionTotal: e.transactionTotal + childAfterSnapshot,
+      spent,
+      remaining: e.totalBudget - spent,
+      pctUsed: e.totalBudget > 0 ? spent / e.totalBudget : null,
+    };
+  });
 }
 
 function enrichLine(line: LineWithRelations) {
@@ -157,11 +204,67 @@ function enrichLine(line: LineWithRelations) {
   };
 }
 
+type OsGroupStats = {
+  byAccount: Map<string, { contract: number | null; accepted: number; acceptedMonths: number; manual: number }>;
+};
+
+/**
+ * กลุ่มย่อยค่าจ้างรปภ. ที่ผูกกับระบบงานจ้าง OS — ใช้ยอดตามสัญญา (งวดในปี) และยอดตรวจรับจริงของปีนั้น
+ * ปีงบ = ปีปฏิทิน (พ.ศ. − 543)
+ */
+async function loadOsGroupStats(lines: LineWithRelations[], yearBe: number): Promise<OsGroupStats | null> {
+  const accountIds = lines.map((l) => l.account.id);
+  const groups = await prisma.osAreaGroup.findMany({
+    where: { budgetAccountId: { in: accountIds } },
+    include: { contracts: { include: { acceptances: true } } },
+  });
+  if (!groups.length) return null;
+  const yearCe = String(yearBe - 543);
+  const months = Array.from({ length: 12 }, (_, i) => `${yearCe}-${String(i + 1).padStart(2, "0")}`);
+  const osTxIds = new Set(
+    (
+      await prisma.osMonthlyAcceptance.findMany({
+        where: { budgetTransactionId: { not: null } },
+        select: { budgetTransactionId: true },
+      })
+    ).map((a) => a.budgetTransactionId!),
+  );
+  const byAccount: OsGroupStats["byAccount"] = new Map();
+  for (const g of groups) {
+    const line = lines.find((l) => l.account.id === g.budgetAccountId);
+    if (!line) continue;
+    let contract: number | null = null;
+    let accepted = 0;
+    let acceptedMonths = 0;
+    for (const c of g.contracts) {
+      for (const ym of months) {
+        if (!monthWithinContract(ym, c.startDate, c.endDate)) continue;
+        const amt = installmentAmount(c, ym);
+        if (amt != null && amt > 0) contract = (contract ?? 0) + amt;
+      }
+      for (const a of c.acceptances) {
+        if (!a.monthYm.startsWith(`${yearCe}-`)) continue;
+        accepted += num(a.acceptedAmount);
+        acceptedMonths += 1;
+      }
+    }
+    const manual = line.transactions.reduce((s, t) => (t.id && osTxIds.has(t.id) ? s : s + num(t.amount)), 0);
+    const prev = byAccount.get(line.account.id);
+    byAccount.set(line.account.id, {
+      contract: contract == null && prev?.contract == null ? null : (prev?.contract ?? 0) + (contract ?? 0),
+      accepted: (prev?.accepted ?? 0) + accepted,
+      acceptedMonths: (prev?.acceptedMonths ?? 0) + acceptedMonths,
+      manual,
+    });
+  }
+  return { byAccount };
+}
+
 const lineInclude = {
   account: { include: { category: { select: { id: true, name: true } } } },
   fiscalYear: { select: { yearBe: true } },
   snapshots: { orderBy: [{ asOfDate: "desc" as const }, { createdAt: "desc" as const }], take: 1 },
-  transactions: { select: { amount: true, occurredAt: true } },
+  transactions: { select: { id: true, amount: true, occurredAt: true } },
 };
 
 /** สร้างบรรทัดปีว่างให้บัญชีหัวข้อหลักครบทุกปี — เพื่อให้ลิงก์ย่อยโชว์ได้ทุกหน้าปี */
@@ -236,7 +339,8 @@ async function withEnsuredParentLines(
 budgetRouter.get("/years", async (_req, res, next) => {
   try {
     const years = await prisma.budgetFiscalYear.findMany({ orderBy: { yearBe: "asc" } });
-    const yearBuckets = years.map((y) => ({
+    /** ปีที่ปิดยอดแล้วไม่อยู่ในเมนู — งบเหลื่อมปียกไปรวมในงบปีถัดไปแล้ว ดูเฉพาะปีที่ยังเปิด */
+    const yearBuckets = years.filter((y) => y.status !== "CLOSED").map((y) => ({
       id: String(y.yearBe),
       label: `ปี ${y.yearBe}`,
       yearBe: y.yearBe,
@@ -275,6 +379,22 @@ budgetRouter.get("/years", async (_req, res, next) => {
       maxAllowedYearBe,
       buckets: yearBuckets,
     });
+  } catch (e) {
+    next(e);
+  }
+});
+
+/** ปิดยอด / เปิดปีงบอีกครั้ง */
+budgetRouter.patch("/years/:yearBe/status", requireAdmin, async (req, res, next) => {
+  try {
+    const yearBe = parseYearBe(routeParam(req.params.yearBe));
+    if (yearBe == null) return res.status(400).json({ error: "ปีงบประมาณไม่ถูกต้อง" });
+    const status = String(req.body?.status ?? "").toUpperCase();
+    if (status !== "ACTIVE" && status !== "CLOSED") return res.status(400).json({ error: "สถานะต้องเป็น ACTIVE หรือ CLOSED" });
+    const fy = await prisma.budgetFiscalYear.findUnique({ where: { yearBe } });
+    if (!fy) return res.status(404).json({ error: `ไม่พบปีงบ ${yearBe}` });
+    const updated = await prisma.budgetFiscalYear.update({ where: { yearBe }, data: { status } });
+    res.json(updated);
   } catch (e) {
     next(e);
   }
@@ -713,6 +833,8 @@ budgetRouter.get("/lines", async (req, res, next) => {
 
     const withParents =
       yearBe != null ? await withEnsuredParentLines(lines, fiscalYearId, fundingType) : lines;
+    const osStats =
+      fundingType === "ANNUAL" && yearBe != null ? await loadOsGroupStats(withParents, yearBe) : null;
 
     res.json({
       bucket,
@@ -724,7 +846,7 @@ budgetRouter.get("/lines", async (req, res, next) => {
           : bf.label,
       yearBe: yearBe ?? null,
       fundingType,
-      lines: withParents.map(enrichLine),
+      lines: enrichLinesWithChildren(withParents, osStats),
     });
   } catch (e) {
     next(e);
@@ -1714,6 +1836,8 @@ budgetRouter.post("/imports", requireAdmin, upload.single("file"), async (req, r
     const asOfDay = asOfDate.toISOString().slice(0, 10);
     const snapNote = `นำเข้าจากระบบหลัก${fileName ? ` · ${fileName}` : ""}`;
     const fy = await prisma.budgetFiscalYear.upsert({ where: { yearBe }, create: { yearBe }, update: {} });
+    /** ปีที่ปิดยอดแล้ว: ไฟล์ปิดปีของระบบหลักมีงบอนุมัติ/เหลื่อมปี/กลางปีเป็น 0 — อัปเดตเฉพาะยอดใช้จ่าย ไม่ทับงบ */
+    const spendOnly = fy.status === "CLOSED";
     const lines = await prisma.budgetYearLine.findMany({
       where: { fiscalYearId: fy.id, fundingType: "ANNUAL" },
       include: { account: true },
@@ -1820,14 +1944,21 @@ budgetRouter.post("/imports", requireAdmin, upload.single("file"), async (req, r
               data: { ciCode: row.ciCode, superiorCi: row.parentCi ?? m.line.account.superiorCi },
             });
           }
-          await tx.budgetYearLine.update({
-            where: { id: m.line.id },
-            data: {
-              allocatedAmount: new Prisma.Decimal(row.approved),
-              carryInAmount: new Prisma.Decimal(row.carryIn),
-              midYearAmount: new Prisma.Decimal(row.midYear),
-            },
-          });
+          if (spendOnly) {
+            row.approved = num(m.line.allocatedAmount);
+            row.carryIn = num(m.line.carryInAmount);
+            row.midYear = num(m.line.midYearAmount);
+            row.netBudget = row.approved + row.carryIn + row.midYear;
+          } else {
+            await tx.budgetYearLine.update({
+              where: { id: m.line.id },
+              data: {
+                allocatedAmount: new Prisma.Decimal(row.approved),
+                carryInAmount: new Prisma.Decimal(row.carryIn),
+                midYearAmount: new Prisma.Decimal(row.midYear),
+              },
+            });
+          }
           await tx.budgetSpendSnapshot.deleteMany({ where: { yearLineId: m.line.id, source: "IMPORT" } });
           await tx.budgetSpendSnapshot.create({
             data: {
@@ -1840,6 +1971,16 @@ budgetRouter.post("/imports", requireAdmin, upload.single("file"), async (req, r
           });
         }
 
+        /** กลุ่มย่อยที่ไฟล์ไม่แยก (เช่น กลุ่ม 1–5 ใต้ค่าจ้างรปภ.) — ลบยอด snapshot นำเข้าเก่า ให้ใช้ข้อมูลในระบบ (OS) แทน */
+        const matchedLineIds = new Set([...matches.values()].map((m) => m.line.id));
+        const matchedAccountIds = new Set([...matches.values()].map((m) => m.line.accountId));
+        const staleChildIds = lines
+          .filter((l) => l.account.parentId && matchedAccountIds.has(l.account.parentId) && !matchedLineIds.has(l.id))
+          .map((l) => l.id);
+        if (staleChildIds.length) {
+          await tx.budgetSpendSnapshot.deleteMany({ where: { yearLineId: { in: staleChildIds }, source: "IMPORT" } });
+        }
+
         /** งบปีผูกพัน (ปีถัดไป) → บรรทัด COMMITMENT ของปีนี้ ให้หน้างบผูกพันมียอดตรงระบบหลัก */
         const existingCommitments = await tx.budgetYearLine.findMany({
           where: { fiscalYearId: fy.id, fundingType: "COMMITMENT" },
@@ -1847,7 +1988,7 @@ budgetRouter.post("/imports", requireAdmin, upload.single("file"), async (req, r
         });
         const commitmentByAccount = new Map(existingCommitments.map((c) => [c.accountId, c.id]));
         for (const row of parsed.rows) {
-          if (row.rowType !== "ITEM") continue;
+          if (spendOnly || row.rowType !== "ITEM") continue;
           const m = matches.get(row.sortOrder);
           if (!m) continue;
           const existingId = commitmentByAccount.get(m.line.accountId);
@@ -1934,6 +2075,7 @@ budgetRouter.post("/imports", requireAdmin, upload.single("file"), async (req, r
 
     res.status(201).json({
       batch: serializeImportBatch(batch),
+      spendOnly,
       missingInFile,
       totalRows: parsed.rows.length,
       itemCount: parsed.rows.filter((r) => r.rowType === "ITEM").length,

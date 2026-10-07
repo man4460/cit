@@ -3,6 +3,7 @@ import { Link, Navigate, useParams, useSearchParams } from "react-router-dom";
 import { PickableDateInput } from "../../components/PickableDateInput";
 import { BudgetStatCard, BUDGET_STAT_TONES } from "../../components/BudgetStatCard";
 import { PageHeaderBar } from "../../components/PageHeaderBar";
+import { notifyBudgetYearsChanged } from "../../components/BudgetModuleTabs";
 import { FitSingleLine } from "../../components/FitSingleLine";
 import { ModuleDocumentsModal } from "../../components/ModuleDocumentsModal";
 import { apiFormJson, apiJson } from "../../api/client";
@@ -166,6 +167,8 @@ export function BudgetYearPage() {
   const isNewestYear = maxYearBe != null && yearBe === maxYearBe && yearCount > 1;
   /** ปีล่าสุด = ขั้นคำขอ (งบประจำ + งบผูกพัน) · ปีเก่า = ติดตามใช้จ่าย */
   const isTracking = !isNewestYear;
+  const [yearClosed, setYearClosed] = useState(false);
+  const [statusBusy, setStatusBusy] = useState(false);
   const allowSpend = isTracking;
   const showRequestFields = isCommitment ? isNewestYear : yearBe != null;
 
@@ -235,7 +238,9 @@ export function BudgetYearPage() {
           `/api/budget/lines?bucket=${bucket}&fundingType=${fundingType}`,
         ),
         apiJson<{ items: BudgetCategoryRow[] }>(`/api/budget/categories`),
-        apiJson<{ years: { yearBe: number }[]; maxYearBe: number | null }>("/api/budget/years").catch(() => null),
+        apiJson<{ years: { yearBe: number; status?: string }[]; maxYearBe: number | null }>("/api/budget/years").catch(
+          () => null,
+        ),
         apiJson<BudgetImportData>(`/api/budget/imports/latest?yearBe=${yearBe}`).catch(() => null),
       ]);
       setLines(res.lines);
@@ -244,6 +249,7 @@ export function BudgetYearPage() {
       if (yearsRes) {
         setYearCount(yearsRes.years?.length ?? 0);
         setMaxYearBe(yearsRes.maxYearBe);
+        setYearClosed(yearsRes.years?.some((y) => y.yearBe === yearBe && y.status === "CLOSED") ?? false);
       }
 
       if (showRequestFields) {
@@ -262,6 +268,25 @@ export function BudgetYearPage() {
       setLoading(false);
     }
   }, [bucket, fundingType, showRequestFields, yearBe]);
+
+  const changeYearStatus = async (status: "ACTIVE" | "CLOSED") => {
+    if (yearBe == null) return;
+    const msg =
+      status === "CLOSED"
+        ? `ปิดยอดปีงบ ${yearBe}?\n\nงบเหลื่อมปีจะยกไปรวมในงบปี ${yearBe + 1} ตามระบบหลัก — ปีนี้จะไม่แสดงในเมนูและไม่ติดตามการใช้จ่ายต่อ`
+        : `เปิดปีงบ ${yearBe} อีกครั้ง?`;
+    if (!window.confirm(msg)) return;
+    setStatusBusy(true);
+    try {
+      await apiJson(`/api/budget/years/${yearBe}/status`, { method: "PATCH", body: JSON.stringify({ status }) });
+      notifyBudgetYearsChanged();
+      await load();
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : "บันทึกสถานะปีไม่สำเร็จ");
+    } finally {
+      setStatusBusy(false);
+    }
+  };
 
   useEffect(() => {
     void load();
@@ -823,6 +848,17 @@ export function BudgetYearPage() {
               <button type="button" className={toolbarLinkBtnClass} onClick={() => setDocsOpen(true)}>
                 เอกสาร
               </button>
+              {!isCommitment && isTracking && !yearClosed ? (
+                <button
+                  type="button"
+                  className={toolbarLinkBtnClass}
+                  disabled={statusBusy}
+                  title="ปิดยอดเมื่อสิ้นปีงบ — งบเหลื่อมปียกไปรวมในปีถัดไป"
+                  onClick={() => void changeYearStatus("CLOSED")}
+                >
+                  ปิดยอดปีนี้
+                </button>
+              ) : null}
               {!isCommitment ? (
                 <>
                   <input
@@ -839,10 +875,14 @@ export function BudgetYearPage() {
                     type="button"
                     className={toolbarLinkBtnClass}
                     disabled={importing}
-                    title="อัปโหลดรายงานการใช้งบประมาณที่ export จากระบบหลัก"
+                    title={
+                      yearClosed
+                        ? "ปีปิดยอดแล้ว — อัปเดตเฉพาะยอดใช้จ่าย ไม่ทับงบอนุมัติ/เหลื่อมปี/กลางปี"
+                        : "อัปโหลดรายงานการใช้งบประมาณที่ export จากระบบหลัก"
+                    }
                     onClick={() => importInputRef.current?.click()}
                   >
-                    {importing ? "กำลังนำเข้า…" : "นำเข้าไฟล์ระบบหลัก"}
+                    {importing ? "กำลังนำเข้า…" : yearClosed ? "อัปเดตรายการจ่าย" : "นำเข้าไฟล์ระบบหลัก"}
                   </button>
                 </>
               ) : null}
@@ -855,6 +895,29 @@ export function BudgetYearPage() {
       />
 
       {err ? <p className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">{err}</p> : null}
+      {yearClosed && yearBe != null ? (
+        <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700">
+          <span>
+            ปีงบ {yearBe} ปิดยอดแล้ว — งบเหลื่อมปียกไปรวมในงบปี {yearBe + 1} · อัปโหลดไฟล์ระบบหลักได้เพื่ออัปเดตรายการจ่าย
+            (งบอนุมัติ/เหลื่อมปี/กลางปีคงเดิม)
+          </span>
+          <span className="flex items-center gap-1">
+            <Link to={`/budget/year/${yearBe + 1}`} className={toolbarLinkBtnClass}>
+              ไปปี {yearBe + 1}
+            </Link>
+            {isAdmin ? (
+              <button
+                type="button"
+                className={toolbarLinkBtnClass}
+                disabled={statusBusy}
+                onClick={() => void changeYearStatus("ACTIVE")}
+              >
+                เปิดปีอีกครั้ง
+              </button>
+            ) : null}
+          </span>
+        </div>
+      ) : null}
       {loading ? <p className="text-sm text-slate-500">กำลังโหลด…</p> : null}
       {importData?.batch ? (
         <p className="text-[11px] text-slate-500">
@@ -1207,6 +1270,10 @@ export function BudgetYearPage() {
                   <ul className="overflow-hidden rounded-xl border border-[#e8e6fc] divide-y divide-[#ecebff]">
                     {topLevelChildren(popupChildren).map((c, idx) => {
                       const subs = childItemsOf(popupChildren, c.accountId);
+                      const hasOsSubs = subs.some((s) => s.osAcceptedAmount != null);
+                      const osContractTotal = subs.some((s) => s.osContractAmount != null)
+                        ? subs.reduce((sum, s) => sum + (s.osContractAmount ?? 0), 0)
+                        : null;
                       const renderRow = (row: BudgetYearLineRow, nested: boolean, rowIndex: number, kids: BudgetYearLineRow[]) => {
                         const openable = isRealBudgetLine(row) && !row.isSummary;
                         const nos = parseExpenseNo(row.name);
@@ -1277,9 +1344,27 @@ export function BudgetYearPage() {
                                 <div className="text-[9px] font-bold text-slate-400">{budgetLabel}</div>
                                 <div className="tabular-nums text-slate-700">{fmt(displayAllocated)}</div>
                               </div>
+                              {hasOsSubs ? (
+                                <div className="min-w-[4.5rem]">
+                                  <div className="text-[9px] font-bold text-slate-400">สัญญา (OS)</div>
+                                  <div className="tabular-nums text-slate-700">
+                                    {nested
+                                      ? row.osAcceptedAmount != null
+                                        ? fmt(row.osContractAmount ?? null)
+                                        : ""
+                                      : fmt(osContractTotal)}
+                                  </div>
+                                </div>
+                              ) : null}
                               {isTracking ? (
                                 <div className="min-w-[4.5rem]">
-                                  <div className="text-[9px] font-bold text-slate-400">ใช้ไป</div>
+                                  <div className="text-[9px] font-bold text-slate-400">
+                                    {row.osAcceptedAmount != null
+                                      ? `ตรวจรับ OS${row.osAcceptedMonths ? ` (${row.osAcceptedMonths} งวด)` : ""}`
+                                      : hasOsSubs
+                                        ? "ใช้ไป (ระบบหลัก)"
+                                        : "ใช้ไป"}
+                                  </div>
                                   <div className={`font-semibold tabular-nums ${pctToneClass(displayPct)}`}>
                                     {fmt(displaySpent)}
                                   </div>
@@ -1316,10 +1401,53 @@ export function BudgetYearPage() {
                           </li>
                         );
                       };
+                      const gapAllocated = subs.length
+                        ? rollupAllocated(c, subs) - subs.reduce((s, k) => s + k.allocatedAmount, 0)
+                        : 0;
+                      const gapSpent = subs.length ? rollupSpent(c, subs) - subs.reduce((s, k) => s + k.spent, 0) : 0;
+                      const showGap = Math.abs(gapAllocated) >= 0.01 || (isTracking && Math.abs(gapSpent) >= 0.01);
                       return (
                         <Fragment key={c.id}>
                           {renderRow(c, false, idx + 1, subs)}
                           {subs.map((s, sIdx) => renderRow(s, true, sIdx + 1, []))}
+                          {showGap ? (
+                            <li className="flex items-start justify-between gap-3 bg-amber-50/60 px-3 py-2">
+                              <div className="min-w-0 flex-1 border-l-2 border-amber-300 pl-3">
+                                <div className="text-[12px] font-semibold text-amber-800">
+                                  {hasOsSubs ? "ส่วนต่าง ระบบหลัก − ตรวจรับ OS" : "ส่วนที่ไม่ได้แยกกลุ่ม"}
+                                </div>
+                                <div className="text-[10px] leading-snug text-amber-700/80">
+                                  {c.carryInAmount || c.midYearAmount
+                                    ? [
+                                        c.carryInAmount ? `เหลื่อมปี ${fmt(c.carryInAmount)}` : null,
+                                        c.midYearAmount ? `จัดสรรระหว่างปี ${fmt(c.midYearAmount)}` : null,
+                                      ]
+                                        .filter(Boolean)
+                                        .join(" · ") + " · "
+                                    : ""}
+                                  {hasOsSubs
+                                    ? "เบิกจ่ายตามไฟล์ระบบหลัก − ตรวจรับในระบบ OS (รวมการเบิกจากเงินเหลื่อมปี / งวดที่ยังไม่บันทึกตรวจรับ)"
+                                    : "ยอดหลักจากระบบหลัก − ผลรวมกลุ่มย่อย"}
+                                </div>
+                              </div>
+                              <div className="flex shrink-0 items-center gap-2.5 text-right text-[11px] leading-tight">
+                                {showRequestFields ? <div className="min-w-[4.5rem]" /> : null}
+                                <div className="min-w-[4.5rem]">
+                                  <div className="text-[9px] font-bold text-slate-400">{budgetLabel}</div>
+                                  <div className="tabular-nums text-amber-800">{fmt(gapAllocated)}</div>
+                                </div>
+                                {hasOsSubs ? <div className="min-w-[4.5rem]" /> : null}
+                                {isTracking ? (
+                                  <div className="min-w-[4.5rem]">
+                                    <div className="text-[9px] font-bold text-slate-400">ใช้ไป</div>
+                                    <div className="font-semibold tabular-nums text-amber-800">{fmt(gapSpent)}</div>
+                                  </div>
+                                ) : null}
+                                {isAdmin ? <div className="w-[2.6rem]" /> : null}
+                                {allowSpend ? <div className="w-[2.6rem]" /> : null}
+                              </div>
+                            </li>
+                          ) : null}
                         </Fragment>
                       );
                     })}

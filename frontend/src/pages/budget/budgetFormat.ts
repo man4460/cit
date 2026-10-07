@@ -4,7 +4,6 @@ export type BudgetFundingType = "ANNUAL" | "COMMITMENT";
 export type BudgetBucket = string;
 
 export const BUDGET_BUCKETS: { id: BudgetBucket; label: string }[] = [
-  { id: "2568", label: "ปี 2568" },
   { id: "2569", label: "ปี 2569" },
   { id: "2570", label: "ปี 2570" },
 ];
@@ -46,6 +45,10 @@ export type BudgetYearLineRow = {
   spent: number;
   remaining: number;
   pctUsed: number | null;
+  /** กลุ่มย่อยที่ผูกระบบงานจ้าง OS — ยอดสัญญา (งวดในปี) / ยอดตรวจรับจริง */
+  osContractAmount?: number | null;
+  osAcceptedAmount?: number;
+  osAcceptedMonths?: number;
 };
 
 export function formatBaht(n: number | null | undefined): string {

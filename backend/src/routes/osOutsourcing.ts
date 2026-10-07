@@ -44,7 +44,7 @@ function startOfMonth(monthYm: string): Date {
   return new Date(y, m - 1, 1, 0, 0, 0, 0);
 }
 
-function monthWithinContract(monthYm: string, start: Date, end: Date): boolean {
+export function monthWithinContract(monthYm: string, start: Date, end: Date): boolean {
   const ms = startOfMonth(monthYm).getTime();
   const me = endOfMonth(monthYm).getTime();
   return me >= start.getTime() && ms <= end.getTime();
@@ -55,7 +55,7 @@ function ymOf(d: Date) {
 }
 
 /** งวดปกติ = monthlyAmount, งวดสุดท้าย = totalAmount − monthlyAmount × (จำนวนงวด − 1) */
-function installmentAmount(
+export function installmentAmount(
   c: { startDate: Date; endDate: Date; monthlyAmount: Prisma.Decimal | null; totalAmount: Prisma.Decimal | null },
   monthYm: string,
 ): number | null {
