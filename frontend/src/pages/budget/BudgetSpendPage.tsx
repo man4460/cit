@@ -201,7 +201,7 @@ export function BudgetSpendPage() {
                     key={labelK}
                     type="button"
                     onClick={() => setKind(k)}
-                    className={`inline-flex h-8 items-center rounded-lg px-2.5 text-[11px] font-bold sm:h-9 sm:px-3 sm:text-xs ${
+                    className={`inline-flex h-7 items-center rounded-lg px-2.5 text-xs font-bold ${
                       kind === k
                         ? "bg-gradient-to-r from-[#0000BF] via-[#8b5cf6] to-[#ec4899] text-white shadow-md"
                         : "text-[#4d47b6] hover:bg-[#0000BF]/8"

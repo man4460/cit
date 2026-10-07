@@ -19,21 +19,26 @@ export const primaryButtonSmClass =
 export const secondaryButtonClass =
   "inline-flex items-center justify-center rounded-full border border-[#0000BF]/25 bg-white px-4 py-2 text-sm font-semibold text-[#2e2a58] shadow-sm hover:bg-[#0000BF]/5 disabled:pointer-events-none disabled:opacity-50";
 
-/** แถบเครื่องมือหน้า — ปุ่มมาสเตอร์ข้อมูล (กะทัดรัด) */
+/*
+ * ขนาดแถบเครื่องมือ — ทุกหน้าสูง 28px เท่ากัน
+ * ปุ่มเดี่ยว h-7 · ปุ่มในกลุ่ม h-6 + ขอบ 1px + padding 1px = 28px
+ */
+
+/** แถบเครื่องมือหน้า — ปุ่มในกลุ่ม (ใช้ใน toolbarMasterGroupClass) */
 export const toolbarMasterBtnClass =
-  "inline-flex h-8 shrink-0 items-center justify-center rounded-lg px-2.5 text-[11px] font-bold text-[#4d47b6] transition hover:bg-[#0000BF]/8 sm:h-9 sm:px-3 sm:text-xs";
+  "inline-flex h-6 shrink-0 items-center justify-center gap-1 rounded-md px-2 text-[11px] font-bold text-[#4d47b6] transition hover:bg-[#0000BF]/8";
 
 /** แถบเครื่องมือหน้า — ลิงก์/ทางลัด */
 export const toolbarLinkBtnClass =
-  "inline-flex h-8 shrink-0 items-center justify-center rounded-xl border border-[#dcd8f0] bg-white px-2.5 text-[11px] font-bold text-[#2e2a58] shadow-sm transition hover:border-[#0000BF]/25 hover:bg-[#0000BF]/5 sm:h-9 sm:px-3 sm:text-xs";
+  "inline-flex h-7 shrink-0 items-center justify-center gap-1 rounded-lg border border-[#dcd8f0] bg-white px-2.5 text-[11px] font-bold text-[#2e2a58] shadow-sm transition hover:border-[#0000BF]/25 hover:bg-[#0000BF]/5";
 
 /** แถบเครื่องมือหน้า — ปุ่มหลัก */
 export const toolbarPrimaryBtnClass =
-  `inline-flex h-8 shrink-0 items-center justify-center rounded-full px-3 text-[11px] font-black disabled:pointer-events-none disabled:opacity-50 sm:h-9 sm:px-3.5 sm:text-xs ${brandCtaButtonClass}`;
+  `inline-flex h-7 shrink-0 items-center justify-center gap-1 rounded-full px-3 text-[11px] font-black disabled:pointer-events-none disabled:opacity-50 ${brandCtaButtonClass}`;
 
-/** เปลือกกลุ่มปุ่มมาสเตอร์ */
+/** เปลือกกลุ่มปุ่ม — บังคับลูกทุกตัวสูง h-6 ตัวอักษร 11px ให้ทั้งกลุ่มสูงเท่าปุ่มเดี่ยว */
 export const toolbarMasterGroupClass =
-  "inline-flex max-w-full flex-wrap items-center gap-0.5 rounded-xl border border-[#e8e6fc] bg-[#faf9ff]/90 p-0.5 shadow-sm";
+  "inline-flex max-w-full flex-wrap items-center gap-px rounded-lg border border-[#e8e6fc] bg-[#faf9ff]/90 p-px shadow-sm [&>*]:!h-6 [&>*]:!rounded-md [&>*]:!px-2 [&>*]:!text-[11px]";
 
 export const brandNavActiveClass =
   "bg-[#0000BF]/10 text-[#2e2a58] ring-1 ring-[#0000BF]/20";
@@ -68,10 +73,10 @@ export const moduleNavActiveClass = `text-white shadow-md ${brandGradientFillCla
 export const moduleNavIdleClass = "text-slate-500 hover:bg-white/55 hover:text-slate-700";
 
 export const moduleNavItemClass =
-  "flex min-h-[44px] min-w-0 flex-1 items-center justify-center gap-1.5 rounded-xl px-2 py-2.5 text-xs font-black transition-all sm:text-sm";
+  "flex h-8 min-w-0 flex-1 items-center justify-center gap-1.5 rounded-lg px-2 text-[11px] font-black transition-all";
 
 export const moduleCollapseBtnClass =
-  "inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl border border-[#0000BF]/25 bg-white/80 text-[#4d47b6] shadow-sm hover:bg-white";
+  "inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-xl border border-[#0000BF]/25 bg-white/80 text-[#4d47b6] shadow-sm hover:bg-white";
 
 export const chartGridStroke = "#d8d6ec";
 export const chartAxisFill = "#66638c";

@@ -869,7 +869,7 @@ export function FireSafetyPage() {
               เอกสาร
             </button>
             {tab === "extinguishers" ? (
-              <label className="inline-flex h-8 items-center gap-1.5 rounded-xl border border-[#e8e6fc] bg-[#faf9ff]/90 px-2 shadow-sm sm:h-9 sm:px-2.5">
+              <label className="inline-flex h-7 items-center gap-1.5 rounded-lg border border-[#e8e6fc] bg-[#faf9ff]/90 px-2 shadow-sm sm:px-2.5">
                 <span className="hidden text-[11px] font-bold text-[#4d47b6] sm:inline sm:text-xs">อายุถัง</span>
                 <select
                   aria-label="กรองตามอายุถัง (ปี)"
@@ -907,7 +907,7 @@ export function FireSafetyPage() {
                     setDashKey("");
                     setTeamFilter("");
                   }}
-                  className={`inline-flex h-8 items-center gap-1.5 rounded-lg px-2.5 text-[11px] font-black transition sm:h-9 sm:px-3 sm:text-xs ${
+                  className={`inline-flex h-7 items-center gap-1.5 rounded-lg px-2.5 text-xs font-black transition ${
                     active ? `${brandGradientFillClass} text-white shadow-md` : toolbarMasterBtnClass
                   }`}
                 >

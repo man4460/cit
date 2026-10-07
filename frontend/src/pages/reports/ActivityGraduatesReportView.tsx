@@ -115,7 +115,7 @@ export function ActivityGraduatesReportView({ reportTitle, categoryKeyword }: { 
         placeholder="กรองชื่อ / ตำแหน่ง / หน่วยงาน / ชื่อกิจกรรม…"
         trailing={
           <>
-            <label className="inline-flex h-8 items-center gap-1.5 rounded-xl border border-[#dcd8f0] bg-white px-2 shadow-sm sm:h-9">
+            <label className="inline-flex h-7 items-center gap-1.5 rounded-lg border border-[#dcd8f0] bg-white px-2 shadow-sm">
               <span className="text-[11px] font-bold text-[#4d47b6]">ปี</span>
               <select
                 className="cursor-pointer border-0 bg-transparent text-[11px] font-semibold text-[#2e2a58] outline-none sm:text-xs"

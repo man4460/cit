@@ -424,7 +424,7 @@ export function AdminPage() {
                     <div className="mt-auto flex flex-wrap gap-1.5 border-t border-[#ecebff] pt-3">
                       <button
                         type="button"
-                        className="inline-flex h-8 items-center rounded-xl border border-[#e0ddf8] bg-white px-3 text-xs font-bold text-[#4d47b6] shadow-sm transition hover:border-[#0000BF]/30 hover:bg-[#f5f3ff]"
+                        className="inline-flex h-7 items-center rounded-lg border border-[#e0ddf8] bg-white px-3 text-[11px] font-bold text-[#4d47b6] shadow-sm transition hover:border-[#0000BF]/30 hover:bg-[#f5f3ff]"
                         onClick={() => openEdit(r)}
                       >
                         แก้ไข
@@ -433,14 +433,14 @@ export function AdminPage() {
                         <>
                           <button
                             type="button"
-                            className="inline-flex h-8 items-center rounded-xl border border-[#e0ddf8] bg-white px-3 text-xs font-bold text-slate-600 shadow-sm transition hover:bg-slate-50"
+                            className="inline-flex h-7 items-center rounded-lg border border-[#e0ddf8] bg-white px-3 text-[11px] font-bold text-slate-600 shadow-sm transition hover:bg-slate-50"
                             onClick={() => void toggleActive(r)}
                           >
                             {r.active ? "ปิดชั่วคราว" : "เปิดใช้งาน"}
                           </button>
                           <button
                             type="button"
-                            className="inline-flex h-8 items-center rounded-xl border border-rose-200 bg-rose-50 px-3 text-xs font-bold text-rose-600 shadow-sm transition hover:bg-rose-100"
+                            className="inline-flex h-7 items-center rounded-lg border border-rose-200 bg-rose-50 px-3 text-[11px] font-bold text-rose-600 shadow-sm transition hover:bg-rose-100"
                             onClick={() => void deleteUser(r)}
                           >
                             ลบ

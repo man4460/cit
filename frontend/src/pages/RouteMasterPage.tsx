@@ -220,7 +220,7 @@ export function RouteMasterPage() {
                   key={id}
                   type="button"
                   onClick={() => setStatusView(id)}
-                  className={`inline-flex h-8 items-center rounded-lg px-2.5 text-[11px] font-black transition sm:h-9 sm:px-3 sm:text-xs ${
+                  className={`inline-flex h-7 items-center rounded-lg px-2.5 text-xs font-black transition ${
                     active ? `${brandGradientFillClass} text-white shadow-md` : toolbarMasterBtnClass
                   }`}
                 >

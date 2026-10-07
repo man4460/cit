@@ -208,7 +208,7 @@ export function DocumentsPage() {
           placeholder: "กรองชื่อรายการ / หมวดหมู่ / รายละเอียด / ชื่อไฟล์…",
         }}
         segments={
-          <label className="inline-flex h-8 items-center gap-1.5 rounded-xl border border-[#e8e6fc] bg-[#faf9ff]/90 px-2 shadow-sm sm:h-9 sm:px-2.5">
+          <label className="inline-flex h-7 items-center gap-1.5 rounded-lg border border-[#e8e6fc] bg-[#faf9ff]/90 px-2 shadow-sm sm:px-2.5">
             <span className="hidden text-[11px] font-bold text-[#4d47b6] sm:inline sm:text-xs">หมวด</span>
             <select
               aria-label="กรองตามหมวดหมู่"

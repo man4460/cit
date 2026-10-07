@@ -43,7 +43,7 @@ type Props = {
 };
 
 function ToolDivider() {
-  return <span className="mx-0.5 hidden h-5 w-px shrink-0 bg-[#dcd8f0] sm:inline-block" aria-hidden />;
+  return <span className="mx-0.5 hidden h-4 w-px shrink-0 bg-[#dcd8f0] sm:inline-block" aria-hidden />;
 }
 
 /** หัวหน้า + ปุ่มเมนูทั้งหมดในแถวเดียวกัน */
@@ -93,14 +93,14 @@ export function PageHeaderBar({
         }`}
       >
         {showTitle ? (
-          <div className="flex min-w-0 shrink items-center gap-2.5 sm:gap-3">
+          <div className="flex min-w-0 shrink items-center gap-2">
             {backTo ? (
               <button
                 type="button"
                 onClick={goBack}
                 title={backLabel}
                 aria-label={backLabel}
-                className="inline-flex h-9 shrink-0 items-center gap-1 rounded-xl border border-[#dcd8f0] bg-white px-2.5 text-xs font-bold text-[#4d47b6] shadow-sm transition hover:-translate-x-0.5 hover:border-[#4d47b6]/40 hover:bg-[#f5f3ff] sm:h-10"
+                className="inline-flex h-7 shrink-0 items-center gap-1 rounded-lg border border-[#dcd8f0] bg-white px-2.5 text-[11px] font-bold text-[#4d47b6] shadow-sm transition hover:-translate-x-0.5 hover:border-[#4d47b6]/40 hover:bg-[#f5f3ff]"
               >
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" className="h-4 w-4" aria-hidden>
                   <path d="M15 6l-6 6 6 6" />
@@ -109,12 +109,12 @@ export function PageHeaderBar({
               </button>
             ) : null}
             <span
-              className={`inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl ring-1 sm:h-11 sm:w-11 sm:rounded-2xl ${visual.chip}`}
+              className={`inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-lg ring-1 ${visual.chip}`}
             >
-              <NavGlyph name={visual.icon} className="h-5 w-5 sm:h-[1.35rem] sm:w-[1.35rem]" />
+              <NavGlyph name={visual.icon} className="h-3.5 w-3.5" />
             </span>
             <div className="min-w-0">
-              <h1 className={`text-xl font-black tracking-tight sm:text-2xl ${visual.tone}`}>
+              <h1 className={`text-base font-black leading-tight tracking-tight sm:text-lg ${visual.tone}`}>
                 {title}
                 {showCount ? (
                   <span className="ml-1.5 align-middle text-[11px] font-bold tabular-nums text-slate-500 sm:text-xs">
@@ -139,7 +139,7 @@ export function PageHeaderBar({
                     <button
                       type="button"
                       onClick={() => setFilterOpen((v) => !v)}
-                      className={`relative inline-flex h-8 items-center rounded-lg px-2.5 text-[11px] font-bold transition sm:h-9 sm:px-3 sm:text-xs ${
+                      className={`relative inline-flex h-7 items-center rounded-lg px-2.5 text-xs font-bold transition ${
                         filterOpen ? "bg-[#0000BF]/12 text-[#0000BF]" : "text-[#4d47b6] hover:bg-[#0000BF]/8"
                       }`}
                       aria-expanded={filterOpen}

@@ -256,7 +256,7 @@ function WeeklyInspectionReportView({ reportTitle }: { reportTitle: string }) {
         placeholder="กรองทะเบียน ยี่ห้อ/รุ่น ผู้ตรวจ หมายเหตุ สรุปผล…"
         trailing={
           <>
-            <div className="inline-flex h-8 items-center gap-1 rounded-xl border border-[#dcd8f0] bg-white px-1.5 shadow-sm sm:h-9">
+            <div className="inline-flex h-7 items-center gap-1 rounded-lg border border-[#dcd8f0] bg-white px-1.5 shadow-sm">
               <PickableDateInput
                 type="date"
                 className="h-7 min-w-[8.5rem] border-0 bg-transparent px-1 text-[11px] font-bold text-[#2e2a58] sm:text-xs"
@@ -546,7 +546,7 @@ function ArmorMonthlyReportView({ reportTitle }: { reportTitle: string }) {
         placeholder="กรองเลขครุภัณฑ์ ชื่อ ที่ตั้ง ผู้ตรวจ หมายเหตุ สรุปผล…"
         trailing={
           <>
-            <div className="inline-flex h-8 items-center gap-1 rounded-xl border border-[#dcd8f0] bg-white px-1.5 shadow-sm sm:h-9">
+            <div className="inline-flex h-7 items-center gap-1 rounded-lg border border-[#dcd8f0] bg-white px-1.5 shadow-sm">
               <PickableDateInput
                 type="month"
                 className="h-7 min-w-[8rem] border-0 bg-transparent px-1 text-[11px] font-bold text-[#2e2a58] sm:text-xs"

@@ -75,11 +75,11 @@ const rowClass =
   "cursor-pointer border-b border-[#ecebff] last:border-0 bg-white/50 transition hover:bg-[#0000BF]/[0.04]";
 const errBox = "mb-3 whitespace-pre-wrap rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700";
 const dangerBtn =
-  "inline-flex h-8 items-center rounded-xl border border-rose-200 bg-white px-2.5 text-[11px] font-bold text-rose-600 shadow-sm hover:bg-rose-50";
+  "inline-flex h-7 items-center rounded-lg border border-rose-200 bg-white px-2.5 text-[11px] font-bold text-rose-600 shadow-sm hover:bg-rose-50";
 const softBtn =
-  "inline-flex h-8 items-center rounded-xl border border-[#dcd8f0] bg-white px-2.5 text-[11px] font-bold text-[#2e2a58] shadow-sm hover:border-[#0000BF]/25 hover:bg-[#0000BF]/5";
+  "inline-flex h-7 items-center rounded-lg border border-[#dcd8f0] bg-white px-2.5 text-[11px] font-bold text-[#2e2a58] shadow-sm hover:border-[#0000BF]/25 hover:bg-[#0000BF]/5";
 const primarySoftBtn =
-  "inline-flex h-8 items-center rounded-xl border border-[#0000BF]/25 bg-[#0000BF]/8 px-2.5 text-[11px] font-bold text-[#4d47b6] hover:bg-[#0000BF]/12";
+  "inline-flex h-7 items-center rounded-lg border border-[#0000BF]/25 bg-[#0000BF]/8 px-2.5 text-[11px] font-bold text-[#4d47b6] hover:bg-[#0000BF]/12";
 
 export function DispositionRegistryPage() {
   const { user } = useAuth();
@@ -284,7 +284,7 @@ export function DispositionRegistryPage() {
                   key={id}
                   type="button"
                   onClick={() => setTab(id)}
-                  className={`inline-flex h-8 items-center rounded-lg px-2.5 text-[11px] font-black transition sm:h-9 sm:px-3 sm:text-xs ${
+                  className={`inline-flex h-7 items-center rounded-lg px-2.5 text-xs font-black transition ${
                     active ? `${brandGradientFillClass} text-white shadow-md` : toolbarMasterBtnClass
                   }`}
                 >

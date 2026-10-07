@@ -155,7 +155,7 @@ export function MissionsPage() {
               <button
                 type="button"
                 onClick={() => setYearFilter(null)}
-                className={`inline-flex h-8 items-center rounded-lg px-2.5 text-[11px] font-black transition sm:h-9 sm:px-3 sm:text-xs ${
+                className={`inline-flex h-7 items-center rounded-lg px-2.5 text-xs font-black transition ${
                   yearFilter == null
                     ? `${brandGradientFillClass} text-white shadow-md`
                     : toolbarMasterBtnClass
@@ -170,7 +170,7 @@ export function MissionsPage() {
                     key={y}
                     type="button"
                     onClick={() => setYearFilter(y)}
-                    className={`inline-flex h-8 items-center rounded-lg px-2.5 text-[11px] font-black transition sm:h-9 sm:px-3 sm:text-xs ${
+                    className={`inline-flex h-7 items-center rounded-lg px-2.5 text-xs font-black transition ${
                       active ? `${brandGradientFillClass} text-white shadow-md` : toolbarMasterBtnClass
                     }`}
                   >

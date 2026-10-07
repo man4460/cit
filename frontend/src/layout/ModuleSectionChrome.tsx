@@ -112,7 +112,7 @@ export function ModuleHeaderBarNav({ viewer }: { viewer?: PermissionViewer }) {
                   <NavLink
                     to={item.to}
                     end={item.end}
-                    className={`inline-flex h-8 items-center gap-1 rounded-lg px-2 text-[10px] font-black transition-all sm:h-9 sm:rounded-xl sm:px-2.5 sm:text-xs ${
+                    className={`inline-flex h-7 items-center gap-1 rounded-lg px-2 text-[11px] font-black transition-all sm:px-2.5 ${
                       active ? "bg-white text-[#4d47b6] shadow-md" : "text-white/85 hover:bg-white/15 hover:text-white"
                     }`}
                     aria-current={active ? "page" : undefined}
@@ -135,7 +135,7 @@ export function ModuleHeaderBarNav({ viewer }: { viewer?: PermissionViewer }) {
       <button
         type="button"
         onClick={() => writeModuleHeaderCollapsed(false)}
-        className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-white/35 bg-white/15 text-white hover:bg-white/25 sm:h-9 sm:w-9 sm:rounded-xl"
+        className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-lg border border-white/35 bg-white/15 text-white hover:bg-white/25"
         aria-label="แสดงหัวหมวด"
         title="แสดงหัวหมวด"
       >

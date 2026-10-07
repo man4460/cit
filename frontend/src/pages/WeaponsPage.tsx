@@ -702,7 +702,7 @@ export function WeaponsPage() {
                     setLedgerLots(null);
                     setZeroLots(null);
                   }}
-                  className={`inline-flex h-8 items-center gap-1.5 rounded-lg px-2.5 text-[11px] font-black transition sm:h-9 sm:px-3 sm:text-xs ${
+                  className={`inline-flex h-7 items-center gap-1.5 rounded-lg px-2.5 text-xs font-black transition ${
                     active ? `${brandGradientFillClass} text-white shadow-md` : toolbarMasterBtnClass
                   }`}
                 >

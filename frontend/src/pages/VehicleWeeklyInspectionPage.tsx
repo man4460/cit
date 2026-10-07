@@ -211,7 +211,7 @@ export function VehicleWeeklyInspectionPage() {
           <div className={`${toolbarMasterGroupClass} items-center gap-1 px-1`}>
             <PickableDateInput
               type="date"
-              className="h-8 min-w-[9.5rem] border-0 bg-transparent px-1 text-[11px] font-bold text-[#2e2a58] sm:h-9 sm:text-xs"
+              className="h-6 min-w-[9.5rem] border-0 bg-transparent px-1 text-[11px] font-bold text-[#2e2a58]"
               value={weekStart}
               onChange={setWeek}
             />

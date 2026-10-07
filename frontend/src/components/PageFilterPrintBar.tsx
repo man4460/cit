@@ -40,7 +40,7 @@ export function PageFilterPrintBar({
             <button
               type="button"
               onClick={() => setOpen((v) => !v)}
-              className={`relative inline-flex h-8 items-center rounded-lg px-2.5 text-[11px] font-bold transition sm:h-9 sm:px-3 sm:text-xs ${
+              className={`relative inline-flex h-7 items-center rounded-lg px-2.5 text-xs font-bold transition ${
                 open ? "bg-[#0000BF]/12 text-[#0000BF]" : "text-[#4d47b6] hover:bg-[#0000BF]/8"
               }`}
               aria-expanded={open}

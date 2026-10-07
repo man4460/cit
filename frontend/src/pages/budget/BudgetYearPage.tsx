@@ -774,7 +774,7 @@ export function BudgetYearPage() {
             <button
               type="button"
               onClick={() => setFundingMode("ANNUAL")}
-              className={`inline-flex h-8 items-center rounded-lg px-2.5 text-[11px] font-black transition sm:h-9 sm:px-3 sm:text-xs ${
+              className={`inline-flex h-7 items-center rounded-lg px-2.5 text-xs font-black transition ${
                 !isCommitment
                   ? `${brandGradientFillClass} text-white shadow-md`
                   : toolbarMasterBtnClass
@@ -785,7 +785,7 @@ export function BudgetYearPage() {
             <button
               type="button"
               onClick={() => setFundingMode("COMMITMENT")}
-              className={`inline-flex h-8 items-center rounded-lg px-2.5 text-[11px] font-black transition sm:h-9 sm:px-3 sm:text-xs ${
+              className={`inline-flex h-7 items-center rounded-lg px-2.5 text-xs font-black transition ${
                 isCommitment
                   ? `${brandGradientFillClass} text-white shadow-md`
                   : toolbarMasterBtnClass
