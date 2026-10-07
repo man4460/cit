@@ -9,7 +9,13 @@ import {
 } from "../lib/missionActualExpenseService.js";
 import { buildActualExpenseWorkbook, buildAdvanceReturnWorkbook } from "../lib/missionActualExpenseExcel.js";
 import { getEstimateByMissionId, upsertEstimateForMission } from "../lib/missionEstimateService.js";
+import {
+  buildInsuranceWorkbook,
+  loadInsuranceMission,
+  type InsuranceExportSettings,
+} from "../lib/missionInsuranceExcel.js";
 import { prisma } from "../lib/prisma.js";
+import { reactivatePersonnel } from "../lib/personnelRetention.js";
 import { routeParam } from "../lib/routeParam.js";
 import { persistUpload, unlinkUploadFile, upload } from "../lib/upload.js";
 
@@ -127,7 +133,15 @@ async function missionSummary(missionId: string) {
         orderBy: { personnel: { fullName: "asc" } },
       },
       vehicles: {
-        include: { vehicle: true, vehicleRole: true },
+        include: {
+          vehicle: {
+            include: {
+              vehicleType: true,
+              documents: { where: { kind: "PHOTO" }, orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }], take: 1 },
+            },
+          },
+          vehicleRole: true,
+        },
       },
       policeStations: {
         include: { policeStation: true },
@@ -208,6 +222,7 @@ async function missionSummary(missionId: string) {
           name: mission.route.name,
           startLocation: mission.route.startLocation,
           endLocation: mission.route.endLocation,
+          missionDays: mission.route.missionDays,
         }
       : null,
     budgetAmount: budget?.toString() ?? null,
@@ -221,6 +236,7 @@ async function missionSummary(missionId: string) {
     personnel: mission.personnel.map((p) => ({
       personnelId: p.personnelId,
       fullName: p.personnel.fullName,
+      photoUrl: p.personnel.purgedAt ? null : p.personnel.photoUrl,
       rank: p.personnel.rank,
       position: p.personnel.position,
       idNumber: p.personnel.idNumber,
@@ -248,7 +264,20 @@ async function missionSummary(missionId: string) {
     vehicles: mission.vehicles.map((v) => ({
       vehicleId: v.vehicleId,
       licensePlate: v.vehicle.licensePlate,
+      brandModel: v.vehicle.brandModel,
+      vehicleTypeName: v.vehicle.vehicleType?.name ?? null,
+      color: v.vehicle.color,
+      assetCode: v.vehicle.assetCode,
+      currentMileage: v.vehicle.currentMileage.toString(),
+      photoUrl: v.vehicle.documents[0]?.fileUrl ?? null,
+      crew: mission.personnel
+        .filter((p) => p.assignedVehicleId === v.vehicleId)
+        .map((p) => ({
+          name: [p.personnel.rank, p.personnel.fullName].filter(Boolean).join(" "),
+          roleName: p.personnelRole.name,
+        })),
       roleName: v.vehicleRole.name,
+      callSign: v.callSign,
       fuelLiters: v.fuelLiters?.toString() ?? null,
       fuelType: v.fuelType,
       fuelAmount: v.fuelAmount?.toString() ?? null,
@@ -931,6 +960,52 @@ missionsRouter.put("/:id/actual-expense", async (req, res, next) => {
   }
 });
 
+/** ตรวจข้อมูลก่อนส่งออกไฟล์ประกัน — รายชื่อ + ข้อมูลที่ยังขาด */
+missionsRouter.get("/:id/insurance-preview", async (req, res, next) => {
+  try {
+    const data = await loadInsuranceMission(routeParam(req.params.id));
+    if (!data) return res.status(404).json({ error: "ไม่พบภารกิจ" });
+    res.json({
+      code: data.mission.code,
+      title: data.mission.title,
+      days: data.days,
+      travelLabel: data.travelLabel,
+      routeLabel: data.routeLabel,
+      purgedCount: data.purgedCount,
+      annualCovered: data.annualCovered,
+      people: data.people.map((p) => ({
+        name: [p.title, p.first, p.last].filter(Boolean).join(" "),
+        unit: p.unit,
+        missing: p.missing,
+        annualExpired: p.annualExpired,
+      })),
+    });
+  } catch (e) {
+    next(e);
+  }
+});
+
+/** ไฟล์ Excel แจ้งรายชื่อทำประกันอุบัติเหตุการเดินทาง ส่งบริษัทประกัน */
+missionsRouter.post("/:id/insurance-export", async (req, res, next) => {
+  try {
+    const data = await loadInsuranceMission(routeParam(req.params.id));
+    if (!data) return res.status(404).json({ error: "ไม่พบภารกิจ" });
+    if (!data.people.length)
+      return res.status(400).json({
+        error: data.annualCovered.length
+          ? "ทุกคนในภารกิจนี้มีประกันรายปีครอบคลุมแล้ว — ไม่ต้องทำประกันรายครั้ง"
+          : "ภารกิจนี้ยังไม่มีรายชื่อบุคลากร",
+      });
+    const buf = buildInsuranceWorkbook(data, (req.body ?? {}) as InsuranceExportSettings);
+    const filename = `ประกัน_${data.mission.code ?? "ภารกิจ"}_${(req.body?.travelLabel || data.travelLabel).replace(/\s+/g, "_")}.xlsx`;
+    res.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+    res.setHeader("Content-Disposition", `attachment; filename*=UTF-8''${encodeURIComponent(filename)}`);
+    res.send(buf);
+  } catch (e) {
+    next(e);
+  }
+});
+
 /** ส่งออก Excel ค่าใช้จ่ายจริงจากข้อมูลในฟอร์ม (ยังไม่ต้องบันทึกก่อน) */
 missionsRouter.post("/actual-expense/export", async (req, res, next) => {
   try {
@@ -1189,7 +1264,9 @@ type VehicleIn = {
   fuelLiters?: string | number | null;
   fuelType?: string | null;
   fuelAmount?: string | number | null;
+  callSign?: string | null;
 };
+const normalizeCallSign = (v: unknown) => (typeof v === "string" && v.trim() ? v.trim().slice(0, 100) : null);
 type DestIn = { address: string; cargoValue?: string | number; containerCount?: number; sortOrder?: number };
 type ExpIn = {
   expenseTypeId: string;
@@ -1297,6 +1374,7 @@ missionsRouter.post("/", async (req, res, next) => {
             fuelLiters: normalizeFuelLiters(v.fuelLiters),
             fuelType: normalizeFuelType(v.fuelType),
             fuelAmount: normalizeFuelAmount(v.fuelAmount),
+            callSign: normalizeCallSign(v.callSign),
           })),
         },
         destinations: {
@@ -1335,6 +1413,10 @@ missionsRouter.post("/", async (req, res, next) => {
         attachments: { orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }] },
       },
     });
+    await reactivatePersonnel(
+      row.personnel.map((p) => p.personnelId),
+      row.plannedEnd ?? row.plannedStart ?? row.createdAt,
+    );
     const { attachments, ...rest } = row;
     res.status(201).json({ ...rest, attachments: attachments.map(serializeMissionAttachment) });
   } catch (e: unknown) {
@@ -1446,6 +1528,7 @@ missionsRouter.put("/:id", async (req, res, next) => {
               fuelLiters: normalizeFuelLiters(v.fuelLiters),
               fuelType: normalizeFuelType(v.fuelType),
               fuelAmount: normalizeFuelAmount(v.fuelAmount),
+              callSign: normalizeCallSign(v.callSign),
             })),
           },
           destinations: {
@@ -1485,6 +1568,10 @@ missionsRouter.put("/:id", async (req, res, next) => {
         },
       });
     });
+    await reactivatePersonnel(
+      row.personnel.map((p) => p.personnelId),
+      row.plannedEnd ?? row.plannedStart ?? row.createdAt,
+    );
 
     const { attachments, ...rest } = row;
     res.json({ ...rest, attachments: attachments.map(serializeMissionAttachment) });
@@ -1577,9 +1664,16 @@ missionsRouter.post("/:id/personnel", async (req, res, next) => {
         personnelRoleId,
         compensationRate: dec(compensationRate) ?? new Prisma.Decimal(0),
       },
-      include: { personnel: true, personnelRole: true },
+      include: {
+        personnel: true,
+        personnelRole: true,
+        mission: { select: { plannedStart: true, plannedEnd: true, createdAt: true } },
+      },
     });
-    res.status(201).json(row);
+    const { mission, ...assignment } = row;
+    if (await reactivatePersonnel([personnelId], mission.plannedEnd ?? mission.plannedStart ?? mission.createdAt))
+      assignment.personnel.archivedAt = null;
+    res.status(201).json(assignment);
   } catch (e: unknown) {
     if (e && typeof e === "object" && "code" in e && (e as { code: string }).code === "P2002")
       return res.status(409).json({ error: "Person already on mission" });
@@ -1604,7 +1698,7 @@ missionsRouter.delete("/:missionId/personnel/:assignmentId", async (req, res, ne
 
 missionsRouter.post("/:id/vehicles", async (req, res, next) => {
   try {
-    const { vehicleId, vehicleRoleId, fuelLiters, fuelType, fuelAmount } = req.body;
+    const { vehicleId, vehicleRoleId, fuelLiters, fuelType, fuelAmount, callSign } = req.body;
     if (!vehicleId || !vehicleRoleId) return res.status(400).json({ error: "vehicleId, vehicleRoleId required" });
     if (!validateFuelLitersInput(fuelLiters))
       return res.status(400).json({ error: "fuelLiters must be a non-negative number" });
@@ -1622,6 +1716,7 @@ missionsRouter.post("/:id/vehicles", async (req, res, next) => {
         fuelLiters: normalizeFuelLiters(fuelLiters),
         fuelType: normalizeFuelType(fuelType),
         fuelAmount: normalizeFuelAmount(fuelAmount),
+        callSign: normalizeCallSign(callSign),
       },
       include: { vehicle: true, vehicleRole: true },
     });

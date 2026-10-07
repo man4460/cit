@@ -92,6 +92,7 @@ type VRow = {
   fuelLiters: string;
   fuelType: MissionVehicleFuelTypeUi;
   fuelAmount: string;
+  callSign?: string;
 };
 type DRow = { address: string; cargoValue: string; containerCount: number };
 type PsRow = { policeStationId: string; amount: string; estimateItemCode: string; note?: string | null };
@@ -535,6 +536,7 @@ export function MissionFormPage() {
               fuelLiters: v.fuelLiters != null && v.fuelLiters !== "" ? String(v.fuelLiters) : "",
               fuelType: (v.fuelType === "GASOLINE" || v.fuelType === "DIESEL" ? v.fuelType : "") as MissionVehicleFuelTypeUi,
               fuelAmount: v.fuelAmount != null && v.fuelAmount !== "" ? String(v.fuelAmount) : "",
+              callSign: v.callSign ?? "",
             }))
           : [
               {
@@ -674,6 +676,7 @@ export function MissionFormPage() {
         fuelLiters: r.fuelLiters.trim() === "" ? null : r.fuelLiters,
         fuelType: r.fuelType === "" ? null : r.fuelType,
         fuelAmount: r.fuelAmount.trim() === "" ? null : r.fuelAmount,
+        callSign: r.callSign?.trim() || null,
       })),
       destinations: destPayload.map((d, i) => ({
         address: d.address,
@@ -1431,19 +1434,20 @@ export function MissionFormPage() {
                   </button>
                 </div>
                 <div className="overflow-x-auto rounded-lg border border-slate-200 pr-1">
-                  <div className="hidden min-w-[56rem] grid-cols-[minmax(0,1.15fr)_minmax(6rem,0.75fr)_5rem_5rem_minmax(8rem,0.9fr)_2.75rem] gap-2 border-b border-slate-200 bg-slate-50 px-3 py-1.5 text-[10px] font-bold uppercase tracking-wide text-slate-600 sm:grid">
+                  <div className="hidden min-w-[63rem] grid-cols-[minmax(0,1.15fr)_minmax(6rem,0.75fr)_7rem_5rem_5rem_minmax(8rem,0.9fr)_2.75rem] gap-2 border-b border-slate-200 bg-slate-50 px-3 py-1.5 text-[10px] font-bold uppercase tracking-wide text-slate-600 sm:grid">
                     <span>ยานพาหนะ</span>
                     <span>บทบาท</span>
+                    <span>นามเรียกขาน</span>
                     <span>ลิตร</span>
                     <span>ชนิด</span>
                     <span className="text-right text-amber-800">ค่าน้ำมัน (บาท)</span>
                     <span className="sr-only">ลบ</span>
                   </div>
-                  <ul className="min-w-[56rem] divide-y divide-slate-100">
+                  <ul className="min-w-[63rem] divide-y divide-slate-100">
                     {vRows.map((row, idx) => (
                       <li
                         key={idx}
-                        className="grid grid-cols-[minmax(0,1.15fr)_minmax(6rem,0.75fr)_5rem_5rem_minmax(8rem,0.9fr)_2.75rem] items-center gap-2 px-3 py-1.5"
+                        className="grid grid-cols-[minmax(0,1.15fr)_minmax(6rem,0.75fr)_7rem_5rem_5rem_minmax(8rem,0.9fr)_2.75rem] items-center gap-2 px-3 py-1.5"
                       >
                         <SearchableSelect
                           value={row.vehicleId}
@@ -1475,6 +1479,18 @@ export function MissionFormPage() {
                             </option>
                           ))}
                         </select>
+                        <input
+                          aria-label={`นามเรียกขานแถว ${idx + 1}`}
+                          className="w-full rounded-md border border-slate-200 bg-white px-2 py-1 text-sm text-slate-900"
+                          value={row.callSign ?? ""}
+                          placeholder="—"
+                          maxLength={100}
+                          onChange={(e) => {
+                            const next = [...vRows];
+                            next[idx] = { ...row, callSign: e.target.value };
+                            setVRows(next);
+                          }}
+                        />
                         <CommaNumberInput
                           aria-label={`ลิตรแถว ${idx + 1}`}
                           className="w-full rounded-md border border-slate-200 bg-white px-2 py-1 text-sm tabular-nums text-slate-900"

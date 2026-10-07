@@ -1,41 +1,94 @@
-/** พิกัดโดยประมาณของจุดขนส่งธนบัตร / ศูนย์จัดการธนบัตร ธปท. — ใช้คำนวณระยะทาง */
+import { prisma } from "./prisma.js";
 
 export type LatLng = { lat: number; lng: number; label: string };
 
-const COORDS: Record<string, LatLng> = {
-  // ต้นทางกรุงเทพ / โรงพิมพ์·สำนักงาน
-  สพฐ: { lat: 13.904, lng: 100.529, label: "สำนักพิมพ์ธนบัตร (นนทบุรี)" },
-  สอบ: { lat: 13.7635, lng: 100.4978, label: "สำนักงานใหญ่ ธปท." },
-  // ศูนย์จัดการธนบัตร
-  ศกท: { lat: 13.7563, lng: 100.5018, label: "ศูนย์จัดการธนบัตร กรุงเทพ" },
-  ศชม: { lat: 18.7883, lng: 98.9853, label: "ศูนย์จัดการธนบัตร เชียงใหม่" },
-  ศพล: { lat: 16.8211, lng: 100.2659, label: "ศูนย์จัดการธนบัตร พิษณุโลก" },
-  ศขก: { lat: 16.4419, lng: 102.836, label: "ศูนย์จัดการธนบัตร ขอนแก่น" },
-  ศนร: { lat: 14.9799, lng: 102.0977, label: "ศูนย์จัดการธนบัตร นครราชสีมา" },
-  ศอบ: { lat: 15.2287, lng: 104.8564, label: "ศูนย์จัดการธนบัตร อุบลราชธานี" },
-  ศรย: { lat: 12.6833, lng: 101.2372, label: "ศูนย์จัดการธนบัตร ระยอง" },
-  ศสร: { lat: 9.1382, lng: 99.3217, label: "ศูนย์จัดการธนบัตร สุราษฎร์ธานี" },
-  ศหญ: { lat: 7.0084, lng: 100.4767, label: "ศูนย์จัดการธนบัตร หาดใหญ่" },
+export type LocationCodeRow = {
+  code: string;
+  name: string;
+  province: string;
+  lat: number | null;
+  lng: number | null;
 };
 
+/** ค่าตั้งต้นเมื่อตารางรหัสพื้นที่ยังว่าง — แก้ไข/เพิ่มได้ที่หน้าเส้นทางภารกิจ */
+const DEFAULT_LOCATION_CODES: LocationCodeRow[] = [
+  { code: "สพฐ", name: "สำนักพิมพ์ธนบัตร", province: "นครปฐม", lat: 13.904, lng: 100.529 },
+  { code: "สอบ", name: "สำนักงานใหญ่ ธปท.", province: "กรุงเทพมหานคร", lat: 13.7635, lng: 100.4978 },
+  { code: "ศกท", name: "ศูนย์จัดการธนบัตร กรุงเทพ", province: "กรุงเทพมหานคร", lat: 13.7563, lng: 100.5018 },
+  { code: "ศรย", name: "ศูนย์จัดการธนบัตร ระยอง", province: "ระยอง", lat: 12.6833, lng: 101.2372 },
+  { code: "ศสร", name: "ศูนย์จัดการธนบัตร สุราษฎร์ธานี", province: "สุราษฎร์ธานี", lat: 9.1382, lng: 99.3217 },
+  { code: "ศหญ", name: "ศูนย์จัดการธนบัตร หาดใหญ่", province: "สงขลา", lat: 7.0084, lng: 100.4767 },
+  { code: "ศนร", name: "ศูนย์จัดการธนบัตร นครราชสีมา", province: "นครราชสีมา", lat: 14.9799, lng: 102.0977 },
+  { code: "ศอบ", name: "ศูนย์จัดการธนบัตร อุบลราชธานี", province: "อุบลราชธานี", lat: 15.2287, lng: 104.8564 },
+  { code: "ศขก", name: "ศูนย์จัดการธนบัตร ขอนแก่น", province: "ขอนแก่น", lat: 16.4419, lng: 102.836 },
+  { code: "ศพล", name: "ศูนย์จัดการธนบัตร พิษณุโลก", province: "พิษณุโลก", lat: 16.8211, lng: 100.2659 },
+  { code: "ศชม", name: "ศูนย์จัดการธนบัตร เชียงใหม่", province: "เชียงใหม่", lat: 18.7883, lng: 98.9853 },
+];
+
+export function normalizeLocationCode(raw: unknown): string {
+  return String(raw ?? "").replace(/[\s.]+/g, "");
+}
+
+let cache: { at: number; rows: LocationCodeRow[] } | null = null;
+const CACHE_MS = 60_000;
+
+export function invalidateLocationCodes() {
+  cache = null;
+}
+
+export async function loadLocationCodes(): Promise<LocationCodeRow[]> {
+  if (cache && Date.now() - cache.at < CACHE_MS) return cache.rows;
+  if ((await prisma.locationCode.count()) === 0) {
+    await prisma.locationCode.createMany({
+      data: DEFAULT_LOCATION_CODES.map((r, i) => ({ ...r, sortOrder: i + 1 })),
+      skipDuplicates: true,
+    });
+  }
+  const rows = await prisma.locationCode.findMany({
+    orderBy: [{ sortOrder: "asc" }, { code: "asc" }],
+    select: { code: true, name: true, province: true, lat: true, lng: true },
+  });
+  cache = { at: Date.now(), rows };
+  return rows;
+}
+
+function escapeRegex(s: string) {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
 /** ดึงรหัสจุดจากข้อความ เช่น "ศนร.และศขก" → ["ศนร","ศขก"] */
-export function extractLocationCodes(raw: string): string[] {
+export function matchLocationCodes(raw: string, rows: LocationCodeRow[]): string[] {
   const text = (raw ?? "").trim();
-  if (!text) return [];
+  if (!text || !rows.length) return [];
+  const sorted = rows.map((r) => r.code).sort((a, b) => b.length - a.length);
+  const re = new RegExp(`(${sorted.map(escapeRegex).join("|")})`, "g");
   const codes: string[] = [];
-  const re = /(สพฐ|สอบ|ศกท|ศชม|ศพล|ศขก|ศนร|ศอบ|ศรย|ศสร|ศหญ)/g;
   let m: RegExpExecArray | null;
   while ((m = re.exec(text))) {
     if (!codes.includes(m[1])) codes.push(m[1]);
   }
-  if (codes.length) return codes;
-  const compact = text.replace(/\s+/g, "").replace(/\./g, "");
-  if (COORDS[compact]) return [compact];
-  return [];
+  return codes;
 }
 
-export function resolveCoord(code: string): LatLng | null {
-  return COORDS[code] ?? null;
+export async function extractLocationCodes(raw: string): Promise<string[]> {
+  return matchLocationCodes(raw, await loadLocationCodes());
+}
+
+function coordOf(code: string, rows: LocationCodeRow[]): LatLng | null {
+  const r = rows.find((x) => x.code === code);
+  if (!r || r.lat == null || r.lng == null) return null;
+  return { lat: r.lat, lng: r.lng, label: r.name };
+}
+
+/** แปลงข้อความที่มีรหัสพื้นที่เป็นชื่อจังหวัด เช่น "ศสร. / ศหญ." → "สุราษฎร์ธานี / สงขลา" */
+export function locationTextToProvinces(raw: string, rows: LocationCodeRow[]): string {
+  const codes = matchLocationCodes(raw, rows);
+  if (!codes.length) return (raw ?? "").trim();
+  const provinces = codes
+    .map((c) => rows.find((r) => r.code === c)?.province)
+    .filter((p): p is string => Boolean(p))
+    .filter((p, i, arr) => arr.indexOf(p) === i);
+  return provinces.join(" / ");
 }
 
 export function haversineKm(a: LatLng, b: LatLng): number {
@@ -83,8 +136,9 @@ export async function computeRouteDistanceKm(
   startLocation: string,
   endLocation: string,
 ): Promise<{ km: number; method: "osrm" | "estimate" | "none"; path: string[] }> {
-  const startCodes = extractLocationCodes(startLocation);
-  const endCodes = extractLocationCodes(endLocation);
+  const rows = await loadLocationCodes();
+  const startCodes = matchLocationCodes(startLocation, rows);
+  const endCodes = matchLocationCodes(endLocation, rows);
   const path: string[] = [];
   for (const c of startCodes) if (!path.includes(c)) path.push(c);
   for (const c of endCodes) if (!path.includes(c)) path.push(c);
@@ -98,8 +152,8 @@ export async function computeRouteDistanceKm(
   let usedEstimate = false;
 
   for (let i = 0; i < path.length - 1; i++) {
-    const a = resolveCoord(path[i]);
-    const b = resolveCoord(path[i + 1]);
+    const a = coordOf(path[i], rows);
+    const b = coordOf(path[i + 1], rows);
     if (!a || !b) continue;
     const osrm = await osrmDrivingKm(a, b);
     if (osrm != null) {
@@ -120,6 +174,6 @@ export async function computeRouteDistanceKm(
   return { km, method: finalMethod, path };
 }
 
-export function knownLocationLabels(): { code: string; label: string }[] {
-  return Object.entries(COORDS).map(([code, v]) => ({ code, label: v.label }));
+export async function knownLocationLabels(): Promise<{ code: string; label: string; province: string }[]> {
+  return (await loadLocationCodes()).map((r) => ({ code: r.code, label: r.name, province: r.province }));
 }

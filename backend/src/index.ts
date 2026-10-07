@@ -55,6 +55,8 @@ import { budgetRouter } from "./routes/budget.js";
 import { investigationRouter } from "./routes/investigation.js";
 import { investigationApprovalRouter } from "./routes/investigationApproval.js";
 import { osOutsourcingRouter } from "./routes/osOutsourcing.js";
+import { personnelSelfRouter } from "./routes/personnelSelf.js";
+import { schedulePersonnelRetention } from "./lib/personnelRetention.js";
 import { seedDocumentMasterData } from "./lib/seedDocumentMasters.js";
 import { seedFireExtinguisherData } from "./lib/seedFireExtinguishers.js";
 import { seedWeaponData } from "./lib/seedWeapons.js";
@@ -90,6 +92,8 @@ app.get("/api/health", (_req, res) => {
 app.use("/api/auth", authRouter);
 /** อนุมัติผ่านลิงก์อีเมล — เข้าถึงได้โดยไม่ต้องล็อกอิน (ตรวจสิทธิ์ด้วย token) */
 app.use("/api/investigation-approval", investigationApprovalRouter);
+/** บุคลากรกรอก/แก้ไขข้อมูลตนเองผ่านลิงก์/QR — ไม่ต้องล็อกอิน (ตรวจด้วยโทเคน + เลขบัตร 4 หลักท้าย) */
+app.use("/api/personnel-self", personnelSelfRouter);
 
 const secured = express.Router();
 secured.use(authMiddleware);
@@ -206,4 +210,5 @@ void ensureBootstrapAdmin()
       const hint = host === "0.0.0.0" ? "ทุก interface (LAN ใช้ http://<IP-เครื่องนี้>:" + port + ")" : host;
       console.log(`API listening on port ${port} — ${hint}`);
     });
+    schedulePersonnelRetention();
   });

@@ -1,7 +1,6 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Link, useSearchParams } from "react-router-dom";
-import { apiDownload, apiFormJson, apiJson } from "../api/client";
-import { MissionSummaryModal } from "../components/MissionSummaryModal";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { Link, useNavigate, useSearchParams } from "react-router-dom";
+import { apiDownload, apiJson } from "../api/client";
 import { Modal, ModalFormBody, ModalFormSection } from "../components/Modal";
 import { ModuleDocumentsModal } from "../components/ModuleDocumentsModal";
 import { PageHeaderBar } from "../components/PageHeaderBar";
@@ -23,7 +22,7 @@ import {
   toolbarPrimaryBtnClass,
 } from "../lib/uiTokens";
 import { rowMatchesFilter } from "../lib/searchNormalize";
-import type { MissionListItem, MissionStatus, MissionSummary } from "../types";
+import type { MissionListItem, MissionStatus } from "../types";
 
 function formatMissionListDateTime(iso: string | null | undefined): string {
   if (!iso) return "—";
@@ -65,16 +64,13 @@ const missionStatusChip: Record<MissionStatus, string> = {
 };
 
 export function MissionsPage() {
-  const [searchParams, setSearchParams] = useSearchParams();
+  const [searchParams] = useSearchParams();
   const [missions, setMissions] = useState<MissionListItem[]>([]);
   const [docsOpen, setDocsOpen] = useState(false);
   const [notesOpen, setNotesOpen] = useState(false);
-  const [summaryId, setSummaryId] = useState<string | null>(null);
-  const [summary, setSummary] = useState<MissionSummary | null>(null);
+  const navigate = useNavigate();
   const [listFilter, setListFilter] = useState("");
   const [yearFilter, setYearFilter] = useState<number | null>(() => new Date().getFullYear() + 543);
-  const [summaryAttachUploading, setSummaryAttachUploading] = useState(false);
-  const summaryMissionIdRef = useRef<string | null>(null);
 
   const load = useCallback(async () => {
     const m = await apiJson<MissionListItem[]>("/api/missions");
@@ -85,57 +81,15 @@ export function MissionsPage() {
     void load();
   }, [load]);
 
-  async function openSummary(id: string) {
-    summaryMissionIdRef.current = id;
-    setSummaryId(id);
-    try {
-      const s = await apiJson<MissionSummary>(`/api/missions/${id}/summary`);
-      setSummary(s);
-    } catch (e) {
-      summaryMissionIdRef.current = null;
-      setSummaryId(null);
-      setSummary(null);
-      alert(e instanceof Error ? e.message : "โหลดสรุปภารกิจไม่สำเร็จ");
-    }
+  function openSummary(id: string) {
+    navigate(`/missions/${id}/summary`);
   }
 
   useEffect(() => {
     const sid = searchParams.get("summary");
-    if (!sid) return;
-    void openSummary(sid).then(() => {
-      const next = new URLSearchParams(searchParams);
-      next.delete("summary");
-      setSearchParams(next, { replace: true });
-    });
+    if (sid) navigate(`/missions/${sid}/summary`, { replace: true });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
-
-  async function reloadMissionSummary() {
-    const mid = summaryMissionIdRef.current;
-    if (!mid) return;
-    const s = await apiJson<MissionSummary>(`/api/missions/${mid}/summary`);
-    setSummary(s);
-  }
-
-  async function uploadMissionSummaryFiles(files: File[]) {
-    const mid = summaryMissionIdRef.current;
-    if (!files.length) return;
-    if (!mid) {
-      alert("ไม่พบรหัสภารกิจ — ปิดหน้าต่างแล้วเปิด «สรุปภารกิจ» อีกครั้ง");
-      return;
-    }
-    setSummaryAttachUploading(true);
-    try {
-      const fd = new FormData();
-      for (const f of files) fd.append("files", f);
-      await apiFormJson(`/api/missions/${mid}/attachments`, fd);
-      await reloadMissionSummary();
-    } catch (e) {
-      alert(e instanceof Error ? e.message : "อัปโหลดไม่สำเร็จ");
-    } finally {
-      setSummaryAttachUploading(false);
-    }
-  }
 
   async function downloadAllMissionsExcel() {
     try {
@@ -145,26 +99,10 @@ export function MissionsPage() {
     }
   }
 
-  async function deleteMissionSummaryAttachment(attachmentId: string) {
-    const mid = summaryMissionIdRef.current;
-    if (!mid || !confirm("ลบไฟล์นี้?")) return;
-    try {
-      await apiJson(`/api/missions/${mid}/attachments/${attachmentId}`, { method: "DELETE" });
-      await reloadMissionSummary();
-    } catch (e) {
-      alert(e instanceof Error ? e.message : "ลบไม่สำเร็จ");
-    }
-  }
-
   async function deleteMission(id: string, label: string) {
     if (!confirm(`ลบภารกิจ "${label}" ?`)) return;
     try {
       await apiJson(`/api/missions/${id}`, { method: "DELETE" });
-      if (summaryId === id) {
-        summaryMissionIdRef.current = null;
-        setSummaryId(null);
-        setSummary(null);
-      }
       await load();
     } catch (e) {
       alert(e instanceof Error ? e.message : "ลบไม่สำเร็จ");
@@ -381,20 +319,6 @@ export function MissionsPage() {
           m.route ? `${m.route.startLocation} → ${m.route.endLocation}` : "—",
         ])}
       />
-
-      {summaryId && summary ? (
-        <MissionSummaryModal
-          summary={summary}
-          attachUploading={summaryAttachUploading}
-          onClose={() => {
-            summaryMissionIdRef.current = null;
-            setSummaryId(null);
-            setSummary(null);
-          }}
-          onUploadFiles={(files) => void uploadMissionSummaryFiles(files)}
-          onDeleteAttachment={(id) => void deleteMissionSummaryAttachment(id)}
-        />
-      ) : null}
 
       <ModuleDocumentsModal
         open={docsOpen}

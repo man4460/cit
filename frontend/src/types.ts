@@ -71,6 +71,9 @@ export interface Personnel {
   rank: string | null;
   position: string | null;
   phone: string | null;
+  bloodType?: string | null;
+  birthDate?: string | null;
+  archivedAt?: string | null;
   gradeLevel?: string | null;
   perDiemRate?: number | string | null;
   vehicleTravelAllowance?: number | string | null;
@@ -83,9 +86,13 @@ export interface Personnel {
   insuranceCompany: string | null;
   insurancePolicyNumber: string | null;
   insuranceExpiry: string | null;
+  annualTravelInsurance?: boolean;
   insuranceNotes: string | null;
   remarks: string | null;
   beneficiaries?: PersonnelBeneficiary[];
+  selfUpdatedAt?: string | null;
+  pdpaConsentAt?: string | null;
+  lastActivityAt?: string | null;
 }
 
 export interface VehicleType {
@@ -925,6 +932,7 @@ export interface MissionDetail {
     fuelLiters: string | null;
     fuelType: "GASOLINE" | "DIESEL" | null;
     fuelAmount: string | null;
+    callSign?: string | null;
   }>;
   destinations: Array<{ address: string; cargoValue: string; containerCount: number; sortOrder: number }>;
   expenses: Array<{ expenseTypeId: string; amount: string }>;
@@ -953,6 +961,8 @@ export interface MissionSummary {
     name: string;
     startLocation: string;
     endLocation: string;
+    /** จำนวนวันเดินทางจริงตามเส้นทาง (ไม่รวมวันโหลด) */
+    missionDays?: number | null;
   } | null;
   budgetAmount: string | null;
   totalExpenses: string;
@@ -969,6 +979,7 @@ export interface MissionSummary {
   personnel?: Array<{
     personnelId: string;
     fullName: string;
+    photoUrl?: string | null;
     rank: string | null;
     position?: string | null;
     idNumber?: string | null;
@@ -995,9 +1006,18 @@ export interface MissionSummary {
   vehicles?: Array<{
     vehicleId: string;
     licensePlate: string;
+    brandModel?: string | null;
+    vehicleTypeName?: string | null;
+    color?: string | null;
+    assetCode?: string | null;
+    currentMileage?: string | null;
+    photoUrl?: string | null;
+    crew?: Array<{ name: string; roleName: string }>;
     roleName: string;
+    callSign?: string | null;
     fuelLiters: string | null;
     fuelType: "GASOLINE" | "DIESEL" | null;
+    fuelAmount?: string | null;
   }>;
   destinations?: Array<{
     address: string;

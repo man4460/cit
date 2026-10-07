@@ -1,5 +1,7 @@
-import { Router } from "express";
+import { randomBytes } from "crypto";
+import { Router, type Request } from "express";
 import { diffSummary, resolveActorLabel, writeAuditLog } from "../lib/auditLog.js";
+import { normalizeBloodType } from "../lib/bloodType.js";
 import { prisma } from "../lib/prisma.js";
 import { routeParam } from "../lib/routeParam.js";
 import { persistUpload, upload } from "../lib/upload.js";
@@ -21,6 +23,7 @@ function personnelAuditSnapshot(p: {
   rank: string | null;
   position: string | null;
   phone: string | null;
+  bloodType?: string | null;
   gradeLevel?: string | null;
   perDiemRate?: { toString(): string } | number | null;
   vehicleTravelAllowance?: { toString(): string } | number | null;
@@ -39,6 +42,7 @@ function personnelAuditSnapshot(p: {
     rank: p.rank,
     position: p.position,
     phone: p.phone,
+    bloodType: p.bloodType ?? null,
     gradeLevel: p.gradeLevel ?? null,
     perDiemRate: p.perDiemRate == null ? null : String(p.perDiemRate),
     vehicleTravelAllowance: p.vehicleTravelAllowance == null ? null : String(p.vehicleTravelAllowance),
@@ -58,6 +62,7 @@ const PERSONNEL_AUDIT_KEYS = [
   "rank",
   "position",
   "phone",
+  "bloodType",
   "gradeLevel",
   "perDiemRate",
   "vehicleTravelAllowance",
@@ -111,19 +116,128 @@ function parseBeneficiaries(raw: unknown): BenInput[] {
   return out;
 }
 
+function parseFlag(v: unknown): boolean {
+  return v === true || v === "true" || v === "1" || v === "on";
+}
+
 function parseOptionalDate(v: unknown): Date | null {
   if (v == null || v === "") return null;
   const d = new Date(String(v));
   return Number.isNaN(d.getTime()) ? null : d;
 }
 
-personnelRouter.get("/", async (_req, res, next) => {
+/** ข้อมูลที่ไม่เคลื่อนไหวครบ 2 ปีถูกพักการแสดงผล — เห็นเฉพาะแอดมิน */
+function canSeeArchived(req: Request) {
+  return req.auth?.role === "ADMIN";
+}
+
+personnelRouter.param("id", async (req, res, next, id: string) => {
+  try {
+    if (canSeeArchived(req)) return next();
+    const p = await prisma.personnel.findUnique({ where: { id }, select: { archivedAt: true } });
+    if (p?.archivedAt) return res.status(404).json({ error: "Not found" });
+    next();
+  } catch (e) {
+    next(e);
+  }
+});
+
+personnelRouter.get("/", async (req, res, next) => {
   try {
     const rows = await prisma.personnel.findMany({
+      where: { purgedAt: null, ...(canSeeArchived(req) ? {} : { archivedAt: null }) },
       orderBy: { fullName: "asc" },
       include: personnelInclude,
     });
-    res.json(rows);
+    res.json(rows.map(({ selfServiceToken: _t, ...r }) => r));
+  } catch (e) {
+    next(e);
+  }
+});
+
+const SELF_LINK_DAYS = 30;
+
+function newToken() {
+  return randomBytes(24).toString("base64url");
+}
+
+function daysFromNow(days: number) {
+  return new Date(Date.now() + days * 24 * 60 * 60 * 1000);
+}
+
+/** ลิงก์ลงทะเบียนบุคลากรใหม่ (ใช้ร่วมกัน) */
+personnelRouter.get("/self-invite", async (_req, res, next) => {
+  try {
+    const inv = await prisma.personnelSelfInvite.findFirst({
+      where: { revokedAt: null, expiresAt: { gt: new Date() } },
+      orderBy: { createdAt: "desc" },
+    });
+    res.json(inv);
+  } catch (e) {
+    next(e);
+  }
+});
+
+personnelRouter.post("/self-invite", async (req, res, next) => {
+  try {
+    const actor = await resolveActorLabel(prisma, req.auth?.userId);
+    await prisma.personnelSelfInvite.updateMany({ where: { revokedAt: null }, data: { revokedAt: new Date() } });
+    const inv = await prisma.personnelSelfInvite.create({
+      data: { token: newToken(), expiresAt: daysFromNow(SELF_LINK_DAYS), createdBy: actor?.username ?? null },
+    });
+    res.status(201).json(inv);
+  } catch (e) {
+    next(e);
+  }
+});
+
+personnelRouter.post("/self-invite/revoke", async (_req, res, next) => {
+  try {
+    await prisma.personnelSelfInvite.updateMany({ where: { revokedAt: null }, data: { revokedAt: new Date() } });
+    res.json({ ok: true });
+  } catch (e) {
+    next(e);
+  }
+});
+
+/** ลิงก์ให้บุคลากรรายบุคคลแก้ไขข้อมูลตนเอง — สร้างใหม่ทุกครั้ง (ลิงก์เดิมใช้ไม่ได้) */
+personnelRouter.post("/:id/self-link", async (req, res, next) => {
+  try {
+    const id = routeParam(req.params.id);
+    const row = await prisma.personnel.update({
+      where: { id },
+      data: { selfServiceToken: newToken(), selfServiceTokenExpiresAt: daysFromNow(SELF_LINK_DAYS) },
+      select: { selfServiceToken: true, selfServiceTokenExpiresAt: true },
+    });
+    res.json({ token: row.selfServiceToken, expiresAt: row.selfServiceTokenExpiresAt });
+  } catch (e: unknown) {
+    if (e && typeof e === "object" && "code" in e && (e as { code: string }).code === "P2025")
+      return res.status(404).json({ error: "Not found" });
+    next(e);
+  }
+});
+
+personnelRouter.get("/:id/self-link", async (req, res, next) => {
+  try {
+    const row = await prisma.personnel.findUnique({
+      where: { id: routeParam(req.params.id) },
+      select: { selfServiceToken: true, selfServiceTokenExpiresAt: true },
+    });
+    if (!row) return res.status(404).json({ error: "Not found" });
+    const valid = row.selfServiceToken && (!row.selfServiceTokenExpiresAt || row.selfServiceTokenExpiresAt > new Date());
+    res.json(valid ? { token: row.selfServiceToken, expiresAt: row.selfServiceTokenExpiresAt } : null);
+  } catch (e) {
+    next(e);
+  }
+});
+
+personnelRouter.post("/:id/self-link/revoke", async (req, res, next) => {
+  try {
+    await prisma.personnel.update({
+      where: { id: routeParam(req.params.id) },
+      data: { selfServiceToken: null, selfServiceTokenExpiresAt: null },
+    });
+    res.json({ ok: true });
   } catch (e) {
     next(e);
   }
@@ -189,9 +303,37 @@ personnelRouter.get("/:id", async (req, res, next) => {
       where: { id: routeParam(req.params.id) },
       include: personnelInclude,
     });
-    if (!row) return res.status(404).json({ error: "Not found" });
-    res.json(row);
+    if (!row || (row.archivedAt && !canSeeArchived(req))) return res.status(404).json({ error: "Not found" });
+    const { selfServiceToken: _t, ...rest } = row;
+    res.json(rest);
   } catch (e) {
+    next(e);
+  }
+});
+
+personnelRouter.post("/:id/unarchive", async (req, res, next) => {
+  try {
+    if (!canSeeArchived(req)) return res.status(403).json({ error: "ต้องเป็นผู้ดูแลระบบ" });
+    const id = routeParam(req.params.id);
+    const row = await prisma.personnel.update({
+      where: { id },
+      data: { archivedAt: null, lastActivityAt: new Date() },
+      include: personnelInclude,
+    });
+    const actor = await resolveActorLabel(prisma, req.auth?.userId);
+    await writeAuditLog(prisma, {
+      entityType: "Personnel",
+      entityId: id,
+      action: "UPDATE",
+      summary: `บุคลากร ${row.fullName}: แอดมินนำข้อมูลกลับมาแสดง`,
+      actor,
+      req,
+    });
+    const { selfServiceToken: _t, ...rest } = row;
+    res.json(rest);
+  } catch (e: unknown) {
+    if (e && typeof e === "object" && "code" in e && (e as { code: string }).code === "P2025")
+      return res.status(404).json({ error: "Not found" });
     next(e);
   }
 });
@@ -204,6 +346,8 @@ personnelRouter.post("/", upload.single("photo"), async (req, res, next) => {
       idNumber,
       employeeCode,
       phone,
+      bloodType,
+      birthDate,
       rank,
       position,
       gradeLevel,
@@ -216,6 +360,7 @@ personnelRouter.post("/", upload.single("photo"), async (req, res, next) => {
       insurancePolicyNumber,
       insuranceExpiry,
       insuranceNotes,
+      annualTravelInsurance,
       remarks,
       beneficiaries: benRaw,
     } = b;
@@ -280,6 +425,8 @@ personnelRouter.post("/", upload.single("photo"), async (req, res, next) => {
         rank: rank ? String(rank) : null,
         position: position ? String(position) : null,
         phone: phone ? String(phone) : null,
+        bloodType: normalizeBloodType(bloodType) ?? null,
+        birthDate: parseOptionalDate(birthDate),
         gradeLevel: gradeLevel != null && String(gradeLevel).trim() ? String(gradeLevel).trim() : null,
         perDiemRate: parsedPerDiem ?? null,
         vehicleTravelAllowance: parsedVehicleTravel ?? null,
@@ -290,6 +437,7 @@ personnelRouter.post("/", upload.single("photo"), async (req, res, next) => {
         insurancePolicyNumber: insurancePolicyNumber ? String(insurancePolicyNumber) : null,
         insuranceExpiry: parseOptionalDate(insuranceExpiry),
         insuranceNotes: insuranceNotes ? String(insuranceNotes) : null,
+        annualTravelInsurance: parseFlag(annualTravelInsurance),
         remarks: remarks ? String(remarks) : null,
         photoUrl,
         beneficiaries: {
@@ -331,6 +479,8 @@ personnelRouter.put("/:id", upload.single("photo"), async (req, res, next) => {
       idNumber,
       employeeCode,
       phone,
+      bloodType,
+      birthDate,
       rank,
       position,
       gradeLevel,
@@ -343,6 +493,7 @@ personnelRouter.put("/:id", upload.single("photo"), async (req, res, next) => {
       insurancePolicyNumber,
       insuranceExpiry,
       insuranceNotes,
+      annualTravelInsurance,
       remarks,
       photoUrl: bodyPhoto,
       beneficiaries: benRaw,
@@ -354,6 +505,8 @@ personnelRouter.put("/:id", upload.single("photo"), async (req, res, next) => {
     if (employeeCode !== undefined)
       data.employeeCode = employeeCode == null || employeeCode === "" ? null : String(employeeCode).trim() || null;
     if (phone !== undefined) data.phone = phone || null;
+    if (bloodType !== undefined) data.bloodType = normalizeBloodType(bloodType) ?? null;
+    if (birthDate !== undefined) data.birthDate = parseOptionalDate(birthDate);
     if (rank !== undefined) data.rank = rank ? String(rank) : null;
     if (position !== undefined) data.position = position ? String(position) : null;
     if (gradeLevel !== undefined)
@@ -379,7 +532,13 @@ personnelRouter.put("/:id", upload.single("photo"), async (req, res, next) => {
         data.policeStationId = String(policeStationId);
       }
     }
-    if (personnelCategoryId !== undefined) data.personnelCategoryId = personnelCategoryId || null;
+    if (personnelCategoryId !== undefined) {
+      if (personnelCategoryId) {
+        const c = await prisma.personnelCategory.findUnique({ where: { id: String(personnelCategoryId) } });
+        if (!c) return res.status(400).json({ error: "ประเภทบุคลากรไม่ถูกต้อง" });
+      }
+      data.personnelCategoryId = personnelCategoryId || null;
+    }
     if (organizationUnitTypeId !== undefined) {
       if (!organizationUnitTypeId) {
         data.organizationUnitTypeId = null;
@@ -394,6 +553,7 @@ personnelRouter.put("/:id", upload.single("photo"), async (req, res, next) => {
       data.insurancePolicyNumber = insurancePolicyNumber ? String(insurancePolicyNumber) : null;
     if (insuranceExpiry !== undefined) data.insuranceExpiry = parseOptionalDate(insuranceExpiry);
     if (insuranceNotes !== undefined) data.insuranceNotes = insuranceNotes ? String(insuranceNotes) : null;
+    if (annualTravelInsurance !== undefined) data.annualTravelInsurance = parseFlag(annualTravelInsurance);
     if (remarks !== undefined) data.remarks = remarks || null;
     if (req.file) {
       try {
@@ -425,6 +585,7 @@ personnelRouter.put("/:id", upload.single("photo"), async (req, res, next) => {
         where: { id },
         data: {
           ...data,
+          lastActivityAt: new Date(),
           ...(beneficiaries !== null
             ? {
                 beneficiaries: {

@@ -3,8 +3,11 @@ import { Prisma, RouteMasterStatus } from "@prisma/client";
 import { prisma } from "../lib/prisma.js";
 import { computeRouteDistanceKm, knownLocationLabels } from "../lib/routeDistance.js";
 import { routeParam } from "../lib/routeParam.js";
+import { locationCodesRouter } from "./locationCodes.js";
 
 export const routeMasterRouter = Router();
+
+routeMasterRouter.use("/locations", locationCodesRouter);
 
 function dec(v: string | number | undefined | null) {
   if (v === undefined || v === null || v === "") return undefined;
@@ -53,7 +56,7 @@ routeMasterRouter.get("/", async (req, res, next) => {
 
 routeMasterRouter.get("/meta/locations", async (_req, res, next) => {
   try {
-    res.json({ locations: knownLocationLabels() });
+    res.json({ locations: await knownLocationLabels() });
   } catch (e) {
     next(e);
   }
@@ -70,7 +73,7 @@ routeMasterRouter.post("/estimate-distance", async (req, res, next) => {
     const result = await computeRouteDistanceKm(startLocation, endLocation);
     if (result.method === "none" || result.km <= 0) {
       return res.status(422).json({
-        error: "ไม่รู้จักพิกัดต้นทาง/ปลายทาง — ใช้รหัสเช่น สพฐ ศขก ศชม",
+        error: "ไม่รู้จักพิกัดต้นทาง/ปลายทาง — ใช้รหัสเช่น สพฐ ศขก ศชม หรือเพิ่มพิกัดที่ «รหัสพื้นที่»",
         ...result,
       });
     }

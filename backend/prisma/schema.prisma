@@ -43,6 +43,10 @@ model Personnel {
   rank     String?
   position String?
   phone    String?
+  /// กรุ๊ปเลือด เช่น A, B, AB, O, A Rh-
+  bloodType String?
+  /// วันเกิด — ใช้ในไฟล์ส่งบริษัทประกัน (คำนวณอายุ)
+  birthDate DateTime? @db.Date
   /// ระดับชั้น (เช่น 4–7 ตามแบบฟอร์ม ธปท.)
   gradeLevel String?
   /// อัตราเบี้ยเลี้ยง (บาท/วัน) — ใช้คำนวณค่าตอบแทนภารกิจประเภท ธปท.
@@ -64,8 +68,24 @@ model Personnel {
   insurancePolicyNumber String?
   insuranceExpiry       DateTime?
   insuranceNotes        String?   @db.Text
+  /// ทำประกันอุบัติเหตุการเดินทางแบบรายปีแล้ว — ไม่ต้องรวมในไฟล์ประกันรายครั้ง (ถ้า insuranceExpiry ครอบคลุมวันเดินทาง)
+  annualTravelInsurance Boolean   @default(false)
 
   remarks   String?  @db.Text
+
+  /// ลิงก์ให้บุคลากรแก้ข้อมูลตนเอง (ต้องยืนยันเลขบัตรประชาชน 13 หลัก)
+  selfServiceToken          String?   @unique
+  selfServiceTokenExpiresAt DateTime?
+  selfUpdatedAt             DateTime?
+  /// ความยินยอม PDPA — ใช้เพื่อภารกิจขนส่งธนบัตรเท่านั้น
+  pdpaConsentAt      DateTime?
+  pdpaConsentVersion String?
+  /// ความเคลื่อนไหวล่าสุด — ไม่เคลื่อนไหวครบ 2 ปี ระบบพักการแสดงผล (เห็นเฉพาะแอดมิน)
+  lastActivityAt DateTime  @default(now())
+  /// พักการแสดงผลเมื่อไม่เคลื่อนไหวครบ 2 ปี — กลับมาแสดงอัตโนมัติเมื่อมีภารกิจใหม่
+  archivedAt     DateTime?
+  purgedAt       DateTime?
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -106,6 +126,17 @@ model TrainingEnrollment {
   status            TrainingResultStatus @default(PASSED)
   createdAt         DateTime             @default(now())
   updatedAt         DateTime             @updatedAt
+}
+
+/// ลิงก์/QR ให้บุคลากรใหม่ลงทะเบียนข้อมูลเอง
+model PersonnelSelfInvite {
+  id        String    @id @default(uuid())
+  token     String    @unique
+  expiresAt DateTime
+  revokedAt DateTime?
+  createdBy String?
+  usedCount Int       @default(0)
+  createdAt DateTime  @default(now())
 }
 
 model PersonnelBeneficiary {
@@ -637,6 +668,20 @@ model RouteMaster {
   missions Mission[]
 }
 
+/// รหัสพื้นที่ / ศูนย์จัดการธนบัตร เช่น ศสร = สุราษฎร์ธานี — ใช้แปลงรหัสในเส้นทาง คำนวณระยะทาง และไฟล์ประกัน
+model LocationCode {
+  id        String   @id @default(uuid())
+  /// รหัสย่อไม่มีจุด เช่น ศสร
+  code      String   @unique
+  name      String
+  province  String
+  lat       Float?
+  lng       Float?
+  sortOrder Int      @default(0)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
 // --- Missions ---
 
 enum MissionStatus {
@@ -789,6 +834,8 @@ model MissionVehicle {
   fuelType   MissionVehicleFuelType?
   /// ค่าน้ำมัน (บาท)
   fuelAmount Decimal?
+  /// นามเรียกขานของรถคันนี้ในภารกิจ
+  callSign   String? @db.VarChar(100)
 
   @@unique([missionId, vehicleId])
 }

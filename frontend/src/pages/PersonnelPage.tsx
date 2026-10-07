@@ -21,6 +21,10 @@ import {
   toolbarPrimaryBtnClass,
 } from "../lib/uiTokens";
 import type { Personnel, PersonnelCategory, PersonnelMissionHistory } from "../types";
+import { PersonnelSelfLinkModal } from "../components/PersonnelSelfLinkModal";
+import { PDPA_PURGE_GRACE_DAYS, PDPA_RETENTION_YEARS } from "../lib/pdpa";
+
+const BLOOD_TYPES = ["A", "B", "AB", "O", "A Rh-", "B Rh-", "AB Rh-", "O Rh-"];
 
 const PAGE_SIZE = 24; // 3 คอลัมน์ × 8 แถว
 
@@ -33,6 +37,18 @@ function formatInsuranceExpiry(iso: string | null | undefined) {
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return iso.slice(0, 10);
   return d.toLocaleDateString("th-TH", { day: "numeric", month: "short", year: "numeric" });
+}
+
+const formatThaiDate = formatInsuranceExpiry;
+
+function addDaysIso(iso: string, days: number) {
+  return new Date(new Date(iso).getTime() + days * 86_400_000).toISOString();
+}
+
+function addYearsIso(iso: string, years: number) {
+  const d = new Date(iso);
+  d.setFullYear(d.getFullYear() + years);
+  return d.toISOString();
 }
 
 function CameraIcon({ className }: { className?: string }) {
@@ -215,6 +231,7 @@ export function PersonnelPage() {
   const [loading, setLoading] = useState(true);
   const [modalOpen, setModalOpen] = useState(false);
   const [masterModal, setMasterModal] = useState<"category" | null>(null);
+  const [selfLink, setSelfLink] = useState<{ person: { id: string; fullName: string } | null } | null>(null);
   const [photoPreview, setPhotoPreview] = useState<string | null>(null);
   const [lightboxUrl, setLightboxUrl] = useState<string | null>(null);
   const [lightboxTitle, setLightboxTitle] = useState<string | null>(null);
@@ -227,6 +244,8 @@ export function PersonnelPage() {
   const [missionHistoryLoading, setMissionHistoryLoading] = useState(false);
   const [listFilter, setListFilter] = useState("");
   const [categoryFilter, setCategoryFilter] = useState("");
+  /** แอดมินเท่านั้นที่ได้รับรายชื่อที่พักการแสดงผล (ไม่เคลื่อนไหวครบ 2 ปี) จาก API */
+  const [showArchived, setShowArchived] = useState(false);
   const [page, setPage] = useState(1);
 
   const [form, setForm] = useState({
@@ -236,6 +255,8 @@ export function PersonnelPage() {
     rank: "",
     position: "",
     phone: "",
+    bloodType: "",
+    birthDate: "",
     gradeLevel: "",
     perDiemRate: "",
     vehicleTravelAllowance: "",
@@ -244,6 +265,7 @@ export function PersonnelPage() {
     insurancePolicyNumber: "",
     insuranceExpiry: "",
     insuranceNotes: "",
+    annualTravelInsurance: false,
     remarks: "",
   });
   const [beneficiaries, setBeneficiaries] = useState<BeneficiaryFormRow[]>([emptyBeneficiary()]);
@@ -251,6 +273,7 @@ export function PersonnelPage() {
   const filteredPersonnel = useMemo(
     () =>
       rows.filter((r) => {
+        if (Boolean(r.archivedAt) !== showArchived) return false;
         if (categoryFilter && r.personnelCategoryId !== categoryFilter) return false;
         return rowMatchesFilter(listFilter, [
           r.fullName,
@@ -263,8 +286,19 @@ export function PersonnelPage() {
           r.gradeLevel,
         ]);
       }),
-    [rows, listFilter, categoryFilter],
+    [rows, listFilter, categoryFilter, showArchived],
   );
+  const archivedCount = useMemo(() => rows.filter((r) => r.archivedAt).length, [rows]);
+
+  async function unarchive(id: string) {
+    if (!confirm("นำข้อมูลบุคลากรนี้กลับมาแสดงให้ผู้ใช้ทุกคนเห็น?")) return;
+    try {
+      const saved = await apiJson<Personnel>(`/api/personnel/${id}/unarchive`, { method: "POST" });
+      setRows((prev) => prev.map((r) => (r.id === saved.id ? saved : r)));
+    } catch (e) {
+      alert(e instanceof Error ? e.message : "ไม่สำเร็จ");
+    }
+  }
 
   const pageCount = Math.max(1, Math.ceil(filteredPersonnel.length / PAGE_SIZE));
   const safePage = Math.min(page, pageCount);
@@ -275,7 +309,7 @@ export function PersonnelPage() {
 
   useEffect(() => {
     setPage(1);
-  }, [listFilter, categoryFilter]);
+  }, [listFilter, categoryFilter, showArchived]);
 
   useEffect(() => {
     if (page > pageCount) setPage(pageCount);
@@ -382,6 +416,8 @@ export function PersonnelPage() {
       rank: "",
       position: "",
       phone: "",
+      bloodType: "",
+      birthDate: "",
       gradeLevel: "",
       perDiemRate: "",
       vehicleTravelAllowance: "",
@@ -390,6 +426,7 @@ export function PersonnelPage() {
       insurancePolicyNumber: "",
       insuranceExpiry: "",
       insuranceNotes: "",
+      annualTravelInsurance: false,
       remarks: "",
     });
     setBeneficiaries([emptyBeneficiary()]);
@@ -419,6 +456,8 @@ export function PersonnelPage() {
     fd.append("rank", form.rank);
     fd.append("position", form.position);
     fd.append("phone", form.phone);
+    fd.append("bloodType", form.bloodType);
+    fd.append("birthDate", form.birthDate);
     fd.append("gradeLevel", form.gradeLevel);
     if (form.perDiemRate !== "") fd.append("perDiemRate", form.perDiemRate);
     if (form.vehicleTravelAllowance !== "") fd.append("vehicleTravelAllowance", form.vehicleTravelAllowance);
@@ -427,6 +466,7 @@ export function PersonnelPage() {
     fd.append("insurancePolicyNumber", form.insurancePolicyNumber);
     if (form.insuranceExpiry) fd.append("insuranceExpiry", form.insuranceExpiry);
     fd.append("insuranceNotes", form.insuranceNotes);
+    fd.append("annualTravelInsurance", form.annualTravelInsurance ? "true" : "false");
     fd.append("remarks", form.remarks);
     fd.append("beneficiaries", JSON.stringify(benPayload));
 
@@ -467,6 +507,8 @@ export function PersonnelPage() {
       rank: r.rank ?? "",
       position: r.position ?? "",
       phone: r.phone ?? "",
+      bloodType: r.bloodType ?? "",
+      birthDate: r.birthDate ? r.birthDate.slice(0, 10) : "",
       gradeLevel: r.gradeLevel ?? "",
       perDiemRate: r.perDiemRate != null && r.perDiemRate !== "" ? String(r.perDiemRate) : "",
       vehicleTravelAllowance:
@@ -478,6 +520,7 @@ export function PersonnelPage() {
       insurancePolicyNumber: r.insurancePolicyNumber ?? "",
       insuranceExpiry: r.insuranceExpiry ? r.insuranceExpiry.slice(0, 10) : "",
       insuranceNotes: r.insuranceNotes ?? "",
+      annualTravelInsurance: Boolean(r.annualTravelInsurance),
       remarks: r.remarks ?? "",
     });
     setBeneficiaries(
@@ -540,6 +583,24 @@ export function PersonnelPage() {
             <button type="button" onClick={() => setMasterModal("category")} className={toolbarMasterBtnClass}>
               ประเภท
             </button>
+            <button
+              type="button"
+              onClick={() => setSelfLink({ person: null })}
+              className={toolbarMasterBtnClass}
+              title="สร้างลิงก์ / QR ให้บุคลากรใหม่กรอกข้อมูลเอง"
+            >
+              QR ลงทะเบียน
+            </button>
+            {archivedCount > 0 || showArchived ? (
+              <button
+                type="button"
+                onClick={() => setShowArchived((v) => !v)}
+                className={toolbarMasterBtnClass}
+                title={`รายชื่อที่ไม่เคลื่อนไหวครบ ${PDPA_RETENTION_YEARS} ปี — เห็นเฉพาะแอดมิน`}
+              >
+                {showArchived ? "กลับรายชื่อปกติ" : `พักการแสดงผล (${archivedCount})`}
+              </button>
+            ) : null}
           </div>
         }
         primary={
@@ -556,6 +617,8 @@ export function PersonnelPage() {
           </button>
         }
       />
+
+      <PersonnelSelfLinkModal open={Boolean(selfLink)} onClose={() => setSelfLink(null)} person={selfLink?.person ?? null} />
 
       <MasterDataModal
         open={masterModal === "category"}
@@ -674,6 +737,30 @@ export function PersonnelPage() {
               />
             </label>
             <label className="block">
+              <span className="text-xs font-medium text-slate-700">วันเกิด</span>
+              <input
+                type="date"
+                className="mt-1 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-slate-900"
+                value={form.birthDate}
+                onChange={(e) => setForm((f) => ({ ...f, birthDate: e.target.value }))}
+              />
+            </label>
+            <label className="block">
+              <span className="text-xs font-medium text-slate-700">กรุ๊ปเลือด</span>
+              <select
+                className="mt-1 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-slate-900"
+                value={form.bloodType}
+                onChange={(e) => setForm((f) => ({ ...f, bloodType: e.target.value }))}
+              >
+                <option value="">— ไม่ระบุ —</option>
+                {BLOOD_TYPES.map((t) => (
+                  <option key={t} value={t}>
+                    {t}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="block">
               <span className="text-xs font-medium text-slate-700">ประเภท (บุคลากร)</span>
               <select
                 className="mt-1 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-slate-900"
@@ -749,6 +836,20 @@ export function PersonnelPage() {
 
           <ModalFormSection title="กรมธรรม์ประกันภัย">
             <div className="grid gap-4 sm:grid-cols-2">
+            <label className="flex items-start gap-2.5 rounded-lg border border-sky-200 bg-sky-50/60 px-3 py-2.5 sm:col-span-2">
+              <input
+                type="checkbox"
+                className="mt-0.5 h-4 w-4 accent-sky-600"
+                checked={form.annualTravelInsurance}
+                onChange={(e) => setForm((f) => ({ ...f, annualTravelInsurance: e.target.checked }))}
+              />
+              <span className="text-sm text-slate-800">
+                ทำประกันอุบัติเหตุการเดินทางแบบรายปีแล้ว
+                <span className="block text-xs text-slate-500">
+                  ระบบจะไม่ใส่ชื่อในไฟล์ประกันรายครั้ง ตราบที่ «วันหมดอายุ» ยังครอบคลุมวันเดินทาง
+                </span>
+              </span>
+            </label>
             <label className="block">
               <span className="text-xs font-medium text-slate-700">บริษัทประกัน</span>
               <input
@@ -983,12 +1084,20 @@ export function PersonnelPage() {
                                 {p.personnelCategory.name}
                               </span>
                             ) : null}
+                            {p.annualTravelInsurance ? (
+                              <span className="rounded-full bg-sky-500/15 px-2.5 py-0.5 text-[11px] font-bold text-sky-700">
+                                ประกันรายปี
+                                {p.insuranceExpiry ? ` ถึง ${formatInsuranceExpiry(p.insuranceExpiry)}` : ""}
+                              </span>
+                            ) : null}
                           </div>
                         </div>
                       </div>
 
                       <dl className="grid grid-cols-2 gap-x-3 gap-y-2">
                         {p.phone?.trim() ? <Field label="โทรศัพท์" value={p.phone.trim()} /> : null}
+                        {p.birthDate ? <Field label="วันเกิด" value={formatThaiDate(p.birthDate)} /> : null}
+                        {p.bloodType ? <Field label="กรุ๊ปเลือด" value={p.bloodType} /> : null}
                         <div className="min-w-0">
                           <dt className="text-[10px] font-semibold tracking-wide text-slate-500">เลขบัตรประชาชน</dt>
                           <dd className="mt-0.5 flex flex-wrap items-center gap-2">
@@ -1043,6 +1152,36 @@ export function PersonnelPage() {
                         </div>
                       ) : null}
 
+                      <div className="rounded-lg border border-slate-200 bg-white/70 px-2.5 py-2 text-[11.5px] leading-relaxed text-slate-600">
+                        <p className="text-[10px] font-bold tracking-wide text-slate-500">PDPA</p>
+                        {p.pdpaConsentAt ? (
+                          <p className="text-emerald-700">ยินยอมเมื่อ {formatThaiDate(p.pdpaConsentAt)}</p>
+                        ) : (
+                          <p className="text-amber-700">ยังไม่ได้ให้ความยินยอม — ส่ง QR ให้แก้ข้อมูลเองเพื่อขอความยินยอม</p>
+                        )}
+                        {p.selfUpdatedAt ? <p>เจ้าของข้อมูลแก้ไขล่าสุด {formatThaiDate(p.selfUpdatedAt)}</p> : null}
+                        {p.archivedAt ? (
+                          <div className="mt-1 rounded-md border border-slate-300 bg-slate-100 px-2 py-1.5 text-slate-700">
+                            <p className="font-bold">พักการแสดงผลตั้งแต่ {formatThaiDate(p.archivedAt)}</p>
+                            <p className="font-bold text-rose-700">
+                              จะทำลายข้อมูลวันที่ {formatThaiDate(addDaysIso(p.archivedAt, PDPA_PURGE_GRACE_DAYS))}
+                            </p>
+                            <p>ไม่มีความเคลื่อนไหวครบ {PDPA_RETENTION_YEARS} ปี — เห็นเฉพาะแอดมิน ถ้าจัดเข้าภารกิจก่อนวันดังกล่าว ข้อมูลจะกลับมาแสดงตามเดิม</p>
+                            <button
+                              type="button"
+                              onClick={() => void unarchive(p.id)}
+                              className="mt-1 rounded-md border border-indigo-200 bg-white px-2 py-0.5 text-[11px] font-bold text-indigo-700 hover:bg-indigo-50"
+                            >
+                              นำกลับมาแสดงตอนนี้
+                            </button>
+                          </div>
+                        ) : p.lastActivityAt ? (
+                          <p>
+                            ครบกำหนดทำลายประมาณ {formatThaiDate(addYearsIso(p.lastActivityAt, PDPA_RETENTION_YEARS))} หากไม่มีความเคลื่อนไหว
+                          </p>
+                        ) : null}
+                      </div>
+
                       {p.remarks?.trim() ? (
                         <div className="rounded-lg bg-amber-50/90 px-2.5 py-2">
                           <p className="text-[10px] font-bold tracking-wide text-amber-800">โน้ตสำคัญ</p>
@@ -1073,7 +1212,7 @@ export function PersonnelPage() {
                             {missionHistory.missions.map((m) => (
                               <li key={m.assignmentId}>
                                 <Link
-                                  to={`/missions?summary=${m.missionId}`}
+                                  to={`/missions/${m.missionId}/summary`}
                                   title={[m.code, m.title, m.roleName, m.routeLabel]
                                     .filter(Boolean)
                                     .join(" · ")}
@@ -1116,6 +1255,14 @@ export function PersonnelPage() {
                           }}
                         >
                           แก้ไข
+                        </button>
+                        <button
+                          type="button"
+                          className={btnSoft}
+                          title="สร้างลิงก์ / QR ให้บุคคลนี้ตรวจสอบและแก้ไขข้อมูลตนเอง"
+                          onClick={() => setSelfLink({ person: { id: p.id, fullName: p.fullName } })}
+                        >
+                          QR ให้แก้ข้อมูลเอง
                         </button>
                         <button
                           type="button"
@@ -1218,6 +1365,16 @@ export function PersonnelPage() {
                         {r.personnelCategory?.name ? (
                           <span className="rounded bg-violet-500/15 px-1.5 py-0.5 text-[10px] font-medium text-violet-700">
                             {r.personnelCategory.name}
+                          </span>
+                        ) : null}
+                        {r.pdpaConsentAt ? (
+                          <span className="rounded bg-emerald-500/12 px-1.5 py-0.5 text-[10px] font-medium text-emerald-700" title="ให้ความยินยอม PDPA แล้ว">
+                            PDPA ✓
+                          </span>
+                        ) : null}
+                        {r.archivedAt ? (
+                          <span className="rounded bg-slate-500/15 px-1.5 py-0.5 text-[10px] font-medium text-slate-700" title="ไม่เคลื่อนไหวครบ 2 ปี — เห็นเฉพาะแอดมิน และจะถูกทำลายเมื่อพ้น 30 วัน">
+                            รอทำลาย
                           </span>
                         ) : null}
                       </div>

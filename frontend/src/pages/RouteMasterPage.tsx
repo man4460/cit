@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { apiJson } from "../api/client";
 import { DetailField } from "../components/DetailField";
+import { LocationCodesModal } from "../components/LocationCodesModal";
 import { Modal, ModalFormActions, ModalFormBody } from "../components/Modal";
 import { PageHeaderBar } from "../components/PageHeaderBar";
 import { MissionsSubNav } from "../components/MissionsSubNav";
@@ -37,6 +38,7 @@ export function RouteMasterPage() {
   const [listFilter, setListFilter] = useState("");
   const [estimating, setEstimating] = useState(false);
   const [recalcBusy, setRecalcBusy] = useState(false);
+  const [locationsOpen, setLocationsOpen] = useState(false);
 
   const load = useCallback(async () => {
     setRows(await apiJson<RouteMaster[]>(`/api/route-master?status=${statusView}`));
@@ -231,6 +233,9 @@ export function RouteMasterPage() {
         extras={
           <>
             <div className={toolbarMasterGroupClass}>
+              <button type="button" className={toolbarMasterBtnClass} onClick={() => setLocationsOpen(true)}>
+                รหัสพื้นที่
+              </button>
               <button
                 type="button"
                 className={toolbarMasterBtnClass}
@@ -247,6 +252,8 @@ export function RouteMasterPage() {
         }
         primary={<MissionsSubNav />}
       />
+
+      <LocationCodesModal open={locationsOpen} onClose={() => setLocationsOpen(false)} />
 
       <Modal
         open={modalOpen}

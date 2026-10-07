@@ -7,6 +7,7 @@ import { ActivitiesPage } from "./pages/ActivitiesPage";
 import { Dashboard } from "./pages/Dashboard";
 import { LoginPage } from "./pages/LoginPage";
 import { RegisterPage } from "./pages/RegisterPage";
+import { PersonnelSelfPage } from "./pages/PersonnelSelfPage";
 import { PersonnelPage } from "./pages/PersonnelPage";
 import { TrainingRegistryPage } from "./pages/TrainingRegistryPage";
 import { AuditTrailPage } from "./pages/AuditTrailPage";
@@ -17,6 +18,9 @@ import { ArmorMonthlyInspectionPage } from "./pages/ArmorMonthlyInspectionPage";
 import { AssetsPage } from "./pages/AssetsPage";
 import { MissionsPage } from "./pages/MissionsPage";
 import { MissionFormPage } from "./pages/MissionFormPage";
+import { MissionSummaryPage } from "./pages/MissionSummaryPage";
+import { MissionCentralMemoPage } from "./pages/MissionCentralMemoPage";
+import { MissionTravelPlanMemoPage } from "./pages/MissionTravelPlanMemoPage";
 import { RouteMasterPage } from "./pages/RouteMasterPage";
 import { ReportPage } from "./pages/ReportPage";
 import { ReportsHubPage } from "./pages/ReportsHubPage";
@@ -51,6 +55,8 @@ export default function App() {
         <Routes>
           <Route path="/login" element={<LoginPage />} />
           <Route path="/register" element={<RegisterPage />} />
+          {/* บุคลากรกรอก/แก้ไขข้อมูลตนเอง — ไม่ต้องล็อกอิน ไม่มีเมนู */}
+          <Route path="/self/:token" element={<PersonnelSelfPage />} />
           {/* อนุมัติผ่านลิงก์อีเมล — ไม่ต้องเข้าสู่ระบบ */}
           <Route path="/approve/:token" element={<ApprovalLinkPage />} />
           <Route element={<ProtectedRoute />}>
@@ -71,6 +77,9 @@ export default function App() {
               <Route path="assets/armor-monthly" element={<ArmorMonthlyInspectionPage />} />
               <Route path="missions" element={<MissionsPage />} />
               <Route path="missions/new" element={<MissionFormPage />} />
+              <Route path="missions/:id/summary" element={<MissionSummaryPage />} />
+              <Route path="missions/:id/central-memo" element={<MissionCentralMemoPage />} />
+              <Route path="missions/:id/travel-plan-memo" element={<MissionTravelPlanMemoPage />} />
               <Route path="missions/:id/edit" element={<MissionFormPage />} />
               <Route path="missions/:id/duplicate" element={<MissionFormPage />} />
               <Route path="missions/estimates/*" element={<Navigate to="/missions" replace />} />
