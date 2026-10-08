@@ -94,6 +94,23 @@ type VRow = {
   fuelAmount: string;
   callSign?: string;
 };
+type FuelPrices = { GASOLINE: string; DIESEL: string };
+
+function fuelPriceForRow(row: VRow, prices: FuelPrices): number {
+  if (row.fuelType === "") return NaN;
+  const p = parseLooseNumber(prices[row.fuelType]);
+  return Number.isFinite(p) && p > 0 ? p : NaN;
+}
+
+/** ลิตร = ค่าน้ำมัน ÷ ราคาต่อลิตรตามชนิด ปัดเป็นจำนวนเต็ม — ไม่มีราคา/ชนิด คงค่าลิตรเดิมไว้ */
+function withAutoLiters(row: VRow, prices: FuelPrices): VRow {
+  const price = fuelPriceForRow(row, prices);
+  if (!Number.isFinite(price)) return row;
+  const amount = parseLooseNumber(row.fuelAmount);
+  if (!Number.isFinite(amount) || amount <= 0) return { ...row, fuelLiters: "" };
+  return { ...row, fuelLiters: String(Math.round(amount / price)) };
+}
+
 type DRow = { address: string; cargoValue: string; containerCount: number };
 type PsRow = { policeStationId: string; amount: string; estimateItemCode: string; note?: string | null };
 
@@ -261,8 +278,11 @@ export function MissionFormPage() {
   const [vRows, setVRows] = useState<VRow[]>([
     { vehicleId: "", vehicleRoleId: "", fuelLiters: "", fuelType: "", fuelAmount: "" },
   ]);
+  const [fuelPrices, setFuelPrices] = useState<FuelPrices>({ GASOLINE: "", DIESEL: "" });
   const [dRows, setDRows] = useState<DRow[]>([{ address: "", cargoValue: "0", containerCount: 1 }]);
   const [psRows, setPsRows] = useState<PsRow[]>([{ policeStationId: "", amount: "0", estimateItemCode: "2.4" }]);
+  // แก้รหัส Vendor ของสถานี (master) — บันทึกพร้อมภารกิจ; ไม่แก้ policeStationMasters ตรง ๆ เพราะจะโหลดฟอร์มใหม่
+  const [vendorDrafts, setVendorDrafts] = useState<Record<string, string>>({});
   const [savingMission, setSavingMission] = useState(false);
   const [saveFlash, setSaveFlash] = useState<string | null>(null);
   const [mastersReady, setMastersReady] = useState(false);
@@ -413,6 +433,21 @@ export function MissionFormPage() {
     });
   };
 
+  const onFuelPriceChange = (type: "GASOLINE" | "DIESEL", raw: string) => {
+    const nextPrices = { ...fuelPrices, [type]: raw };
+    setFuelPrices(nextPrices);
+    setVRows((rows) => rows.map((r) => (r.fuelType === type ? withAutoLiters(r, nextPrices) : r)));
+  };
+
+  const patchVRow = (idx: number, patch: Partial<VRow>) => {
+    const next = vRows.map((r, i) => {
+      if (i !== idx) return r;
+      const merged = { ...r, ...patch };
+      return patch.fuelLiters !== undefined ? merged : withAutoLiters(merged, fuelPrices);
+    });
+    setVRows(next);
+  };
+
   useEffect(() => {
     setPRows((prev) =>
       prev.map((row) => {
@@ -465,8 +500,10 @@ export function MissionFormPage() {
     setVRows([
       { vehicleId: "", vehicleRoleId: vehicleRoleMasters[0]?.id ?? "", fuelLiters: "", fuelType: "", fuelAmount: "" },
     ]);
+    setFuelPrices({ GASOLINE: "", DIESEL: "" });
     setDRows([{ address: "", cargoValue: "0", containerCount: 1 }]);
     setPsRows([{ policeStationId: "", amount: "0", estimateItemCode: "2.4" }]);
+    setVendorDrafts({});
     estimateRef.current?.reset();
     actualExpenseRef.current?.reset();
   }, [personnelRoleMasters, vehicleRoleMasters]);
@@ -528,26 +565,26 @@ export function MissionFormPage() {
             ],
       );
       setPersonnelTab("bot");
-      setVRows(
-        vehicleRows.length
-          ? vehicleRows.map((v) => ({
-              vehicleId: v.vehicleId,
-              vehicleRoleId: v.vehicleRoleId,
-              fuelLiters: v.fuelLiters != null && v.fuelLiters !== "" ? String(v.fuelLiters) : "",
-              fuelType: (v.fuelType === "GASOLINE" || v.fuelType === "DIESEL" ? v.fuelType : "") as MissionVehicleFuelTypeUi,
-              fuelAmount: v.fuelAmount != null && v.fuelAmount !== "" ? String(v.fuelAmount) : "",
-              callSign: v.callSign ?? "",
-            }))
-          : [
-              {
-                vehicleId: "",
-                vehicleRoleId: vehicleRoleMasters[0]?.id ?? "",
-                fuelLiters: "",
-                fuelType: "",
-                fuelAmount: "",
-              },
-            ],
-      );
+      const loadedVRows: VRow[] = vehicleRows.length
+        ? vehicleRows.map((v) => ({
+            vehicleId: v.vehicleId,
+            vehicleRoleId: v.vehicleRoleId,
+            fuelLiters: v.fuelLiters != null && v.fuelLiters !== "" ? String(v.fuelLiters) : "",
+            fuelType: (v.fuelType === "GASOLINE" || v.fuelType === "DIESEL" ? v.fuelType : "") as MissionVehicleFuelTypeUi,
+            fuelAmount: v.fuelAmount != null && v.fuelAmount !== "" ? String(v.fuelAmount) : "",
+            callSign: v.callSign ?? "",
+          }))
+        : [
+            {
+              vehicleId: "",
+              vehicleRoleId: vehicleRoleMasters[0]?.id ?? "",
+              fuelLiters: "",
+              fuelType: "",
+              fuelAmount: "",
+            },
+          ];
+      setVRows(loadedVRows);
+      setFuelPrices({ GASOLINE: "", DIESEL: "" });
       setDRows(
         sortedDest.length
           ? sortedDest.map((d) => ({
@@ -712,6 +749,28 @@ export function MissionFormPage() {
         savedMissionId = created.id;
         setEditingMissionId(created.id);
         setMissionStatus(created.status ?? nextStatus);
+      }
+      const vendorChanges = Object.entries(vendorDrafts).filter(([stationId, draft]) => {
+        const master = policeStationMasters.find((s) => s.id === stationId);
+        return master && draft.trim() !== (master.vendorCode ?? "").trim();
+      });
+      if (vendorChanges.length) {
+        try {
+          await Promise.all(
+            vendorChanges.map(([stationId, draft]) =>
+              apiJson(`/api/police-stations/${stationId}`, {
+                method: "PATCH",
+                body: JSON.stringify({ vendorCode: draft.trim() || null }),
+              }),
+            ),
+          );
+        } catch (e) {
+          alert(
+            e instanceof Error
+              ? `บันทึกภารกิจแล้ว แต่รหัส Vendor ไม่สำเร็จ: ${e.message}`
+              : "บันทึกภารกิจแล้ว แต่รหัส Vendor ไม่สำเร็จ",
+          );
+        }
       }
       if (savedMissionId && routeId) {
         try {
@@ -1263,17 +1322,18 @@ export function MissionFormPage() {
                   </button>
                 </div>
                 <div className="overflow-x-auto rounded-lg border border-slate-200">
-                  <div className="hidden min-w-[42rem] grid-cols-[minmax(0,1.5fr)_minmax(10rem,1fr)_minmax(7rem,0.7fr)_2.5rem] gap-1.5 border-b border-slate-200 bg-slate-50 px-2 py-1.5 text-[10px] font-bold uppercase tracking-wide text-slate-600 sm:grid">
+                  <div className="hidden min-w-[50rem] grid-cols-[minmax(0,1.5fr)_minmax(8rem,0.8fr)_minmax(10rem,1fr)_minmax(7rem,0.7fr)_2.5rem] gap-1.5 border-b border-slate-200 bg-slate-50 px-2 py-1.5 text-[10px] font-bold uppercase tracking-wide text-slate-600 sm:grid">
                     <span>สถานี / สังกัด</span>
+                    <span>Vendor</span>
                     <span>ลิงก์รายการ</span>
                     <span>จำนวนเงิน (บาท)</span>
                     <span className="sr-only">ลบ</span>
                   </div>
-                  <ul className="min-w-[42rem] divide-y divide-slate-100">
+                  <ul className="min-w-[50rem] divide-y divide-slate-100">
                     {psRows.map((row, idx) => (
                       <li
                         key={idx}
-                        className="grid grid-cols-[minmax(0,1.5fr)_minmax(10rem,1fr)_minmax(7rem,0.7fr)_2.5rem] items-center gap-1.5 px-2 py-1"
+                        className="grid grid-cols-[minmax(0,1.5fr)_minmax(8rem,0.8fr)_minmax(10rem,1fr)_minmax(7rem,0.7fr)_2.5rem] items-center gap-1.5 px-2 py-1"
                       >
                         <select
                           aria-label={`สถานีตำรวจแถว ${idx + 1}`}
@@ -1325,6 +1385,25 @@ export function MissionFormPage() {
                             </option>
                           ))}
                         </select>
+                        <input
+                          aria-label={`รหัส Vendor แถว ${idx + 1}`}
+                          className="w-full rounded-md border border-slate-200 bg-white px-2 py-1 text-sm tabular-nums text-slate-900 disabled:bg-slate-50 disabled:text-slate-400"
+                          disabled={!row.policeStationId}
+                          maxLength={50}
+                          placeholder={row.policeStationId ? "รหัส Vendor" : "—"}
+                          title="รหัส Vendor ของสถานี — แก้แล้วใช้กับทุกภารกิจ"
+                          value={
+                            row.policeStationId
+                              ? (vendorDrafts[row.policeStationId] ??
+                                policeStationMasters.find((s) => s.id === row.policeStationId)?.vendorCode ??
+                                "")
+                              : ""
+                          }
+                          onChange={(e) => {
+                            const value = e.target.value;
+                            setVendorDrafts((cur) => ({ ...cur, [row.policeStationId]: value }));
+                          }}
+                        />
                         <select
                           aria-label={`ลิงก์รายการแถว ${idx + 1}`}
                           className="w-full rounded-md border border-amber-300 bg-amber-50/40 px-2 py-1 text-sm text-slate-900"
@@ -1423,7 +1502,7 @@ export function MissionFormPage() {
               <div className="space-y-3">
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <p className="text-[11px] text-slate-600">
-                    กรอก <span className="font-semibold text-[#4d47b6]">จำนวนเงินค่าน้ำมัน</span> แต่ละคัน
+                    กรอก <span className="font-semibold text-[#4d47b6]">ค่าน้ำมัน</span> แต่ละคันและราคาต่อลิตร — ระบบคำนวณลิตร (ปัดเป็นจำนวนเต็ม) ตามชนิดน้ำมันอัตโนมัติ
                   </p>
                   <button
                     type="button"
@@ -1432,6 +1511,30 @@ export function MissionFormPage() {
                   >
                     จัดการบทบาทรถ…
                   </button>
+                </div>
+                <div className="grid gap-3 rounded-2xl border border-emerald-200 bg-gradient-to-br from-emerald-50/70 via-white to-white p-3 shadow-sm sm:grid-cols-2">
+                  <label className="block">
+                    <span className="text-xs font-semibold text-slate-600">ราคาเบนซิน (บาท/ลิตร)</span>
+                    <CommaNumberInput
+                      aria-label="ราคาเบนซินต่อลิตร"
+                      className="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-right text-sm tabular-nums text-slate-900 shadow-sm focus:border-[#8b5cf6] focus:ring-2 focus:ring-[#8b5cf6]/20"
+                      value={fuelPrices.GASOLINE}
+                      placeholder="เช่น 35.50"
+                      maxFractionDigits={2}
+                      onChange={(raw) => onFuelPriceChange("GASOLINE", raw)}
+                    />
+                  </label>
+                  <label className="block">
+                    <span className="text-xs font-semibold text-slate-600">ราคาดีเซล (บาท/ลิตร)</span>
+                    <CommaNumberInput
+                      aria-label="ราคาดีเซลต่อลิตร"
+                      className="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-right text-sm tabular-nums text-slate-900 shadow-sm focus:border-[#8b5cf6] focus:ring-2 focus:ring-[#8b5cf6]/20"
+                      value={fuelPrices.DIESEL}
+                      placeholder="เช่น 32.94"
+                      maxFractionDigits={2}
+                      onChange={(raw) => onFuelPriceChange("DIESEL", raw)}
+                    />
+                  </label>
                 </div>
                 <div className="overflow-x-auto rounded-lg border border-slate-200 pr-1">
                   <div className="hidden min-w-[63rem] grid-cols-[minmax(0,1.15fr)_minmax(6rem,0.75fr)_7rem_5rem_5rem_minmax(8rem,0.9fr)_2.75rem] gap-2 border-b border-slate-200 bg-slate-50 px-3 py-1.5 text-[10px] font-bold uppercase tracking-wide text-slate-600 sm:grid">
@@ -1495,26 +1598,22 @@ export function MissionFormPage() {
                           aria-label={`ลิตรแถว ${idx + 1}`}
                           className="w-full rounded-md border border-slate-200 bg-white px-2 py-1 text-sm tabular-nums text-slate-900"
                           value={row.fuelLiters}
-                          placeholder="—"
-                          maxFractionDigits={3}
-                          onChange={(raw) => {
-                            const next = [...vRows];
-                            next[idx] = { ...row, fuelLiters: raw };
-                            setVRows(next);
-                          }}
+                          placeholder={row.fuelType ? "—" : "เลือกชนิด"}
+                          title={
+                            Number.isFinite(fuelPriceForRow(row, fuelPrices))
+                              ? "คำนวณอัตโนมัติจากค่าน้ำมัน ÷ ราคาต่อลิตร"
+                              : "เลือกชนิดน้ำมันและกรอกราคาต่อลิตรเพื่อคำนวณอัตโนมัติ"
+                          }
+                          maxFractionDigits={0}
+                          onChange={(raw) => patchVRow(idx, { fuelLiters: raw })}
                         />
                         <select
                           aria-label={`ชนิดน้ำมันแถว ${idx + 1}`}
                           className="w-full rounded-md border border-slate-200 bg-white px-2 py-1 text-sm text-slate-900"
                           value={row.fuelType}
-                          onChange={(e) => {
-                            const next = [...vRows];
-                            next[idx] = {
-                              ...row,
-                              fuelType: e.target.value as MissionVehicleFuelTypeUi,
-                            };
-                            setVRows(next);
-                          }}
+                          onChange={(e) =>
+                            patchVRow(idx, { fuelType: e.target.value as MissionVehicleFuelTypeUi })
+                          }
                         >
                           <option value="">—</option>
                           <option value="GASOLINE">เบนซิน</option>
@@ -1526,11 +1625,7 @@ export function MissionFormPage() {
                           value={row.fuelAmount}
                           placeholder="0.00"
                           maxFractionDigits={2}
-                          onChange={(raw) => {
-                            const next = [...vRows];
-                            next[idx] = { ...row, fuelAmount: raw };
-                            setVRows(next);
-                          }}
+                          onChange={(raw) => patchVRow(idx, { fuelAmount: raw })}
                         />
                         <button
                           type="button"
@@ -1689,9 +1784,13 @@ export function MissionFormPage() {
       <CrudNameMasterModal
         title="สถานีตำรวจ / สังกัด"
         apiPath="/api/police-stations"
+        vendorField
         open={crudPoliceStationOpen}
         onClose={() => setCrudPoliceStationOpen(false)}
-        onChanged={load}
+        onChanged={() => {
+          setVendorDrafts({});
+          void load();
+        }}
       />
     </div>
   );

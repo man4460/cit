@@ -337,6 +337,8 @@ export interface NameMasterRow {
   excludesFromFleetCare?: boolean;
   /** หมวดคดีสืบสวน: STRATEGIC | BAU */
   kind?: "STRATEGIC" | "BAU" | string;
+  /** สถานีตำรวจ: รหัส Vendor */
+  vendorCode?: string | null;
   /** แฟ้มคดีสืบสวน: รหัสแฟ้ม / ขอบเขต / ทีมเจ้าของ */
   code?: string | null;
   description?: string | null;

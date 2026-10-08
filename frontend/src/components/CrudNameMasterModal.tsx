@@ -12,6 +12,7 @@ export function CrudNameMasterModal({
   fleetCareExcludeField,
   kindField,
   descriptionField,
+  vendorField,
   ownerOptions,
   ownerLabel = "ทีมเจ้าของ",
 }: {
@@ -26,6 +27,8 @@ export function CrudNameMasterModal({
   kindField?: boolean;
   /** เปิดช่องขอบเขต/คำอธิบาย — ใช้กับแฟ้มคดีสืบสวน */
   descriptionField?: boolean;
+  /** เปิดช่องรหัส Vendor (ส่งเป็น vendorCode) — ใช้กับสถานีตำรวจ */
+  vendorField?: boolean;
   /** เปิดเลือกทีมเจ้าของ (ส่งเป็น teamId) — ใช้กับแฟ้มคดีสืบสวน */
   ownerOptions?: { id: string; name: string }[];
   ownerLabel?: string;
@@ -36,12 +39,14 @@ export function CrudNameMasterModal({
   const [newKind, setNewKind] = useState<"STRATEGIC" | "BAU">("BAU");
   const [newDescription, setNewDescription] = useState("");
   const [newTeamId, setNewTeamId] = useState("");
+  const [newVendorCode, setNewVendorCode] = useState("");
   const [editing, setEditing] = useState<NameMasterRow | null>(null);
   const [editName, setEditName] = useState("");
   const [editExcludesFleetCare, setEditExcludesFleetCare] = useState(false);
   const [editKind, setEditKind] = useState<"STRATEGIC" | "BAU">("BAU");
   const [editDescription, setEditDescription] = useState("");
   const [editTeamId, setEditTeamId] = useState("");
+  const [editVendorCode, setEditVendorCode] = useState("");
   const [err, setErr] = useState<string | null>(null);
 
   const ownerField = Boolean(ownerOptions?.length);
@@ -62,15 +67,17 @@ export function CrudNameMasterModal({
       setNewKind("BAU");
       setNewDescription("");
       setNewTeamId("");
+      setNewVendorCode("");
       void load();
     }
   }, [open, load]);
 
-  function extraPayload(kind: "STRATEGIC" | "BAU", description: string, teamId: string) {
+  function extraPayload(kind: "STRATEGIC" | "BAU", description: string, teamId: string, vendorCode: string) {
     return {
       ...(kindField ? { kind } : {}),
       ...(descriptionField ? { description: description.trim() || null } : {}),
       ...(ownerField ? { teamId: teamId || null } : {}),
+      ...(vendorField ? { vendorCode: vendorCode.trim() || null } : {}),
     };
   }
 
@@ -83,7 +90,7 @@ export function CrudNameMasterModal({
         body: JSON.stringify({
           name: newName.trim(),
           ...(fleetCareExcludeField ? { excludesFromFleetCare: newExcludesFleetCare } : {}),
-          ...extraPayload(newKind, newDescription, newTeamId),
+          ...extraPayload(newKind, newDescription, newTeamId, newVendorCode),
         }),
       });
       setNewName("");
@@ -91,6 +98,7 @@ export function CrudNameMasterModal({
       setNewKind("BAU");
       setNewDescription("");
       setNewTeamId("");
+      setNewVendorCode("");
       onChanged();
       load();
     } catch (e) {
@@ -108,7 +116,7 @@ export function CrudNameMasterModal({
         body: JSON.stringify({
           name: editName.trim(),
           ...(fleetCareExcludeField ? { excludesFromFleetCare: editExcludesFleetCare } : {}),
-          ...extraPayload(editKind, editDescription, editTeamId),
+          ...extraPayload(editKind, editDescription, editTeamId, editVendorCode),
         }),
       });
       setEditing(null);
@@ -143,6 +151,16 @@ export function CrudNameMasterModal({
               value={newName}
               onChange={(e) => setNewName(e.target.value)}
             />
+            {vendorField ? (
+              <input
+                placeholder="รหัส Vendor"
+                aria-label="รหัส Vendor"
+                maxLength={50}
+                className="w-36 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm tabular-nums text-slate-900"
+                value={newVendorCode}
+                onChange={(e) => setNewVendorCode(e.target.value)}
+              />
+            ) : null}
             {kindField ? (
               <select
                 className="rounded-lg border border-slate-200 bg-white px-2 py-2 text-xs font-semibold text-slate-800"
@@ -205,6 +223,16 @@ export function CrudNameMasterModal({
               value={editName}
               onChange={(e) => setEditName(e.target.value)}
             />
+            {vendorField ? (
+              <input
+                placeholder="รหัส Vendor"
+                aria-label="รหัส Vendor"
+                maxLength={50}
+                className="mt-2 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm tabular-nums text-slate-900"
+                value={editVendorCode}
+                onChange={(e) => setEditVendorCode(e.target.value)}
+              />
+            ) : null}
             {kindField ? (
               <select
                 className="mt-2 w-full rounded-lg border border-slate-200 bg-white px-2 py-2 text-xs font-semibold text-slate-800"
@@ -292,6 +320,11 @@ export function CrudNameMasterModal({
                     {r.teamId ? (teamNameById.get(r.teamId) ?? r.team?.name ?? "—") : `ยังไม่ระบุ${ownerLabel}`}
                   </span>
                 ) : null}
+                {vendorField ? (
+                  <span className="mt-0.5 block text-[11px] tabular-nums text-slate-500">
+                    Vendor {r.vendorCode?.trim() || "—"}
+                  </span>
+                ) : null}
                 {descriptionField && r.description ? (
                   <span className="mt-0.5 block text-[11px] leading-relaxed text-slate-600">{r.description}</span>
                 ) : null}
@@ -307,6 +340,7 @@ export function CrudNameMasterModal({
                     setEditKind(r.kind === "STRATEGIC" ? "STRATEGIC" : "BAU");
                     setEditDescription(r.description ?? "");
                     setEditTeamId(r.teamId ?? "");
+                    setEditVendorCode(r.vendorCode ?? "");
                   }}
                 >
                   แก้ไข
