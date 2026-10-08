@@ -5,6 +5,7 @@ import { apiFormJson, apiJson, apiUrl } from "../api/client";
 import { MissionBotAllowancePrintSheet } from "../components/MissionBotAllowancePrintSheet";
 import { MissionInsuranceExportModal } from "../components/MissionInsuranceExportModal";
 import { MissionPoliceAllowancePrintSheet } from "../components/MissionPoliceAllowancePrintSheet";
+import { MissionReportModal } from "../components/MissionReportModal";
 import { filterBotAllowancePersonnel } from "../lib/botAllowancePrint";
 import { formatBaht, formatInt, formatLiters } from "../lib/formatNumber";
 import { filterPoliceAllowancePersonnel } from "../lib/policeAllowancePrint";
@@ -57,6 +58,7 @@ export function MissionSummaryPage() {
   const [err, setErr] = useState<string | null>(null);
   const [uploading, setUploading] = useState(false);
   const [insuranceOpen, setInsuranceOpen] = useState(false);
+  const [reportOpen, setReportOpen] = useState(false);
 
   const load = useCallback(async () => {
     try {
@@ -246,6 +248,9 @@ export function MissionSummaryPage() {
           </ActionButton>
           <ActionButton tone="violet" onClick={() => navigate(`/missions/${summary.missionId}/evaluation`)}>
             QR ประเมินภารกิจ
+          </ActionButton>
+          <ActionButton tone="rose" onClick={() => setReportOpen(true)}>
+            รายงานผลการปฏิบัติ
           </ActionButton>
           <ActionButton tone="slate" onClick={() => navigate(`/missions/${summary.missionId}/central-memo`)}>
             ระบบกลาง: อนุมัติภารกิจ
@@ -555,6 +560,7 @@ export function MissionSummaryPage() {
         missionId={insuranceOpen ? summary.missionId : null}
         onClose={() => setInsuranceOpen(false)}
       />
+      {reportOpen ? <MissionReportModal open onClose={() => setReportOpen(false)} summary={summary} /> : null}
       {createPortal(
         <>
           <MissionBotAllowancePrintSheet
@@ -587,6 +593,7 @@ const actionTones = {
   emerald: "border-emerald-200 text-emerald-700 hover:bg-emerald-50",
   slate: "border-slate-300 text-slate-700 hover:bg-slate-50",
   violet: "border-violet-200 text-violet-700 hover:bg-violet-50",
+  rose: "border-rose-200 text-rose-700 hover:bg-rose-50",
 } as const;
 
 function ActionButton({
