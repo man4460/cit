@@ -56,6 +56,8 @@ import { investigationRouter } from "./routes/investigation.js";
 import { investigationApprovalRouter } from "./routes/investigationApproval.js";
 import { osOutsourcingRouter } from "./routes/osOutsourcing.js";
 import { personnelSelfRouter } from "./routes/personnelSelf.js";
+import { missionEvaluationPublicRouter } from "./routes/missionEvaluationPublic.js";
+import { missionEvaluationsRouter } from "./routes/missionEvaluations.js";
 import { schedulePersonnelRetention } from "./lib/personnelRetention.js";
 import { seedDocumentMasterData } from "./lib/seedDocumentMasters.js";
 import { seedFireExtinguisherData } from "./lib/seedFireExtinguishers.js";
@@ -94,6 +96,8 @@ app.use("/api/auth", authRouter);
 app.use("/api/investigation-approval", investigationApprovalRouter);
 /** บุคลากรกรอก/แก้ไขข้อมูลตนเองผ่านลิงก์/QR — ไม่ต้องล็อกอิน (ตรวจด้วยโทเคน + เลขบัตร 4 หลักท้าย) */
 app.use("/api/personnel-self", personnelSelfRouter);
+/** แบบประเมินภารกิจผ่าน QR — ไม่ต้องล็อกอิน (ตรวจด้วยโทเคน + ชื่อในทริป + เลขบัตร 4 หลักท้าย) */
+app.use("/api/mission-evaluation-public", missionEvaluationPublicRouter);
 
 const secured = express.Router();
 secured.use(authMiddleware);
@@ -129,6 +133,7 @@ secured.use("/mission-expense-types", missionExpenseTypesRouter);
 secured.use("/police-stations", policeStationsRouter);
 secured.use("/mission-estimates", missionEstimatesRouter);
 secured.use("/missions", missionsRouter);
+secured.use("/mission-evaluations", missionEvaluationsRouter);
 secured.use("/tasks", tasksRouter);
 secured.use("/activity-categories", activityCategoriesRouter);
 secured.use("/admin/users", adminUsersRouter);

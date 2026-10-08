@@ -244,6 +244,9 @@ export function MissionSummaryPage() {
           <ActionButton tone="emerald" onClick={() => setInsuranceOpen(true)}>
             ไฟล์ประกัน
           </ActionButton>
+          <ActionButton tone="violet" onClick={() => navigate(`/missions/${summary.missionId}/evaluation`)}>
+            QR ประเมินภารกิจ
+          </ActionButton>
           <ActionButton tone="slate" onClick={() => navigate(`/missions/${summary.missionId}/central-memo`)}>
             ระบบกลาง: อนุมัติภารกิจ
           </ActionButton>
@@ -583,6 +586,7 @@ const actionTones = {
   amber: "border-amber-200 text-amber-800 hover:bg-amber-50",
   emerald: "border-emerald-200 text-emerald-700 hover:bg-emerald-50",
   slate: "border-slate-300 text-slate-700 hover:bg-slate-50",
+  violet: "border-violet-200 text-violet-700 hover:bg-violet-50",
 } as const;
 
 function ActionButton({

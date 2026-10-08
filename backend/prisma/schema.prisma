@@ -96,6 +96,7 @@ model Personnel {
   armorMonthlyInspections ArmorMonthlyInspection[]
   trainingEnrollments     TrainingEnrollment[]
   activityParticipations  WorkTaskParticipant[]
+  missionEvaluations      MissionEvaluationResponse[]
 }
 
 // --- ทะเบียนการอบรม ---
@@ -767,6 +768,39 @@ model Mission {
   estimate       MissionEstimate?
   actualExpense  MissionActualExpense?
   previousForEstimates MissionEstimate[] @relation("EstimatePreviousTrip")
+  evaluationLink       MissionEvaluationLink?
+  evaluationResponses  MissionEvaluationResponse[]
+}
+
+/// ลิงก์/QR แบบประเมินภารกิจ (หนึ่งภารกิจหนึ่งลิงก์) — บุคลากรในทริปเปิดกรอกโดยไม่ต้องล็อกอิน
+model MissionEvaluationLink {
+  id        String    @id @default(uuid())
+  missionId String    @unique
+  mission   Mission   @relation(fields: [missionId], references: [id], onDelete: Cascade)
+  token     String    @unique
+  isOpen    Boolean   @default(true)
+  /// ปิดรับอัตโนมัติหลังเวลานี้ (null = ไม่กำหนด)
+  closesAt  DateTime?
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+}
+
+/// ผลประเมินภารกิจรายบุคคล (คนละ 1 ชุดต่อภารกิจ แก้ได้จนกว่าจะปิดรับ) — รายงานแสดงแบบไม่ระบุตัวตน
+model MissionEvaluationResponse {
+  id            String    @id @default(uuid())
+  missionId     String
+  mission       Mission   @relation(fields: [missionId], references: [id], onDelete: Cascade)
+  personnelId   String
+  personnel     Personnel @relation(fields: [personnelId], references: [id], onDelete: Cascade)
+  /// { [categoryKey]: { rating: 1-5, tags: string[], comment: string } }
+  answers       Json
+  overallRating Int?
+  otherComment  String?   @db.Text
+  submittedAt   DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  @@unique([missionId, personnelId])
+  @@index([missionId])
 }
 
 /// สถานีตำรวจที่เกี่ยวในภารกิจ (อาจมีจำนวนเงินจ่ายให้หน่วยงาน)

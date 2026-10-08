@@ -47,6 +47,8 @@ import { ApprovalLinkPage } from "./pages/ApprovalLinkPage";
 import { OsOutsourcingPage } from "./pages/os-outsourcing/OsOutsourcingPage";
 import { OsOutsourcingDashboard } from "./pages/os-outsourcing/OsOutsourcingDashboard";
 import { ExecutiveReportPage } from "./pages/ExecutiveReportPage";
+import { MissionEvaluationDetailPage } from "./pages/MissionEvaluationDetailPage";
+import { MissionEvaluationFormPage } from "./pages/MissionEvaluationFormPage";
 
 export default function App() {
   return (
@@ -59,6 +61,8 @@ export default function App() {
           <Route path="/self/:token" element={<PersonnelSelfPage />} />
           {/* อนุมัติผ่านลิงก์อีเมล — ไม่ต้องเข้าสู่ระบบ */}
           <Route path="/approve/:token" element={<ApprovalLinkPage />} />
+          {/* บุคลากรในทริปประเมินภารกิจผ่าน QR — ไม่ต้องล็อกอิน */}
+          <Route path="/evaluate/:token" element={<MissionEvaluationFormPage />} />
           <Route element={<ProtectedRoute />}>
             <Route element={<Shell />}>
               <Route index element={<Dashboard />} />
@@ -80,6 +84,7 @@ export default function App() {
               <Route path="missions/:id/summary" element={<MissionSummaryPage />} />
               <Route path="missions/:id/central-memo" element={<MissionCentralMemoPage />} />
               <Route path="missions/:id/travel-plan-memo" element={<MissionTravelPlanMemoPage />} />
+              <Route path="missions/:missionId/evaluation" element={<MissionEvaluationDetailPage />} />
               <Route path="missions/:id/edit" element={<MissionFormPage />} />
               <Route path="missions/:id/duplicate" element={<MissionFormPage />} />
               <Route path="missions/estimates/*" element={<Navigate to="/missions" replace />} />
