@@ -117,12 +117,25 @@ export const MissionEstimateEditor = forwardRef<MissionEstimateEditorHandle, Mis
     const [previewOpen, setPreviewOpen] = useState(false);
     const [err, setErr] = useState<string | null>(null);
     const loadTokenRef = useRef(0);
+    // แก้ยอด/ป้ายของประมาณการก่อนหน้า (จากภารกิจอื่น) — ส่งกลับไปแก้ภารกิจต้นทางตอนบันทึก
+    const [editedPreviousKeys, setEditedPreviousKeys] = useState<ReadonlySet<string>>(() => new Set());
+    const [previousLabelEdited, setPreviousLabelEdited] = useState(false);
+    const [previousDateRangeEdited, setPreviousDateRangeEdited] = useState(false);
     // ส่งข้อมูลจำนวนคนที่เคยบันทึกกลับไปตามเดิม — ไม่ใช้คำนวณแล้ว แต่ไม่ให้ข้อมูลเก่าหาย
     const savedPersonCountsRef = useRef<MissionEstimateRecord["personCounts"] | null>(null);
     const savedCalcMetaRef = useRef<MissionEstimateRecord["calcMeta"] | null>(null);
 
     const totals = useMemo(() => computeEstimateTotals(lines), [lines]);
     const manualPrevious = !previousInfo;
+    const linkedPreviousEdited = Boolean(
+      previousInfo && (editedPreviousKeys.size || previousLabelEdited || previousDateRangeEdited),
+    );
+
+    const clearPreviousEdits = useCallback(() => {
+      setEditedPreviousKeys(new Set());
+      setPreviousLabelEdited(false);
+      setPreviousDateRangeEdited(false);
+    }, []);
 
     useEffect(() => {
       onApprovalTotalChange?.(totals.approvalTotal);
@@ -162,6 +175,7 @@ export const MissionEstimateEditor = forwardRef<MissionEstimateEditorHandle, Mis
         setLines(nextLines);
         setPreviousMissionId(previous?.missionId ?? null);
         setPreviousInfo(previous);
+        clearPreviousEdits();
         setNotes((cur) => cur.trim());
         if (previous) {
           setPreviousLabel(previous.label ?? "");
@@ -169,7 +183,7 @@ export const MissionEstimateEditor = forwardRef<MissionEstimateEditorHandle, Mis
         }
         setCurrentLabel((cur) => cur.trim() || template.currentLabel);
       },
-      [],
+      [clearPreviousEdits],
     );
 
     const loadTemplateForRoute = useCallback(
@@ -198,6 +212,7 @@ export const MissionEstimateEditor = forwardRef<MissionEstimateEditorHandle, Mis
         });
         setPreviousMissionId(data.previous?.missionId ?? null);
         setPreviousInfo(data.previous);
+        clearPreviousEdits();
         if (data.previous) {
           setPreviousLabel(data.previous.label ?? "");
           setPreviousDateRange(data.previous.dateRange ?? "");
@@ -210,7 +225,7 @@ export const MissionEstimateEditor = forwardRef<MissionEstimateEditorHandle, Mis
         }
         return data;
       },
-      [missionId, missionCode],
+      [missionId, missionCode, clearPreviousEdits],
     );
 
     const resetState = useCallback(() => {
@@ -221,6 +236,7 @@ export const MissionEstimateEditor = forwardRef<MissionEstimateEditorHandle, Mis
       setNotes("");
       setPreviousMissionId(null);
       setPreviousInfo(null);
+      clearPreviousEdits();
       setLines([]);
       savedPersonCountsRef.current = null;
       savedCalcMetaRef.current = null;
@@ -228,16 +244,71 @@ export const MissionEstimateEditor = forwardRef<MissionEstimateEditorHandle, Mis
       // ไม่ set loading=true ค้างไว้ — effect โหลดจะเปิดเองเมื่อมี routeId/missionId
       setLoading(false);
       onApprovalTotalChange?.(0);
-    }, [onApprovalTotalChange]);
+    }, [onApprovalTotalChange, clearPreviousEdits]);
 
     useImperativeHandle(ref, () => ({
       reset: resetState,
       save: async (mid: string) => {
         if (!routeId) return;
-        const body = JSON.stringify(buildPayload());
+        const body = JSON.stringify({ ...buildPayload(), ...buildPreviousSyncPayload() });
         await apiJson(`/api/missions/${mid}/estimate`, { method: "PUT", body });
+        if (linkedPreviousEdited) {
+          syncPreviousInfoAfterSave();
+          clearPreviousEdits();
+        }
       },
     }));
+
+    function buildPreviousSyncPayload() {
+      if (!previousInfo || !previousMissionId) return {};
+      const previousAmountOverrides: Record<string, number> = {};
+      for (const line of lines) {
+        const key = estimateLineKey(line);
+        if (!editedPreviousKeys.has(key)) continue;
+        const amt = parseLooseNumber(line.previousAmount);
+        previousAmountOverrides[key] = Number.isFinite(amt) ? amt : 0;
+      }
+      return {
+        previousAmountOverrides,
+        syncPreviousLabel: previousLabelEdited,
+        syncPreviousDateRange: previousDateRangeEdited,
+      };
+    }
+
+    /** ให้แถบ/ปุ่ม «ใช้ยอดประมาณการก่อนหน้า» ใช้ค่าที่แก้แล้ว โดยไม่ต้องโหลดใหม่ */
+    function syncPreviousInfoAfterSave() {
+      setPreviousInfo((info) => {
+        if (!info) return info;
+        const amountsByKey = { ...info.amountsByKey };
+        const linesByKey = { ...info.linesByKey };
+        for (const line of lines) {
+          const key = estimateLineKey(line);
+          if (!editedPreviousKeys.has(key)) continue;
+          const amt = parseLooseNumber(line.previousAmount);
+          const value = Number.isFinite(amt) ? amt : 0;
+          amountsByKey[key] = value;
+          linesByKey[key] = { amount: value, quantity: null, unitPrice: null };
+        }
+        return {
+          ...info,
+          amountsByKey,
+          linesByKey,
+          label: previousLabelEdited ? previousLabel : info.label,
+          dateRange: previousDateRangeEdited ? previousDateRange : info.dateRange,
+          approvalTotal: editedPreviousKeys.size ? totals.previousApproval : info.approvalTotal,
+        };
+      });
+    }
+
+    function patchPreviousAmount(index: number, raw: string) {
+      const line = lines[index];
+      if (!line) return;
+      patchLine(index, { previousAmount: raw.trim() ? raw : null });
+      if (previousInfo) {
+        const key = estimateLineKey(line);
+        setEditedPreviousKeys((cur) => (cur.has(key) ? cur : new Set(cur).add(key)));
+      }
+    }
 
     function buildPayload() {
       return {
@@ -356,7 +427,19 @@ export const MissionEstimateEditor = forwardRef<MissionEstimateEditorHandle, Mis
       const byKey = previousInfo?.linesByKey;
       setLines((cur) =>
         cur.map((line) => {
-          const prev = byKey?.[estimateLineKey(line)];
+          const key = estimateLineKey(line);
+          if (editedPreviousKeys.has(key)) {
+            const amt = parseLooseNumber(line.previousAmount);
+            const value = Number.isFinite(amt) ? amt : 0;
+            if (line.qtyEditable && line.rateEditable) {
+              const qty = parseLooseNumber(line.quantity);
+              return qty > 0
+                ? { ...line, unitPrice: String(value / qty), amount: String(value) }
+                : { ...line, quantity: null, unitPrice: null, amount: String(value) };
+            }
+            return { ...line, amount: String(value) };
+          }
+          const prev = byKey?.[key];
           if (!prev) return line;
           const next = { ...line };
           if (line.qtyEditable && prev.quantity != null) next.quantity = String(prev.quantity);
@@ -494,7 +577,10 @@ export const MissionEstimateEditor = forwardRef<MissionEstimateEditorHandle, Mis
             <input
               className="mt-1 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900"
               value={previousLabel}
-              onChange={(e) => setPreviousLabel(e.target.value)}
+              onChange={(e) => {
+                setPreviousLabel(e.target.value);
+                if (previousInfo) setPreviousLabelEdited(true);
+              }}
             />
           </label>
           <label>
@@ -510,7 +596,10 @@ export const MissionEstimateEditor = forwardRef<MissionEstimateEditorHandle, Mis
             <input
               className="mt-1 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900"
               value={previousDateRange}
-              onChange={(e) => setPreviousDateRange(e.target.value)}
+              onChange={(e) => {
+                setPreviousDateRange(e.target.value);
+                if (previousInfo) setPreviousDateRangeEdited(true);
+              }}
             />
           </label>
         </section>
@@ -525,6 +614,14 @@ export const MissionEstimateEditor = forwardRef<MissionEstimateEditorHandle, Mis
               {previousInfo.approvalTotal != null ? (
                 <span className="ml-2 tabular-nums text-slate-600">
                   ยอดประมาณการก่อนหน้า {formatBaht(previousInfo.approvalTotal)}
+                </span>
+              ) : null}
+              <span className="mt-0.5 block text-[11px] text-slate-500">
+                แก้ยอดในคอลัมน์ «ก่อนหน้า» ได้ — เมื่อบันทึก ยอดที่แก้จะอัปเดตประมาณการของภารกิจต้นทางด้วย
+              </span>
+              {linkedPreviousEdited ? (
+                <span className="mt-0.5 block text-[11px] font-semibold text-amber-700">
+                  มีการแก้ไขข้อมูลก่อนหน้า — กดบันทึกเพื่ออัปเดตภารกิจ {previousInfo.code || previousInfo.title}
                 </span>
               ) : null}
             </p>
@@ -677,16 +774,27 @@ export const MissionEstimateEditor = forwardRef<MissionEstimateEditorHandle, Mis
                       )}
                     </td>
                     <td className="border-b border-slate-100 px-2 py-1 text-right tabular-nums text-slate-600">
-                      {!booked ? null : manualPrevious ? (
+                      {!booked ? null : (
                         <CommaNumberInput
                           aria-label={`ยอดก่อนหน้า ${line.name}`}
-                          className="w-full rounded-md border border-amber-200 bg-amber-50/40 px-2 py-1 text-right text-sm tabular-nums"
+                          title={
+                            manualPrevious
+                              ? undefined
+                              : editedPreviousKeys.has(estimateLineKey(line))
+                                ? "แก้ไขแล้ว — จะอัปเดตภารกิจต้นทางเมื่อบันทึก"
+                                : "ลิงก์กับประมาณการภารกิจต้นทาง"
+                          }
+                          className={`w-full rounded-md border px-2 py-1 text-right text-sm tabular-nums ${
+                            manualPrevious
+                              ? "border-amber-200 bg-amber-50/40"
+                              : editedPreviousKeys.has(estimateLineKey(line))
+                                ? "border-amber-400 bg-amber-50 font-semibold text-amber-900"
+                                : "border-[#0000BF]/15 bg-[#0000BF]/[0.03]"
+                          }`}
                           value={line.previousAmount ?? ""}
                           maxFractionDigits={2}
-                          onChange={(raw) => patchLine(idx, { previousAmount: raw.trim() ? raw : null })}
+                          onChange={(raw) => patchPreviousAmount(idx, raw)}
                         />
-                      ) : (
-                        formatBaht(previous, { empty: "—" })
                       )}
                     </td>
                     <td className={`border-b border-slate-100 px-2 py-1.5 text-right tabular-nums ${deltaClass(delta)}`}>

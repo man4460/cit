@@ -194,6 +194,94 @@ export function serializeEstimate(row: {
   };
 }
 
+function parsePreviousAmountOverrides(raw: unknown): Map<string, number> {
+  const out = new Map<string, number>();
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return out;
+  for (const [key, value] of Object.entries(raw as Record<string, unknown>)) {
+    if (value == null || value === "") continue;
+    const num = typeof value === "number" ? value : Number(String(value).replace(/,/g, ""));
+    if (Number.isFinite(num)) out.set(key, num);
+  }
+  return out;
+}
+
+/**
+ * แก้ยอดในหน้าประมาณการภารกิจถัดไป (คอลัมน์ «ก่อนหน้า») → เขียนกลับเป็นยอด «ครั้งนี้» ของภารกิจต้นทาง
+ * แก้เฉพาะแถวที่ผู้ใช้แก้ เพื่อไม่ทับข้อมูลต้นทางด้วยค่าที่โหลดไว้เก่า
+ */
+async function syncEditsToPreviousEstimate(
+  previousMissionId: string,
+  amountOverrides: Map<string, number>,
+  header: { label?: string; dateRange?: string },
+) {
+  if (!amountOverrides.size && header.label === undefined && header.dateRange === undefined) return;
+  const source = await prisma.missionEstimate.findUnique({
+    where: { missionId: previousMissionId },
+    include: { lines: { orderBy: { sortOrder: "asc" } } },
+  });
+  if (!source) return;
+
+  const changedLines: { id: string; quantity: Prisma.Decimal | null; unitPrice: Prisma.Decimal | null; amount: Prisma.Decimal }[] = [];
+  const nextInputs: EstimateLineInput[] = source.lines.map((line) => {
+    const base: EstimateLineInput = {
+      kind: line.kind === "GROUP" ? "GROUP" : "ITEM",
+      groupCode: line.groupCode,
+      itemCode: line.itemCode,
+      name: line.name,
+      quantity: line.quantity == null ? null : n(line.quantity),
+      unitPrice: line.unitPrice == null ? null : n(line.unitPrice),
+      amount: n(line.amount),
+      previousAmount: line.previousAmount == null ? null : n(line.previousAmount),
+      qtyEditable: line.qtyEditable,
+      rateEditable: line.rateEditable,
+      includeInTotal: line.includeInTotal,
+      isReserve: line.isReserve,
+    };
+    const override = amountOverrides.get(lineKey(line));
+    if (override === undefined) return base;
+
+    let quantity = line.quantity;
+    let unitPrice = line.unitPrice;
+    if (line.qtyEditable && line.rateEditable) {
+      // ยอดคำนวณจาก คน × อัตรา — ปรับอัตราให้ได้ยอดใหม่ หรือถ้าไม่มีจำนวนคนให้ใช้ยอดตรง
+      const qty = line.quantity == null ? 0 : n(line.quantity);
+      if (qty > 0) {
+        unitPrice = new Prisma.Decimal(override / qty);
+      } else {
+        quantity = null;
+        unitPrice = null;
+      }
+    }
+    changedLines.push({ id: line.id, quantity, unitPrice, amount: new Prisma.Decimal(override) });
+    return {
+      ...base,
+      quantity: quantity == null ? null : n(quantity),
+      unitPrice: unitPrice == null ? null : n(unitPrice),
+      amount: override,
+    };
+  });
+
+  const totals = computeEstimateTotals(nextInputs);
+  await prisma.$transaction([
+    ...changedLines.map((c) =>
+      prisma.missionEstimateLine.update({
+        where: { id: c.id },
+        data: { quantity: c.quantity, unitPrice: c.unitPrice, amount: c.amount },
+      }),
+    ),
+    prisma.missionEstimate.update({
+      where: { id: source.id },
+      data: {
+        ...(header.label !== undefined ? { currentLabel: header.label } : {}),
+        ...(header.dateRange !== undefined ? { currentDateRange: header.dateRange } : {}),
+        reserveAmount: new Prisma.Decimal(totals.reserveAmount),
+        roundedSpend: new Prisma.Decimal(totals.roundedSpend),
+        approvalTotal: new Prisma.Decimal(totals.approvalTotal),
+      },
+    }),
+  ]);
+}
+
 /** บันทึกประมาณการให้ภารกิจที่มีอยู่แล้ว — ไม่สร้างภารกิจใหม่ ไม่แตะค่าใช้จ่ายจริง */
 export async function upsertEstimateForMission(missionId: string, body: Record<string, unknown>) {
   const mission = await prisma.mission.findUnique({ where: { id: missionId }, select: { id: true } });
@@ -265,6 +353,16 @@ export async function upsertEstimateForMission(missionId: string, body: Record<s
   } else {
     await prisma.missionEstimate.create({
       data: { missionId, ...header, lines: { create: lineCreates } },
+    });
+  }
+
+  if (previousId && previousId !== missionId) {
+    await syncEditsToPreviousEstimate(previousId, parsePreviousAmountOverrides(body.previousAmountOverrides), {
+      label: body.syncPreviousLabel === true && typeof body.previousLabel === "string" ? body.previousLabel : undefined,
+      dateRange:
+        body.syncPreviousDateRange === true && typeof body.previousDateRange === "string"
+          ? body.previousDateRange
+          : undefined,
     });
   }
 
