@@ -854,7 +854,14 @@ missionsRouter.get("/", async (_req, res, next) => {
       include: {
         route: true,
         _count: {
-          select: { personnel: true, vehicles: true, destinations: true, expenses: true, attachments: true },
+          select: {
+            personnel: true,
+            vehicles: true,
+            destinations: true,
+            expenses: true,
+            attachments: true,
+            incidents: true,
+          },
         },
       },
     });

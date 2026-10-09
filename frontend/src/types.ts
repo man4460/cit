@@ -761,6 +761,7 @@ export interface MissionListItem {
     destinations: number;
     expenses: number;
     attachments?: number;
+    incidents?: number;
   };
 }
 

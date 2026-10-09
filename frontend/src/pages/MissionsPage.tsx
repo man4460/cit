@@ -186,6 +186,9 @@ export function MissionsPage() {
             <button type="button" className={toolbarLinkBtnClass} onClick={() => void downloadAllMissionsExcel()}>
               ดาวน์โหลด Excel
             </button>
+            <Link to="/missions/incidents" className={toolbarLinkBtnClass}>
+              เหตุการณ์ไม่ปกติ
+            </Link>
             <button type="button" className={toolbarLinkBtnClass} onClick={() => setNotesOpen(true)}>
               โน้ตสำคัญ
             </button>
@@ -241,10 +244,8 @@ export function MissionsPage() {
                         <p className="mt-1 font-mono text-[11px] text-[#66638c]">{m.code}</p>
                       ) : null}
                       <p className="mt-2 text-[11px] text-slate-600">
-                        <span className="font-medium text-[#4d47b6]">ไป</span>{" "}
                         {formatMissionListDateTime(m.plannedStart)}
-                        <span className="mx-1.5 text-slate-400">·</span>
-                        <span className="font-medium text-[#ec4899]">กลับ</span>{" "}
+                        <span className="mx-1.5 text-slate-400">–</span>
                         {formatMissionListDateTime(m.plannedEnd)}
                       </p>
                       {m.route ? (
@@ -252,6 +253,13 @@ export function MissionsPage() {
                           {m.route.startLocation}
                           <span className="mx-1 text-[#8b5cf6]">→</span>
                           {m.route.endLocation}
+                        </p>
+                      ) : null}
+                      {m._count.incidents ? (
+                        <p className="mt-1.5">
+                          <span className="inline-flex rounded-full bg-rose-50 px-2 py-0.5 text-[10px] font-bold text-rose-700 ring-1 ring-rose-200">
+                            เหตุการณ์ไม่ปกติ {m._count.incidents}
+                          </span>
                         </p>
                       ) : null}
                       {typeof m._count.attachments === "number" && m._count.attachments > 0 ? (

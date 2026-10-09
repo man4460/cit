@@ -3,6 +3,7 @@ import { createPortal } from "react-dom";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { apiFormJson, apiJson, apiUrl } from "../api/client";
 import { MissionBotAllowancePrintSheet } from "../components/MissionBotAllowancePrintSheet";
+import { MissionIncidentsPanel } from "../components/MissionIncidentsPanel";
 import { MissionInsuranceExportModal } from "../components/MissionInsuranceExportModal";
 import { MissionPoliceAllowancePrintSheet } from "../components/MissionPoliceAllowancePrintSheet";
 import { MissionReportModal } from "../components/MissionReportModal";
@@ -59,6 +60,7 @@ export function MissionSummaryPage() {
   const [uploading, setUploading] = useState(false);
   const [insuranceOpen, setInsuranceOpen] = useState(false);
   const [reportOpen, setReportOpen] = useState(false);
+  const [incidentCount, setIncidentCount] = useState(0);
 
   const load = useCallback(async () => {
     try {
@@ -208,6 +210,11 @@ export function MissionSummaryPage() {
           <span className={`rounded-full px-2.5 py-0.5 text-[11px] font-bold ring-1 ${statusChip[status]}`}>
             {statusLabel[status]}
           </span>
+          {incidentCount ? (
+            <span className="rounded-full bg-rose-50 px-2.5 py-0.5 text-[11px] font-bold text-rose-700 ring-1 ring-rose-200">
+              เหตุการณ์ไม่ปกติ {incidentCount}
+            </span>
+          ) : null}
         </div>
         <h1 className="mt-1.5 text-xl font-black leading-snug text-slate-900 sm:text-2xl">
           {summary.title?.trim() || "ภารกิจ"}
@@ -289,6 +296,12 @@ export function MissionSummaryPage() {
 
       <div className="grid gap-5 lg:grid-cols-3">
         <div className="space-y-5 lg:col-span-2">
+          <MissionIncidentsPanel
+            missionId={summary.missionId}
+            plannedStart={summary.plannedStart}
+            plannedEnd={summary.plannedEnd}
+            onCountChange={setIncidentCount}
+          />
           <Panel title="บุคลากร" count={personnel.length}>
             {personnel.length ? (
               <Table head={["#", "ชื่อ - สกุล", "ประเภท", "หน้าที่", "ค่าตอบแทน (฿)"]} alignRight={[4]}>

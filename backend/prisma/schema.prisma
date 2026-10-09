@@ -770,6 +770,53 @@ model Mission {
   previousForEstimates MissionEstimate[] @relation("EstimatePreviousTrip")
   evaluationLink       MissionEvaluationLink?
   evaluationResponses  MissionEvaluationResponse[]
+  incidents            MissionIncident[]
+}
+
+enum MissionIncidentSeverity {
+  LOW
+  MEDIUM
+  HIGH
+}
+
+/// บันทึกเหตุการณ์ไม่ปกติระหว่างทริปขนส่งธนบัตร (แยกจากโมดูลรายงานเหตุการณ์ไม่ปกติ) — ใช้ประกอบรายงานผลการปฏิบัติ
+model MissionIncident {
+  id            String                  @id @default(uuid())
+  missionId     String
+  mission       Mission                 @relation(fields: [missionId], references: [id], onDelete: Cascade)
+  occurredAt    DateTime
+  /// ประเภทเหตุการณ์ เช่น รถขัดข้อง / อุบัติเหตุ / บุคคลหรือยานพาหนะต้องสงสัย
+  category      String
+  severity      MissionIncidentSeverity @default(MEDIUM)
+  location      String?
+  description   String                  @db.Text
+  actionTaken   String?                 @db.Text
+  /// ความล่าช้าที่เกิดจากเหตุการณ์ (นาที)
+  delayMinutes  Int?
+  /// ทรัพย์สิน/ตู้สินค้าได้รับผลกระทบหรือไม่
+  cargoAffected Boolean                 @default(false)
+  resolved      Boolean                 @default(true)
+  reportedBy    String?
+  createdAt     DateTime                @default(now())
+  updatedAt     DateTime                @updatedAt
+
+  photos MissionIncidentPhoto[]
+
+  @@index([missionId, occurredAt])
+}
+
+model MissionIncidentPhoto {
+  id             String          @id @default(uuid())
+  incidentId     String
+  incident       MissionIncident @relation(fields: [incidentId], references: [id], onDelete: Cascade)
+  /// พาธสัมพัทธ์ใต้โฟลเดอร์อัปโหลด
+  storedFilename String
+  originalName   String?
+  mimeType       String?
+  sortOrder      Int             @default(0)
+  createdAt      DateTime        @default(now())
+
+  @@index([incidentId])
 }
 
 /// ลิงก์/QR แบบประเมินภารกิจ (หนึ่งภารกิจหนึ่งลิงก์) — บุคลากรในทริปเปิดกรอกโดยไม่ต้องล็อกอิน

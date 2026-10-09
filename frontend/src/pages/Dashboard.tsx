@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { DashboardStatDetailModal, type DashboardStatKind } from "../components/DashboardStatDetailModal";
 import { FitSingleLine } from "../components/FitSingleLine";
+import { MissionIncidentStatsCard } from "../components/MissionIncidentStatsSection";
 import { PageHeaderBar } from "../components/PageHeaderBar";
 import { rowMatchesFilter } from "../lib/searchNormalize";
 import {
@@ -85,10 +86,13 @@ function AreaSummaryPanel({ areas, className = "" }: { areas: MissionYearAreaSta
               </div>
               <span
                 className={`shrink-0 text-right font-bold tabular-nums ${i === 0 ? "text-[#4d47b6]" : "text-[#2e2a58]"}`}
+                title={`${pct(r.cargo)} ของยอดรวม`}
               >
                 {r.cargo.toLocaleString("th-TH", { maximumFractionDigits: 2 })}
               </span>
-              <span className="w-10 shrink-0 text-right tabular-nums text-slate-500">{pct(r.cargo)}</span>
+              <span className="w-10 shrink-0 text-right tabular-nums text-slate-500 lg:hidden 2xl:inline print:inline">
+                {pct(r.cargo)}
+              </span>
               <span className="w-11 shrink-0 text-right font-semibold tabular-nums text-amber-600">
                 {r.containers.toLocaleString("th-TH")} ตู้
               </span>
@@ -115,6 +119,7 @@ function MetricBarChart<T extends MetricRow>({
   unit,
   integer,
   extra,
+  compact,
   className = "",
 }: {
   title: string;
@@ -124,6 +129,8 @@ function MetricBarChart<T extends MetricRow>({
   unit: string;
   integer?: boolean;
   extra?: (row: T) => string | null;
+  /** การ์ดแคบ — ให้ recharts ข้ามป้ายเดือนที่ชนกัน */
+  compact?: boolean;
   className?: string;
 }) {
   const total = data.reduce((s, row) => s + (Number(row[dataKey]) || 0), 0);
@@ -147,7 +154,7 @@ function MetricBarChart<T extends MetricRow>({
             <CartesianGrid strokeDasharray="3 3" stroke={chartGridStroke} vertical={false} />
             <XAxis
               dataKey="label"
-              interval={0}
+              interval={compact ? "preserveStartEnd" : 0}
               tick={{ fill: chartAxisFill, fontSize: 9.5, fontFamily: "Noto Sans Thai, sans-serif" }}
               tickLine={false}
               axisLine={{ stroke: chartGridStroke }}
@@ -513,7 +520,7 @@ export function Dashboard() {
                   : null
               }
             />
-            <div className={`${chartCardClass} h-[220px] lg:col-span-4 lg:h-auto print:h-auto`}>
+            <div className={`${chartCardClass} h-[220px] lg:col-span-3 lg:h-auto print:h-auto`}>
               <h3 className={chartTitleClass}>น้ำมันภารกิจ (ลิตร)</h3>
               <div className="min-h-0 w-full min-w-0 flex-1 print:h-[4.6cm] print:flex-none">
                 <ResponsiveContainer width="100%" height="100%">
@@ -521,7 +528,7 @@ export function Dashboard() {
                     <CartesianGrid strokeDasharray="3 3" stroke={chartGridStroke} vertical={false} />
                     <XAxis
                       dataKey="label"
-                      interval={0}
+                      interval="preserveStartEnd"
                       tick={{ fill: chartAxisFill, fontSize: 9.5, fontFamily: "Noto Sans Thai, sans-serif" }}
                       tickLine={false}
                       axisLine={{ stroke: chartGridStroke }}
@@ -572,16 +579,18 @@ export function Dashboard() {
             </div>
 
             <MetricBarChart
-              className="lg:col-span-4"
+              className="lg:col-span-3"
               title="บำรุงรถ (บาท)"
               data={displayChartData}
               dataKey="maintenanceBaht"
               color={chartSeries.maintenance}
               unit="บาท"
+              compact
             />
+            <MissionIncidentStatsCard year={selectedYear} className="lg:col-span-3" />
             <AreaSummaryPanel
               areas={filteredAreas}
-              className="lg:col-span-4 lg:min-h-0 print:col-span-2"
+              className="lg:col-span-3 lg:min-h-0 print:col-span-2"
             />
           </div>
         )}

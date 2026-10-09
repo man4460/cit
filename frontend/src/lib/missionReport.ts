@@ -1,5 +1,6 @@
 import { formatBaht } from "./formatNumber";
 import type { EvaluationSummary } from "./missionEvaluation";
+import { incidentReportLines, type MissionIncident } from "./missionIncidents";
 import type { MissionSummary } from "../types";
 
 export type MissionOutcome = "success" | "successWithIssues" | "incomplete";
@@ -26,6 +27,8 @@ export type ReportExtras = {
   /** ยอดขออนุมัติตามประมาณการ */
   approvedBudget: number | null;
   evaluation: EvaluationSummary | null;
+  /** บันทึกเหตุการณ์ไม่ปกติของทริป */
+  incidents: MissionIncident[];
 };
 
 const TRUCK_HIRE_KEYWORD = "ค่าจ้างรถบรรทุก";
@@ -227,8 +230,19 @@ function buildSections(s: MissionSummary, form: ReportForm, extras: ReportExtras
     sections.push({ title: `${n++}. ค่าใช้จ่าย`, lines });
   }
 
-  const incidents = form.incidents.trim() || "ไม่มีเหตุการณ์ผิดปกติ";
-  sections.push({ title: `${n++}. เหตุการณ์ระหว่างปฏิบัติ`, lines: incidents.split(/\r?\n/).map((t) => ({ text: t, indent: 1 })) });
+  const incidentLines: Line[] = [];
+  extras.incidents.forEach((inc, i) => {
+    const { head, details } = incidentReportLines(inc);
+    incidentLines.push({ text: `${i + 1}) ${head}`, indent: 1, bold: inc.severity === "HIGH" || inc.cargoAffected });
+    for (const d of details) incidentLines.push({ text: d, indent: 2 });
+  });
+  const note = form.incidents.trim();
+  if (note) {
+    if (incidentLines.length) incidentLines.push({ text: "หมายเหตุเพิ่มเติม:", indent: 1 });
+    for (const t of note.split(/\r?\n/)) incidentLines.push({ text: t, indent: extras.incidents.length ? 2 : 1 });
+  }
+  if (!incidentLines.length) incidentLines.push({ text: "ไม่มีเหตุการณ์ผิดปกติ", indent: 1 });
+  sections.push({ title: `${n++}. เหตุการณ์ระหว่างปฏิบัติ`, lines: incidentLines });
 
   const ev = extras.evaluation;
   if (form.includeEvaluation && ev && ev.responseCount > 0) {

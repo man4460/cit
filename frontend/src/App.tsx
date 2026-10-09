@@ -19,6 +19,7 @@ import { AssetsPage } from "./pages/AssetsPage";
 import { MissionsPage } from "./pages/MissionsPage";
 import { MissionFormPage } from "./pages/MissionFormPage";
 import { MissionSummaryPage } from "./pages/MissionSummaryPage";
+import { MissionIncidentsPage } from "./pages/MissionIncidentsPage";
 import { MissionCentralMemoPage } from "./pages/MissionCentralMemoPage";
 import { MissionTravelPlanMemoPage } from "./pages/MissionTravelPlanMemoPage";
 import { RouteMasterPage } from "./pages/RouteMasterPage";
@@ -81,6 +82,7 @@ export default function App() {
               <Route path="assets/armor-monthly" element={<ArmorMonthlyInspectionPage />} />
               <Route path="missions" element={<MissionsPage />} />
               <Route path="missions/new" element={<MissionFormPage />} />
+              <Route path="missions/incidents" element={<MissionIncidentsPage />} />
               <Route path="missions/:id/summary" element={<MissionSummaryPage />} />
               <Route path="missions/:id/central-memo" element={<MissionCentralMemoPage />} />
               <Route path="missions/:id/travel-plan-memo" element={<MissionTravelPlanMemoPage />} />

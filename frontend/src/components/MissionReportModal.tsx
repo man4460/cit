@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { apiJson } from "../api/client";
 import { useAuth } from "../context/AuthContext";
 import type { EvaluationDetail } from "../lib/missionEvaluation";
+import { formatIncidentTime, severityMeta, type MissionIncident } from "../lib/missionIncidents";
 import {
   OUTCOME_OPTIONS,
   buildReportHtml,
@@ -88,8 +89,9 @@ function Toggle({ checked, onChange, label, disabled }: { checked: boolean; onCh
 export function MissionReportModal({ open, onClose, summary }: Props) {
   const { user } = useAuth();
   const reporterDefault = user?.fullName?.trim() || user?.username || "";
+  const [hadDraft] = useState(() => localStorage.getItem(draftKey(summary.missionId)) != null);
   const [form, setForm] = useState<ReportForm>(() => loadDraft(summary.missionId, reporterDefault));
-  const [extras, setExtras] = useState<ReportExtras>({ approvedBudget: null, evaluation: null });
+  const [extras, setExtras] = useState<ReportExtras>({ approvedBudget: null, evaluation: null, incidents: [] });
   const [copied, setCopied] = useState<"subject" | "body" | null>(null);
 
   useEffect(() => {
@@ -98,18 +100,23 @@ export function MissionReportModal({ open, onClose, summary }: Props) {
     void Promise.all([
       apiJson<EstimateTotals>(`/api/missions/${summary.missionId}/estimate`).catch(() => null),
       apiJson<EvaluationDetail>(`/api/mission-evaluations/${summary.missionId}`, { skipCache: true }).catch(() => null),
-    ]).then(([est, ev]) => {
+      apiJson<MissionIncident[]>(`/api/missions/${summary.missionId}/incidents`, { skipCache: true }).catch(() => []),
+    ]).then(([est, ev, incidents]) => {
       if (cancelled) return;
       const approved = est?.approvalTotal != null && est.approvalTotal !== "" ? Number(est.approvalTotal) : null;
       setExtras({
         approvedBudget: approved != null && Number.isFinite(approved) && approved > 0 ? approved : null,
         evaluation: ev?.summary ?? null,
+        incidents,
       });
+      if (!hadDraft && incidents.length) {
+        setForm((f) => (f.outcome === "success" ? { ...f, outcome: "successWithIssues" } : f));
+      }
     });
     return () => {
       cancelled = true;
     };
-  }, [open, summary.missionId]);
+  }, [open, summary.missionId, hadDraft]);
 
   useEffect(() => {
     try {
@@ -211,11 +218,29 @@ export function MissionReportModal({ open, onClose, summary }: Props) {
 
           <section className="space-y-1.5">
             <label className="text-xs font-bold uppercase tracking-wide text-slate-500">เหตุการณ์ระหว่างปฏิบัติ</label>
+            {extras.incidents.length ? (
+              <div className="space-y-1 rounded-xl border border-rose-100 bg-rose-50/50 p-2.5">
+                <p className="text-[11px] font-semibold text-rose-700">
+                  ดึงจากบันทึกเหตุการณ์ไม่ปกติ {extras.incidents.length} รายการ
+                </p>
+                <ul className="space-y-0.5">
+                  {extras.incidents.map((i) => (
+                    <li key={i.id} className="flex items-center gap-1.5 text-xs text-slate-700">
+                      <span className={`h-2 w-2 shrink-0 rounded-full ${severityMeta(i.severity).dot}`} />
+                      <span className="tabular-nums text-slate-500">{formatIncidentTime(i.occurredAt)}</span>
+                      <span className="truncate font-medium">{i.category}</span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            ) : (
+              <p className="text-[11px] text-slate-500">ไม่มีบันทึกเหตุการณ์ไม่ปกติในทริปนี้ (เพิ่มได้ที่หน้าสรุปภารกิจ)</p>
+            )}
             <textarea
-              className={`${inputCls} min-h-[5rem]`}
+              className={`${inputCls} min-h-[4rem]`}
               value={form.incidents}
               onChange={(e) => patch({ incidents: e.target.value })}
-              placeholder="เว้นว่าง = ไม่มีเหตุการณ์ผิดปกติ (พิมพ์ได้หลายบรรทัด)"
+              placeholder="หมายเหตุเพิ่มเติม (ไม่บังคับ)"
             />
           </section>
 
