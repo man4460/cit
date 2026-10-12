@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { gradeSortValue, policeRankIndex } from "../lib/allowanceDocs";
 import { Link, useLocation, useNavigate, useParams } from "react-router-dom";
 import { apiJson } from "../api/client";
 import {
@@ -115,6 +116,28 @@ function withAutoLiters(row: VRow, prices: FuelPrices): VRow {
 type DRow = { address: string; cargoValue: string; containerCount: number };
 type PsRow = { policeStationId: string; amount: string; estimateItemCode: string; note?: string | null };
 
+const LOADED_MARK = "__loaded__";
+
+/** ธปท./คนขับ: ตามลำดับบทบาท (ผอ.เดินทาง → … → สื่อสาร) แล้วชั้นสูงก่อน · ตำรวจ: ยศสูงก่อน แล้วนำขบวน → ปิดท้าย */
+function sortMissionPersonnelRows(rows: PRow[], personnel: Personnel[], roles: NameMasterRow[]): PRow[] {
+  const roleOrder = new Map(roles.map((r) => [r.id, r.sortOrder]));
+  const byId = new Map(personnel.map((p) => [p.id, p]));
+  const roleOf = (r: PRow) => roleOrder.get(r.personnelRoleId) ?? Number.MAX_SAFE_INTEGER;
+  return rows
+    .map((row, i) => ({ row, i, person: byId.get(row.personnelId) }))
+    .sort((a, b) => {
+      const police = a.row.tabKey !== "bot" && a.row.tabKey !== "driver";
+      const byRole = roleOf(a.row) - roleOf(b.row);
+      const byRank = policeRankIndex(a.person?.rank ?? "") - policeRankIndex(b.person?.rank ?? "");
+      const byGrade = gradeSortValue(b.person?.gradeLevel) - gradeSortValue(a.person?.gradeLevel);
+      return (
+        (police ? byRank || byRole : byRole || (Number.isNaN(byGrade) ? 0 : byGrade)) ||
+        (a.person?.fullName ?? "").localeCompare(b.person?.fullName ?? "", "th") ||
+        a.i - b.i
+      );
+    })
+    .map(({ row }) => row);
+}
 const SPECIAL_OPS_NOTE_RE = /^split:2\.6=([\d.]+);2\.7=([\d.]+)$/;
 
 function encodeSpecialOpsSplitNote(admin: number, vehicle: number): string {
@@ -450,7 +473,16 @@ export function MissionFormPage() {
     setVRows(next);
   };
 
+  /** คำนวณค่าตอบแทน ธปท. ใหม่เฉพาะเมื่อวันที่/จำนวนวันเปลี่ยน — ไม่ทับยอดที่แก้เองตอนเปิดภารกิจ */
+  const autoCompKeyRef = useRef<string | null>(null);
   useEffect(() => {
+    const key = `${plannedStart}|${plannedEnd}|${routeMissionDays ?? ""}`;
+    if (autoCompKeyRef.current === LOADED_MARK) {
+      autoCompKeyRef.current = key;
+      return;
+    }
+    if (autoCompKeyRef.current === key) return;
+    autoCompKeyRef.current = key;
     setPRows((prev) =>
       prev.map((row) => {
         const person = personnel.find((p) => p.id === row.personnelId);
@@ -460,7 +492,7 @@ export function MissionFormPage() {
         return { ...row, compensationRate: auto };
       }),
     );
-  }, [plannedStart, plannedEnd, personnel, routeMissionDays]);
+  }, [plannedStart, plannedEnd, routeMissionDays, personnel]);
 
   useEffect(() => {
     if (!policeStationMasters.length) return;
@@ -535,6 +567,7 @@ export function MissionFormPage() {
         else setTitle("สำเนาภารกิจ");
       }
       setStep(0);
+      autoCompKeyRef.current = LOADED_MARK;
       setRouteId(mission.routeId ?? "");
       setPlannedStart(isoToLocalDatetimeValue(mission.plannedStart));
       setPlannedEnd(isoToLocalDatetimeValue(mission.plannedEnd));
@@ -545,18 +578,22 @@ export function MissionFormPage() {
       const vehicleRows = mission.vehicles.filter((v) => v.vehicleId && v.vehicleRoleId);
       setPRows(
         personRows.length
-          ? personRows.map((p) => {
-              const person = personnel.find((x) => x.id === p.personnelId);
-              const tabKey =
-                missionPersonnelTabByCategory(person?.personnelCategory?.name) ?? "bot";
-              return {
-                personnelId: p.personnelId,
-                personnelRoleId: p.personnelRoleId,
-                compensationRate: String(p.compensationRate ?? "0"),
-                tabKey,
-                assignedVehicleId: p.assignedVehicleId ?? "",
-              };
-            })
+          ? sortMissionPersonnelRows(
+              personRows.map((p) => {
+                const person = personnel.find((x) => x.id === p.personnelId);
+                const tabKey =
+                  missionPersonnelTabByCategory(person?.personnelCategory?.name) ?? "bot";
+                return {
+                  personnelId: p.personnelId,
+                  personnelRoleId: p.personnelRoleId,
+                  compensationRate: String(p.compensationRate ?? "0"),
+                  tabKey,
+                  assignedVehicleId: p.assignedVehicleId ?? "",
+                };
+              }),
+              personnel,
+              personnelRoleMasters,
+            )
           : [
               {
                 personnelId: "",

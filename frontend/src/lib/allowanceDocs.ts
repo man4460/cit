@@ -68,7 +68,7 @@ export function botRowTotal(r: BotDocRow): number {
 }
 
 /** ค่าลำดับชั้นสำหรับเรียงสูง→ต่ำ: ตัวเลขชั้น (+0.5 ถ้าควบ) · จรส. อยู่ต่ำกว่าชั้นตัวเลข · ไม่ระบุอยู่ท้ายสุด */
-function gradeSortValue(grade: string | null | undefined): number {
+export function gradeSortValue(grade: string | null | undefined): number {
   const g = (grade ?? "").replace(/\s+/g, "");
   if (!g) return -Infinity;
   const concurrent = /ควบ/.test(g) ? 0.5 : 0;
@@ -156,7 +156,7 @@ const POLICE_RANK_ORDER = [
   "ส.ต.ต.",
 ];
 
-function policeRankIndex(rank: string): number {
+export function policeRankIndex(rank: string): number {
   const raw = rank.replace(/\s+/g, "").replace(/หญิง/g, "");
   const acting = raw.startsWith("ว่าที่");
   const r = acting ? raw.slice("ว่าที่".length) : raw;
