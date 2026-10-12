@@ -13,7 +13,53 @@ export function isEstimateItemLine(line: Pick<MissionEstimateLine, "kind">): boo
   return line.kind === "ITEM";
 }
 
+/** ข้อ 1 ค่ารับรอง — คน×อัตรา ปัดขึ้นหลักร้อย และแก้ยอดรวมเองได้ */
+export function isHundredRoundedEstimateLine(line: Pick<MissionEstimateLine, "kind" | "groupCode">): boolean {
+  return line.kind === "ITEM" && line.groupCode === "1";
+}
+
+export function roundUpToHundred(value: number): number {
+  return Math.ceil(Math.round(value * 100) / 100 / 100) * 100;
+}
+
+function rawQtyRateAmount(line: Pick<MissionEstimateLine, "quantity" | "unitPrice">): number | null {
+  const qty = parseLooseNumber(line.quantity);
+  const rate = parseLooseNumber(line.unitPrice);
+  return Number.isFinite(qty) && Number.isFinite(rate) ? qty * rate : null;
+}
+
+/** ข้อ 1 — ยอดที่ยังเป็นคน×อัตรา (ไม่ปัด) ปัดขึ้นหลักร้อย; ยอดที่แก้เองคงไว้ */
+export function normalizeHundredRoundedLine<T extends MissionEstimateLine>(line: T): T {
+  if (!isHundredRoundedEstimateLine(line) || !line.qtyEditable || !line.rateEditable) return line;
+  const amt = parseLooseNumber(line.amount);
+  const raw = rawQtyRateAmount(line);
+  const auto = !Number.isFinite(amt) || (raw != null && Math.abs(amt - raw) < 0.005);
+  return {
+    ...line,
+    amountEditable: true,
+    amount: auto ? String(raw == null ? 0 : roundUpToHundred(Math.max(0, raw))) : line.amount,
+  };
+}
+
+/** แก้แถวประมาณการ — ข้อ 1 เมื่อแก้คน/อัตรา คำนวณยอดใหม่ (ปัดขึ้นหลักร้อย) */
+export function patchEstimateLine<T extends MissionEstimateLine>(line: T, patch: Partial<T>): T {
+  const next = { ...line, ...patch };
+  if (!isHundredRoundedEstimateLine(next)) return next;
+  next.amountEditable = true;
+  if (!("amount" in patch) && ("quantity" in patch || "unitPrice" in patch)) {
+    const raw = rawQtyRateAmount(next);
+    next.amount = String(raw == null ? 0 : roundUpToHundred(Math.max(0, raw)));
+  }
+  return next;
+}
+
 export function lineCurrentAmount(line: MissionEstimateLine): number {
+  if (isHundredRoundedEstimateLine(line)) {
+    const amt = parseLooseNumber(line.amount);
+    if (Number.isFinite(amt)) return amt;
+    const raw = rawQtyRateAmount(line);
+    return raw == null ? 0 : roundUpToHundred(Math.max(0, raw));
+  }
   // ค่าใช้จ่ายจริง / ยอดรวม — ใช้ช่อง amount ตรง ๆ ไม่คูณจำนวน×อัตรา
   if (!line.qtyEditable || !line.rateEditable) {
     const amt = parseLooseNumber(line.amount);
@@ -74,6 +120,7 @@ export function forceLumpSumEstimateLines(
   opts?: { zeroIfEmpty?: boolean },
 ): MissionEstimateLine[] {
   return lines.map((line) => {
+    if (isHundredRoundedEstimateLine(line)) return normalizeHundredRoundedLine(line);
     if (POLICE_COUNT_AMOUNT_ITEM_CODES.has(line.itemCode ?? "")) {
       return {
         ...line,
@@ -291,14 +338,16 @@ export function templateToFormLines(template: {
   >;
 }): MissionEstimateLine[] {
   return mergeLegacyEnlistedEstimateLines(
-    template.lines.map((line, i) => ({
-      ...line,
-      sortOrder: line.sortOrder ?? i,
-      quantity: line.quantity == null ? null : String(line.quantity),
-      unitPrice: line.unitPrice == null ? null : String(line.unitPrice),
-      amount: String(line.amount ?? 0),
-      previousAmount: line.previousAmount == null ? null : String(line.previousAmount),
-    })),
+    template.lines.map((line, i) =>
+      normalizeHundredRoundedLine({
+        ...line,
+        sortOrder: line.sortOrder ?? i,
+        quantity: line.quantity == null ? null : String(line.quantity),
+        unitPrice: line.unitPrice == null ? null : String(line.unitPrice),
+        amount: String(line.amount ?? 0),
+        previousAmount: line.previousAmount == null ? null : String(line.previousAmount),
+      }),
+    ),
   );
 }
 

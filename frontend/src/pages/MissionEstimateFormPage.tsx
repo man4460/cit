@@ -13,8 +13,11 @@ import {
   computeEstimateTotals,
   estimateLineKey,
   formatThaiDateRangeLabel,
+  isHundredRoundedEstimateLine,
   isoToLocalDatetimeValue,
   lineCurrentAmount,
+  normalizeHundredRoundedLine,
+  patchEstimateLine,
   templateToFormLines,
 } from "../lib/missionEstimate";
 import {
@@ -155,7 +158,7 @@ export function MissionEstimateFormPage() {
           setNotes(row.notes ?? "");
           setPreviousMissionId(row.previousMissionId);
           setMissionId(row.missionId);
-          setLines(row.lines);
+          setLines(row.lines.map(normalizeHundredRoundedLine));
           if (row.mission?.routeId) {
             await loadTemplateForRoute(
               row.mission.routeId,
@@ -191,7 +194,7 @@ export function MissionEstimateFormPage() {
   }, [plannedStart, plannedEnd]);
 
   function patchLine(index: number, patch: Partial<MissionEstimateRecord["lines"][number]>) {
-    setLines((cur) => cur.map((line, i) => (i === index ? { ...line, ...patch } : line)));
+    setLines((cur) => cur.map((line, i) => (i === index ? patchEstimateLine(line, patch) : line)));
   }
 
   async function onRouteChange(nextId: string) {
@@ -485,8 +488,8 @@ export function MissionEstimateFormPage() {
                         ) : null}
                       </td>
                       <td className="border-b border-slate-100 px-1 py-1">
-                        {line.includeInTotal === false ? null : line.amountEditable &&
-                          !(line.qtyEditable && line.rateEditable) ? (
+                        {line.includeInTotal === false ? null : isHundredRoundedEstimateLine(line) ||
+                          (line.amountEditable && !(line.qtyEditable && line.rateEditable)) ? (
                           <CommaNumberInput
                             aria-label={`จำนวนเงิน ${line.name}`}
                             className="w-full rounded-md border border-slate-200 px-2 py-1 text-right text-sm tabular-nums"

@@ -63,10 +63,24 @@ function n(v: number | string | null | undefined): number {
   return Number.isFinite(x) ? x : 0;
 }
 
-function lineCurrentAmount(line: EstimateLineInput): number {
+/** ข้อ 1 ค่ารับรอง — คน×อัตรา ปัดขึ้นหลักร้อย และแก้ยอดรวมเองได้ */
+export function isHundredRoundedEstimateLine(line: Pick<EstimateLineInput, "kind" | "groupCode">): boolean {
+  return line.kind === "ITEM" && line.groupCode === "1";
+}
+
+export function roundUpToHundred(value: number): number {
+  return Math.ceil(Math.round(value * 100) / 100 / 100) * 100;
+}
+
+export function lineCurrentAmount(line: EstimateLineInput): number {
   const qty = line.quantity == null || line.quantity === "" ? NaN : n(line.quantity);
   const rate = line.unitPrice == null || line.unitPrice === "" ? NaN : n(line.unitPrice);
-  if (line.qtyEditable && line.rateEditable && Number.isFinite(qty) && Number.isFinite(rate)) {
+  const hasQtyRate = Number.isFinite(qty) && Number.isFinite(rate);
+  if (isHundredRoundedEstimateLine(line)) {
+    if (line.amountEditable && line.amount != null && line.amount !== "") return n(line.amount);
+    return hasQtyRate ? roundUpToHundred(Math.max(0, qty * rate)) : n(line.amount);
+  }
+  if (line.qtyEditable && line.rateEditable && hasQtyRate) {
     return qty * rate;
   }
   return n(line.amount);
@@ -142,13 +156,16 @@ function item(partial: Omit<EstimateTemplateLine, "kind" | "includeInTotal" | "i
 }): EstimateTemplateLine {
   const qtyEditable = partial.qtyEditable;
   const rateEditable = partial.rateEditable;
-  const amount =
+  const hundred = partial.groupCode === "1";
+  const raw =
     qtyEditable && rateEditable && partial.quantity != null && partial.unitPrice != null
       ? partial.quantity * partial.unitPrice
-      : partial.amount;
+      : null;
+  const amount = raw == null ? partial.amount : hundred ? roundUpToHundred(raw) : raw;
   return {
     ...partial,
     amount,
+    amountEditable: hundred ? true : partial.amountEditable,
     kind: "ITEM",
     includeInTotal: partial.includeInTotal ?? true,
     isReserve: partial.isReserve ?? false,

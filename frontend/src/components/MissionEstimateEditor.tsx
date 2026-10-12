@@ -19,8 +19,10 @@ import {
   forceLumpSumEstimateLines,
   formatThaiDateRangeLabel,
   isEstimateItemLine,
+  isHundredRoundedEstimateLine,
   lineCurrentAmount,
   mergeLegacyEnlistedEstimateLines,
+  patchEstimateLine,
   templateToFormLines,
 } from "../lib/missionEstimate";
 import { toolbarLinkBtnClass } from "../lib/uiTokens";
@@ -423,7 +425,7 @@ export const MissionEstimateEditor = forwardRef<MissionEstimateEditorHandle, Mis
     }, [missionId, missionCode, routeId, plannedStart, applyTemplate, loadTemplateForRoute]);
 
     function patchLine(index: number, patch: Partial<MissionEstimateRecord["lines"][number]>) {
-      setLines((cur) => cur.map((line, i) => (i === index ? { ...line, ...patch } : line)));
+      setLines((cur) => cur.map((line, i) => (i === index ? patchEstimateLine(line, patch) : line)));
     }
 
     function copyPreviousIntoCurrent() {
@@ -763,8 +765,8 @@ export const MissionEstimateEditor = forwardRef<MissionEstimateEditorHandle, Mis
                         <p className="py-1 text-right text-xs tabular-nums text-slate-400" title="ยอดอ้างอิงตามอัตรา — ไม่รวมในผลรวม">
                           {formatBaht(current)}
                         </p>
-                      ) : line.includeInTotal === false ? null : line.amountEditable &&
-                        !(line.qtyEditable && line.rateEditable) ? (
+                      ) : line.includeInTotal === false ? null : isHundredRoundedEstimateLine(line) ||
+                        (line.amountEditable && !(line.qtyEditable && line.rateEditable)) ? (
                         <CommaNumberInput
                           aria-label={`จำนวนเงิน ${line.name}`}
                           className="w-full rounded-md border border-slate-200 px-2 py-1 text-right text-sm tabular-nums"

@@ -4,6 +4,7 @@ import { normalizePersonCounts, parseCalcMeta } from "./estimatePersonCounts.js"
 import {
   asPoliceCountAmountLine,
   computeEstimateTotals,
+  lineCurrentAmount,
   lineKey,
   POLICE_COUNT_AMOUNT_ITEM_CODES,
   type EstimateLineInput,
@@ -56,15 +57,11 @@ export function parseEstimateLines(raw: unknown): EstimateLineInput[] {
 
 function totalsFromLines(lines: EstimateLineInput[]) {
   const totals = computeEstimateTotals(lines);
-  const withAmounts = lines.map((line, i) => {
-    const qty = line.quantity == null || line.quantity === "" ? NaN : Number(line.quantity);
-    const rate = line.unitPrice == null || line.unitPrice === "" ? NaN : Number(line.unitPrice);
-    let amount = Number(line.amount ?? 0);
-    if (line.qtyEditable && line.rateEditable && Number.isFinite(qty) && Number.isFinite(rate)) {
-      amount = qty * rate;
-    }
-    return { ...line, amount, sortOrder: line.sortOrder ?? i };
-  });
+  const withAmounts = lines.map((line, i) => ({
+    ...line,
+    amount: lineCurrentAmount(line),
+    sortOrder: line.sortOrder ?? i,
+  }));
   return { totals, lines: withAmounts };
 }
 
