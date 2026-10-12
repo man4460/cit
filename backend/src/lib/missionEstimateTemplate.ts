@@ -72,9 +72,9 @@ function lineCurrentAmount(line: EstimateLineInput): number {
   return n(line.amount);
 }
 
-/** ปัดเป็นพันบาท (ROUND x, -3) ตามชีต */
+/** ปัดขึ้นเป็นพันบาท (ROUNDUP x, -3) — กันงบไม่พอ; ปัดสตางค์ก่อนกันเศษทศนิยมลอย */
 export function roundToThousand(value: number): number {
-  return Math.round(value / 1000) * 1000;
+  return Math.ceil(Math.round(value * 100) / 100 / 1000) * 1000;
 }
 
 export function computeEstimateTotals(lines: EstimateLineInput[]): EstimateTotals {
