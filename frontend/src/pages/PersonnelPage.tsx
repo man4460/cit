@@ -459,12 +459,13 @@ export function PersonnelPage() {
     fd.append("bloodType", form.bloodType);
     fd.append("birthDate", form.birthDate);
     fd.append("gradeLevel", form.gradeLevel);
-    if (form.perDiemRate !== "") fd.append("perDiemRate", form.perDiemRate);
-    if (form.vehicleTravelAllowance !== "") fd.append("vehicleTravelAllowance", form.vehicleTravelAllowance);
-    if (form.personnelCategoryId) fd.append("personnelCategoryId", form.personnelCategoryId);
+    // ส่งค่าว่างด้วย — ไม่งั้นการลบค่าเดิมจะไม่ถูกบันทึก
+    fd.append("perDiemRate", form.perDiemRate);
+    fd.append("vehicleTravelAllowance", form.vehicleTravelAllowance);
+    fd.append("personnelCategoryId", form.personnelCategoryId);
     fd.append("insuranceCompany", form.insuranceCompany);
     fd.append("insurancePolicyNumber", form.insurancePolicyNumber);
-    if (form.insuranceExpiry) fd.append("insuranceExpiry", form.insuranceExpiry);
+    fd.append("insuranceExpiry", form.insuranceExpiry);
     fd.append("insuranceNotes", form.insuranceNotes);
     fd.append("annualTravelInsurance", form.annualTravelInsurance ? "true" : "false");
     fd.append("remarks", form.remarks);
