@@ -6,9 +6,11 @@ import { buildEstimateWorkbook, type EstimateExportPayload } from "../lib/missio
 import { normalizePersonCounts, parseCalcMeta } from "../lib/estimatePersonCounts.js";
 import { trip2569Meta } from "../lib/applyTrip2569ToEstimate.js";
 import {
+  asPoliceCountAmountLine,
   computeEstimateTotals,
   defaultEstimateTemplate,
   lineKey,
+  POLICE_COUNT_AMOUNT_ITEM_CODES,
   type EstimateLineInput,
 } from "../lib/missionEstimateTemplate.js";
 import {
@@ -93,6 +95,9 @@ function serializeLine(line: {
     isReserve: line.isReserve,
     expenseTypeName: line.expenseTypeName,
     lineNote: line.lineNote ?? null,
+    ...(POLICE_COUNT_AMOUNT_ITEM_CODES.has(line.itemCode ?? "")
+      ? { unitPrice: null, qtyEditable: true, rateEditable: false, amountEditable: true }
+      : {}),
   };
 }
 
@@ -188,7 +193,7 @@ function parseLines(raw: unknown): EstimateLineInput[] {
   if (!Array.isArray(raw)) return [];
   return raw.map((row, i) => {
     const r = row as EstimateLineInput;
-    return {
+    return asPoliceCountAmountLine({
       kind: r.kind === "GROUP" ? "GROUP" : "ITEM",
       groupCode: r.groupCode ?? null,
       itemCode: r.itemCode ?? null,
@@ -206,7 +211,7 @@ function parseLines(raw: unknown): EstimateLineInput[] {
       expenseTypeName: r.expenseTypeName ?? null,
       lineNote: typeof r.lineNote === "string" && r.lineNote.trim() ? r.lineNote.trim() : null,
       sortOrder: typeof r.sortOrder === "number" ? r.sortOrder : i,
-    };
+    } satisfies EstimateLineInput);
   });
 }
 
@@ -452,7 +457,6 @@ missionEstimatesRouter.get("/:id/export", async (req, res, next) => {
         ...serializeLine(line),
         kind: line.kind === "GROUP" ? "GROUP" : "ITEM",
         quantity: line.quantity?.toString() ?? null,
-        unitPrice: line.unitPrice?.toString() ?? null,
         amount: line.amount.toString(),
         previousAmount: line.previousAmount?.toString() ?? null,
       })),

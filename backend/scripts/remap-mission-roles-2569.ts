@@ -7,6 +7,7 @@ import { PrismaClient } from "@prisma/client";
 import {
   missionRoleFromFarabPosition,
   missionRoleFromPoliceUnit,
+  ROLE_FARAB_STAFF,
 } from "../src/lib/missionRoleFromSource.js";
 import { seedMissionMasterData } from "../src/lib/seedMissionMasters.js";
 
@@ -33,8 +34,7 @@ function resolveRoleName(position: string | null, orgName: string | null): strin
   }
   // ฝรภ. / ตำแหน่งองค์กร
   if (pos) return missionRoleFromFarabPosition(pos);
-  if (/ฝ่ายรักษาความปลอดภัย|ฝรภ/.test(org)) return "จนท.ฝรภ.";
-  return "อื่นๆ (บุคลากร)";
+  return ROLE_FARAB_STAFF;
 }
 
 async function main() {

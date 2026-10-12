@@ -2,17 +2,20 @@ import { prisma } from "./prisma.js";
 
 export async function seedMissionMasterData() {
   const personnelRoles = [
-    { name: "ผอ.เดินทาง", sortOrder: 0 },
-    { name: "ผช.ผอ.เดินทาง", sortOrder: 1 },
-    { name: "จนท.ฝรภ.", sortOrder: 2 },
-    { name: "ตร.ทางหลวง", sortOrder: 3 },
-    { name: "ตร.กองปราบ", sortOrder: 4 },
-    { name: "ตร.อรินทราช", sortOrder: 5 },
-    { name: "ตำรวจ / ประสาน", sortOrder: 6 },
-    { name: "คนขับ", sortOrder: 7 },
-    { name: "เจ้าหน้าที่รักษาความปลอดภัย", sortOrder: 8 },
-    { name: "หัวหน้าทีม", sortOrder: 9 },
-    { name: "อื่นๆ (บุคลากร)", sortOrder: 10 },
+    { name: "ผู้อำนวยการเดินทาง", sortOrder: 0 },
+    { name: "ผู้ช่วยผู้อำนวยการเดินทาง", sortOrder: 1 },
+    { name: "หัวหน้าชุดส่วนล่วงหน้า", sortOrder: 2 },
+    { name: "ผู้ช่วยหัวหน้าส่วนล่วงหน้า และสื่อสาร", sortOrder: 3 },
+    { name: "เจ้าหน้าที่ขับรถส่วนล่วงหน้า และสื่อสาร", sortOrder: 4 },
+    { name: "เจ้าหน้าที่ขับรถคุ้มกันหน้า และสื่อสาร", sortOrder: 5 },
+    { name: "เจ้าหน้าที่ขับรถคุ้มกันหลัง และสื่อสาร", sortOrder: 6 },
+    { name: "เจ้าหน้าที่ขับรถ และสื่อสาร", sortOrder: 7 },
+    { name: "เจ้าหน้าที่สื่อสาร", sortOrder: 8 },
+    { name: "ตำรวจทางหลวง นำขบวน", sortOrder: 9 },
+    { name: "ตำรวจทางหลวง ปิดท้ายขบวน", sortOrder: 10 },
+    { name: "ตำรวจกองปราบปราม สื่อสาร / ประสานท้องที่", sortOrder: 11 },
+    { name: "ตำรวจอรินทราช 26 (คุ้มกัน)", sortOrder: 12 },
+    { name: "พนักงานขับรถสินค้า", sortOrder: 13 },
   ];
   for (const r of personnelRoles) {
     await prisma.missionPersonnelRoleMaster.upsert({
@@ -23,10 +26,15 @@ export async function seedMissionMasterData() {
   }
 
   const vehicleRoles = [
-    { name: "รถหลัก", sortOrder: 0 },
-    { name: "รถกำกับ / คุ้มกัน", sortOrder: 1 },
-    { name: "รถสนับสนุน", sortOrder: 2 },
-    { name: "อื่นๆ (รถ)", sortOrder: 3 },
+    { name: "ส่วนล่วงหน้า", sortOrder: 0 },
+    { name: "นำขบวน", sortOrder: 1 },
+    { name: "ประสานท้องที่", sortOrder: 2 },
+    { name: "คุ้มกันหน้า", sortOrder: 3 },
+    { name: "คุ้มกันหลัง", sortOrder: 4 },
+    { name: "ปิดท้ายขบวน", sortOrder: 5 },
+    { name: "รถสื่อสาร", sortOrder: 6 },
+    { name: "รถกำกับ / คุ้มกัน", sortOrder: 7 },
+    { name: "รถหลัก", sortOrder: 8 },
   ];
   for (const r of vehicleRoles) {
     await prisma.missionVehicleRoleMaster.upsert({

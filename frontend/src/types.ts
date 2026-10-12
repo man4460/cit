@@ -895,6 +895,7 @@ export interface MissionActualExpenseRecord {
   reserveAmount: string | null;
   roundedSpend: string | null;
   approvalTotal: string | null;
+  receivedAmount?: string | null;
   createdAt: string;
   updatedAt: string;
   lines: MissionEstimateLine[];

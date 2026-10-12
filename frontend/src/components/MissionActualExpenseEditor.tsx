@@ -313,11 +313,14 @@ export const MissionActualExpenseEditor = forwardRef<
     stationItemTotals = EMPTY_STATION_ITEM_TOTALS,
     policePersonnelAmounts = EMPTY_POLICE_PERSONNEL_LINE_AMOUNTS,
     botLineAmounts = EMPTY_BOT_LINE_AMOUNTS,
-    botAmountsLinked = false,
+    botAmountsLinked: botAmountsLinkedProp = false,
     onApprovalTotalChange,
   },
   ref,
 ) {
+  // TRIP-2569: 5.1–8.1 เป็นยอดจ่ายจริงรายคน (เช่น ไปไม่ครบวัน) — ห้ามคำนวณทับจากบุคลากร
+  const botAmountsLinked =
+    botAmountsLinkedProp && !(missionId && /^TRIP-2569-0?[1-5]$/i.test((missionCode ?? "").trim()));
   const [currentLabel, setCurrentLabel] = useState("");
   const [currentDateRange, setCurrentDateRange] = useState("");
   const [notes, setNotes] = useState("");
@@ -387,13 +390,14 @@ export const MissionActualExpenseEditor = forwardRef<
       currentLabel,
       currentDateRange,
       notes,
+      receivedAmount: receivedAmount.trim() === "" ? null : receivedSafe,
       lines: lines.map((line, i) => ({
         ...line,
         sortOrder: i,
         amount: lineCurrentAmount(line),
       })),
     };
-  }, [currentDateRange, currentLabel, lines, notes]);
+  }, [currentDateRange, currentLabel, lines, notes, receivedAmount, receivedSafe]);
 
   useImperativeHandle(ref, () => ({
     reset: resetState,
@@ -510,8 +514,8 @@ export const MissionActualExpenseEditor = forwardRef<
             setCurrentLabel(savedActual.currentLabel ?? "");
             setCurrentDateRange(savedActual.currentDateRange ?? "");
             setNotes(savedActual.notes ?? "");
-            receivedTouchedRef.current = false;
-            setReceivedAmount("");
+            receivedTouchedRef.current = savedActual.receivedAmount != null;
+            setReceivedAmount(savedActual.receivedAmount ?? "");
             if (trip2569?.dateRange) setCurrentDateRange(trip2569.dateRange);
             if (trip2569?.routeText) {
               setCurrentLabel((cur) => cur.trim() || trip2569.routeText);

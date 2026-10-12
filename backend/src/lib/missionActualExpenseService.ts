@@ -111,6 +111,7 @@ export function serializeActualExpense(row: {
   reserveAmount: Prisma.Decimal;
   roundedSpend: Prisma.Decimal;
   approvalTotal: Prisma.Decimal;
+  receivedAmount: Prisma.Decimal | null;
   createdAt: Date;
   updatedAt: Date;
   lines: Parameters<typeof serializeLine>[0][];
@@ -141,6 +142,7 @@ export function serializeActualExpense(row: {
     reserveAmount: toNumStr(row.reserveAmount),
     roundedSpend: toNumStr(row.roundedSpend),
     approvalTotal: toNumStr(row.approvalTotal),
+    receivedAmount: row.receivedAmount == null ? null : toNumStr(row.receivedAmount),
     createdAt: row.createdAt.toISOString(),
     updatedAt: row.updatedAt.toISOString(),
     lines: row.lines.map(serializeLine),
@@ -219,6 +221,14 @@ export async function upsertActualExpenseForMission(missionId: string, body: Rec
     reserveAmount: safeDecimal(parsed.totals.reserveAmount),
     roundedSpend: safeDecimal(parsed.totals.roundedSpend),
     approvalTotal: safeDecimal(parsed.totals.approvalTotal),
+    ...("receivedAmount" in body
+      ? {
+          receivedAmount:
+            body.receivedAmount == null || String(body.receivedAmount).trim() === ""
+              ? null
+              : safeDecimal(body.receivedAmount),
+        }
+      : {}),
   };
 
   const lineCreates = parsed.lines.map((line) => ({

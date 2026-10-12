@@ -72,6 +72,22 @@ function lineCurrentAmount(line: EstimateLineInput): number {
   return n(line.amount);
 }
 
+/** ข้อ 2.1–2.3 ค่าตอบแทน จนท.ตร. — กรอกจำนวนคน + ยอดเงิน ไม่มีอัตรา (สัญญาบัตร/ประทวนอัตราต่างกัน) */
+export const POLICE_COUNT_AMOUNT_ITEM_CODES: ReadonlySet<string> = new Set(["2.1", "2.2", "2.3"]);
+
+/** แปลงแถว 2.1–2.3 แบบเดิม (คน × อัตรา) เป็นจำนวนคน + ยอดเงิน โดยคงยอดเดิมไว้ */
+export function asPoliceCountAmountLine<T extends EstimateLineInput>(line: T): T {
+  if (!POLICE_COUNT_AMOUNT_ITEM_CODES.has(line.itemCode ?? "")) return line;
+  return {
+    ...line,
+    amount: lineCurrentAmount(line),
+    unitPrice: null,
+    qtyEditable: true,
+    rateEditable: false,
+    amountEditable: true,
+  };
+}
+
 /** ปัดขึ้นเป็นพันบาท (ROUNDUP x, -3) — กันงบไม่พอ; ปัดสตางค์ก่อนกันเศษทศนิยมลอย */
 export function roundToThousand(value: number): number {
   return Math.ceil(Math.round(value * 100) / 100 / 1000) * 1000;
@@ -345,11 +361,11 @@ export function defaultEstimateTemplate(): EstimateTemplate {
       name: "จนท.ตร.ปฏิบัติการพิเศษ (อรินทราช / หนุมาน)",
       payoutMethod: BILL,
       quantity: 0,
-      unitPrice: 0,
+      unitPrice: null,
       amount: 0,
       qtyEditable: true,
-      rateEditable: true,
-      amountEditable: false,
+      rateEditable: false,
+      amountEditable: true,
       expenseTypeName: "ค่าตอบแทนบุคคลภายนอก",
     }),
     item({
@@ -359,11 +375,11 @@ export function defaultEstimateTemplate(): EstimateTemplate {
       name: "จนท.ตร.ทางหลวง",
       payoutMethod: BILL,
       quantity: 0,
-      unitPrice: 0,
+      unitPrice: null,
       amount: 0,
       qtyEditable: true,
-      rateEditable: true,
-      amountEditable: false,
+      rateEditable: false,
+      amountEditable: true,
       expenseTypeName: "ค่าตอบแทนบุคคลภายนอก",
     }),
     item({
@@ -373,11 +389,11 @@ export function defaultEstimateTemplate(): EstimateTemplate {
       name: "จนท.ตร.กองปราบ",
       payoutMethod: BILL,
       quantity: 0,
-      unitPrice: 0,
+      unitPrice: null,
       amount: 0,
       qtyEditable: true,
-      rateEditable: true,
-      amountEditable: false,
+      rateEditable: false,
+      amountEditable: true,
       expenseTypeName: "ค่าตอบแทนบุคคลภายนอก",
     }),
     item({

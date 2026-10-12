@@ -98,7 +98,7 @@ export function blankEstimateQuantities(lines: MissionEstimateLine[]): MissionEs
       return { ...line, quantity: "0", amount: "0" };
     }
     if (line.amountEditable || line.includeInTotal !== false) {
-      return { ...line, amount: "0" };
+      return { ...line, ...(line.qtyEditable ? { quantity: "0" } : {}), amount: "0" };
     }
     return line;
   });

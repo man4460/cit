@@ -116,6 +116,8 @@ export function applyBotLineAmountsToLines<
           : fallback != null && fallback > 0
             ? fallback
             : 0;
+      // ค่าใช้จ่ายจริงเก็บยอดที่พักเป็นยอดรวมตามใบเสร็จ (ไม่มีอัตรา) — ห้ามคำนวณทับเป็น 0
+      if (!(unitRate > 0)) return line;
       if (!botCount) {
         return {
           ...line,

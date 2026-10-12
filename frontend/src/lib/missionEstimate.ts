@@ -66,11 +66,24 @@ export const ESTIMATE_LUMP_SUM_DEFAULTS: Record<string, number> = {
 /** อัตราที่พักฐานในหน้าประมาณการ (ไม่ใช้กับหน้าค่าใช้จ่ายจริง) */
 export const ESTIMATE_BOT_LODGING_RATE = 1400;
 
+/** ข้อ 2.1–2.3 ค่าตอบแทน จนท.ตร. — กรอกจำนวนคน + ยอดเงิน ไม่มีอัตรา (สัญญาบัตร/ประทวนอัตราต่างกัน) */
+export const POLICE_COUNT_AMOUNT_ITEM_CODES: ReadonlySet<string> = new Set(["2.1", "2.2", "2.3"]);
+
 export function forceLumpSumEstimateLines(
   lines: MissionEstimateLine[],
   opts?: { zeroIfEmpty?: boolean },
 ): MissionEstimateLine[] {
   return lines.map((line) => {
+    if (POLICE_COUNT_AMOUNT_ITEM_CODES.has(line.itemCode ?? "")) {
+      return {
+        ...line,
+        amount: String(lineCurrentAmount(line)),
+        unitPrice: null,
+        qtyEditable: true,
+        rateEditable: false,
+        amountEditable: true,
+      };
+    }
     if (!isLumpSumEstimateLine(line)) return line;
     const code = line.itemCode ?? "";
     const amt = parseLooseNumber(line.amount);

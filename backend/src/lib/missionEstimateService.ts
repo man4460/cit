@@ -2,8 +2,10 @@ import { MissionStatus, Prisma } from "@prisma/client";
 import { prisma } from "./prisma.js";
 import { normalizePersonCounts, parseCalcMeta } from "./estimatePersonCounts.js";
 import {
+  asPoliceCountAmountLine,
   computeEstimateTotals,
   lineKey,
+  POLICE_COUNT_AMOUNT_ITEM_CODES,
   type EstimateLineInput,
 } from "./missionEstimateTemplate.js";
 
@@ -30,7 +32,7 @@ export function parseEstimateLines(raw: unknown): EstimateLineInput[] {
   if (!Array.isArray(raw)) return [];
   return raw.map((row, i) => {
     const r = row as EstimateLineInput;
-    return {
+    return asPoliceCountAmountLine({
       kind: r.kind === "GROUP" ? "GROUP" : "ITEM",
       groupCode: r.groupCode ?? null,
       itemCode: r.itemCode ?? null,
@@ -48,7 +50,7 @@ export function parseEstimateLines(raw: unknown): EstimateLineInput[] {
       expenseTypeName: r.expenseTypeName ?? null,
       lineNote: typeof r.lineNote === "string" && r.lineNote.trim() ? r.lineNote.trim() : null,
       sortOrder: typeof r.sortOrder === "number" ? r.sortOrder : i,
-    };
+    } satisfies EstimateLineInput);
   });
 }
 
@@ -103,6 +105,9 @@ function serializeLine(line: {
     isReserve: line.isReserve,
     expenseTypeName: line.expenseTypeName,
     lineNote: line.lineNote ?? null,
+    ...(POLICE_COUNT_AMOUNT_ITEM_CODES.has(line.itemCode ?? "")
+      ? { unitPrice: null, qtyEditable: true, rateEditable: false, amountEditable: true }
+      : {}),
   };
 }
 
