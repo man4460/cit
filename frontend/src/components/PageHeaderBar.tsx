@@ -23,6 +23,8 @@ type Props = {
   title?: string;
   /** จำนวนแถวที่แสดง — พิมพ์ต่อท้ายหัวข้อแบบตัวเล็ก */
   count?: number | null;
+  /** ข้อความเล็กต่อท้ายหัวข้อในบรรทัดเดียวกัน (เช่น ชื่อทริปที่กำลังแก้) */
+  titleSuffix?: ReactNode;
   subtitle?: ReactNode;
   /** แท็บสลับหมวด (เช่น ยานพาหนะ / ครุภัณฑ์) */
   segments?: ReactNode;
@@ -50,6 +52,7 @@ function ToolDivider() {
 export function PageHeaderBar({
   title,
   count,
+  titleSuffix,
   subtitle,
   segments,
   masters,
@@ -64,9 +67,7 @@ export function PageHeaderBar({
   const { pathname } = useLocation();
   const navigate = useNavigate();
   function goBack() {
-    const idx = (window.history.state as { idx?: number } | null)?.idx ?? 0;
-    if (idx > 0) navigate(-1);
-    else navigate(backTo ?? "/");
+    navigate(backTo ?? "/");
   }
   const [filterOpen, setFilterOpen] = useState(filter?.defaultOpen ?? false);
   const hasFilter = Boolean(filter?.value.trim());
@@ -119,6 +120,11 @@ export function PageHeaderBar({
                 {showCount ? (
                   <span className="ml-1.5 align-middle text-[11px] font-bold tabular-nums text-slate-500 sm:text-xs">
                     ({countLabel})
+                  </span>
+                ) : null}
+                {titleSuffix ? (
+                  <span className="ml-2 align-middle text-xs font-semibold tracking-normal text-slate-500 sm:text-[13px]">
+                    {titleSuffix}
                   </span>
                 ) : null}
               </h1>

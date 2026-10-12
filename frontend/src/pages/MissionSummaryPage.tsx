@@ -1,16 +1,12 @@
 import { useCallback, useEffect, useState, type ReactNode } from "react";
-import { createPortal } from "react-dom";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { apiFormJson, apiJson, apiUrl } from "../api/client";
-import { MissionBotAllowancePrintSheet } from "../components/MissionBotAllowancePrintSheet";
 import { MissionIncidentsPanel } from "../components/MissionIncidentsPanel";
 import { MissionInsuranceExportModal } from "../components/MissionInsuranceExportModal";
-import { MissionPoliceAllowancePrintSheet } from "../components/MissionPoliceAllowancePrintSheet";
 import { MissionReportModal } from "../components/MissionReportModal";
 import { filterBotAllowancePersonnel } from "../lib/botAllowancePrint";
 import { formatBaht, formatInt, formatLiters } from "../lib/formatNumber";
 import { filterPoliceAllowancePersonnel } from "../lib/policeAllowancePrint";
-import { printIsolatedElement } from "../lib/printIsolated";
 import { mediaUrl } from "../lib/uiTokens";
 import type { MissionStatus, MissionSummary } from "../types";
 
@@ -76,9 +72,7 @@ export function MissionSummaryPage() {
   }, [load]);
 
   function goBack() {
-    const idx = (window.history.state as { idx?: number } | null)?.idx ?? 0;
-    if (idx > 0) navigate(-1);
-    else navigate("/missions");
+    navigate("/missions");
   }
 
   async function uploadFiles(files: File[]) {
@@ -168,28 +162,6 @@ export function MissionSummaryPage() {
     .map((s) => (s ?? "").trim())
     .filter(Boolean)
     .filter((s, i, arr) => i === 0 || s !== arr[i - 1]);
-  const routeLabel = summary.route
-    ? [summary.route.startLocation, summary.route.endLocation].filter(Boolean).join(" - ") || summary.route.name
-    : null;
-
-  function printBot() {
-    if (!botCount) {
-      alert("ไม่มีรายชื่อที่เข้าเงื่อนไข (ไม่ใช่ตำรวจ และไม่ใช่คนขับ) ในภารกิจนี้");
-      return;
-    }
-    if (!printIsolatedElement({ rootSelector: ".bot-allowance-print-root", htmlClass: "print-bot-allowance", pageSize: "A4 landscape" }))
-      alert("ไม่พบแบบฟอร์มสำหรับพิมพ์");
-  }
-
-  function printPolice() {
-    if (!policeCount && !policeStations.some((s) => Number(s.amount) > 0)) {
-      alert("ไม่มีรายชื่อบุคคลภายนอก (ไม่รวมประเภท ธปท.) ในภารกิจนี้");
-      return;
-    }
-    if (!printIsolatedElement({ rootSelector: ".police-allowance-print-root", htmlClass: "print-police-allowance", pageSize: "A4 portrait" }))
-      alert("ไม่พบแบบฟอร์มสำหรับพิมพ์");
-  }
-
   return (
     <div className="space-y-5 print:hidden">
       <div className="flex flex-wrap items-center justify-between gap-2">
@@ -244,10 +216,10 @@ export function MissionSummaryPage() {
         ) : null}
 
         <div className="mt-4 flex flex-wrap gap-2 border-t border-slate-100 pt-4">
-          <ActionButton tone="indigo" onClick={printBot}>
+          <ActionButton tone="indigo" onClick={() => navigate(`/missions/${summary.missionId}/bot-allowance`)}>
             พิมพ์รายการเบี้ยเลี้ยง ธปท.{botCount ? ` (${botCount})` : ""}
           </ActionButton>
-          <ActionButton tone="amber" onClick={printPolice}>
+          <ActionButton tone="amber" onClick={() => navigate(`/missions/${summary.missionId}/police-allowance`)}>
             พิมพ์ค่าตอบแทนบุคคลภายนอก{policeCount ? ` (${policeCount})` : ""}
           </ActionButton>
           <ActionButton tone="emerald" onClick={() => setInsuranceOpen(true)}>
@@ -574,28 +546,6 @@ export function MissionSummaryPage() {
         onClose={() => setInsuranceOpen(false)}
       />
       {reportOpen ? <MissionReportModal open onClose={() => setReportOpen(false)} summary={summary} /> : null}
-      {createPortal(
-        <>
-          <MissionBotAllowancePrintSheet
-            title={summary.title}
-            code={summary.code}
-            plannedStart={summary.plannedStart}
-            plannedEnd={summary.plannedEnd}
-            routeLabel={routeLabel}
-            personnel={personnel}
-          />
-          <MissionPoliceAllowancePrintSheet
-            title={summary.title}
-            code={summary.code}
-            plannedStart={summary.plannedStart}
-            plannedEnd={summary.plannedEnd}
-            routeLabel={routeLabel}
-            personnel={personnel}
-            policeStations={policeStations}
-          />
-        </>,
-        document.body,
-      )}
     </div>
   );
 }

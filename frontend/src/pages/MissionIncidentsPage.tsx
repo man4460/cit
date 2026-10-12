@@ -9,6 +9,7 @@ import {
   SeverityLegend,
   type SeverityBucket,
 } from "../components/MissionIncidentStatsSection";
+import { MissionReviewTabs } from "../components/MissionReviewTabs";
 import { PageHeaderBar } from "../components/PageHeaderBar";
 import {
   INCIDENT_GROUPS,
@@ -205,10 +206,11 @@ export function MissionIncidentsPage() {
   return (
     <div className="space-y-3">
       <PageHeaderBar
-        title="เหตุการณ์ไม่ปกติระหว่างทริป"
+        title="สรุปเหตุการณ์"
         count={rows ? filtered.length : null}
-        subtitle={<span className="text-xs">ภารกิจขนส่งธนบัตร · {year != null ? `พ.ศ. ${year}` : "ทุกปี"}</span>}
+        subtitle={<span className="text-xs">เหตุการณ์ไม่ปกติระหว่างทริป · {year != null ? `พ.ศ. ${year}` : "ทุกปี"}</span>}
         backTo="/missions"
+        segments={<MissionReviewTabs />}
         extras={
           year != null ? (
             <button type="button" className={toolbarLinkBtnClass} disabled={exporting} onClick={() => void exportYear()}>

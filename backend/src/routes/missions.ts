@@ -623,7 +623,7 @@ missionsRouter.get("/stats/year", async (req, res, next) => {
         cargo[mo] = cargo[mo].add(d.cargoValue);
         containers[mo] += d.containerCount;
         // ที่อยู่เป็นรหัสพื้นที่ เช่น "ศรย" / "ศขก. ศขก" / "ศขก. ศนร" — หลายพื้นที่แบ่งยอดเท่ากัน
-        const codes = [...new Set(d.address.split(/[\s.,/]+/).map((s) => s.trim()).filter(Boolean))];
+        const codes = [...new Set(d.address.split(/[\s.,/]+|และ/).map((s) => s.trim()).filter(Boolean))];
         if (!codes.length) continue;
         const share = new Prisma.Decimal(1).div(codes.length);
         for (const code of codes) {
@@ -715,6 +715,65 @@ missionsRouter.get("/stats/year", async (req, res, next) => {
       .sort((x, y) => Number(y.cargoValue) - Number(x.cargoValue) || y.containers - x.containers);
 
     res.json({ year, availableYears, months, yearTotals, areas });
+  } catch (e) {
+    next(e);
+  }
+});
+
+/** สรุปภารกิจทุกปี (รายทริป + ปลายทาง) — หน้า «สรุปเหตุการณ์» กรอง/รวมยอดฝั่ง client */
+missionsRouter.get("/stats/overview", async (_req, res, next) => {
+  try {
+    const missions = await prisma.mission.findMany({
+      orderBy: { plannedStart: "desc" },
+      select: {
+        id: true,
+        code: true,
+        title: true,
+        status: true,
+        plannedStart: true,
+        budgetAmount: true,
+        route: { select: { name: true, startLocation: true, endLocation: true } },
+        destinations: {
+          orderBy: { sortOrder: "asc" },
+          select: { address: true, cargoValue: true, containerCount: true },
+        },
+        _count: { select: { incidents: true } },
+        expenses: { select: { amount: true, expenseType: { select: { name: true } } } },
+      },
+    });
+    const rows = missions.map((m) => {
+      const total = m.budgetAmount ?? m.expenses.reduce((s, e) => s.add(e.amount), new Prisma.Decimal(0));
+      const truck = m.expenses
+        .filter((e) => e.expenseType.name.trim() === "ค่าจ้างรถบรรทุก")
+        .reduce((s, e) => s.add(e.amount), new Prisma.Decimal(0));
+      const operating = total.sub(truck);
+      let year: number | null = m.plannedStart ? m.plannedStart.getUTCFullYear() : null;
+      if (year == null) {
+        const be = Number(m.code?.match(/TRIP-(\d{4})/i)?.[1]);
+        if (Number.isFinite(be) && be >= 2400) year = be - 543;
+      }
+      return {
+        id: m.id,
+        code: m.code,
+        title: m.title,
+        status: m.status,
+        plannedStart: m.plannedStart,
+        year,
+        routeLabel: m.route
+          ? m.route.name?.trim() || `${m.route.startLocation} → ${m.route.endLocation}`
+          : null,
+        budgetAmount: m.budgetAmount?.toString() ?? null,
+        operatingExpense: (operating.lt(0) ? new Prisma.Decimal(0) : operating).toString(),
+        truckHire: truck.toString(),
+        incidentCount: m._count.incidents,
+        destinations: m.destinations.map((d) => ({
+          address: d.address,
+          cargoValue: d.cargoValue.toString(),
+          containers: d.containerCount,
+        })),
+      };
+    });
+    res.json({ missions: rows });
   } catch (e) {
     next(e);
   }

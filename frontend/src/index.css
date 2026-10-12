@@ -548,15 +548,11 @@ html.pdf-capture-police .police-allowance-print__table col.col-no {
 }
 html.print-police-allowance .police-allowance-print__table col.col-rank,
 html.pdf-capture-police .police-allowance-print__table col.col-rank {
-  width: 7%;
+  width: 12%;
 }
 html.print-police-allowance .police-allowance-print__table col.col-first,
 html.pdf-capture-police .police-allowance-print__table col.col-first {
-  width: 18%;
-}
-html.print-police-allowance .police-allowance-print__table col.col-last,
-html.pdf-capture-police .police-allowance-print__table col.col-last {
-  width: 13%;
+  width: 26%;
 }
 html.print-police-allowance .police-allowance-print__table col.col-id,
 html.pdf-capture-police .police-allowance-print__table col.col-id {
@@ -569,6 +565,13 @@ html.pdf-capture-police .police-allowance-print__table col.col-money {
 html.print-police-allowance .police-allowance-print__table col.col-aff,
 html.pdf-capture-police .police-allowance-print__table col.col-aff {
   width: 24%;
+}
+html.print-police-allowance .police-allowance-print__note,
+html.pdf-capture-police .police-allowance-print__note {
+  margin-top: 6px;
+  font-size: 9pt;
+  line-height: 1.45;
+  white-space: pre-line;
 }
 
 html.print-police-allowance .police-allowance-print__table th,

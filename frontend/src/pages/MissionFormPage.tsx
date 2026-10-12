@@ -12,6 +12,7 @@ import {
   MissionEstimateEditor,
   type MissionEstimateEditorHandle,
 } from "../components/MissionEstimateEditor";
+import { MissionRateNotesModal } from "../components/MissionRateNotesModal";
 import { PageHeaderBar } from "../components/PageHeaderBar";
 import { MissionsSubNav } from "../components/MissionsSubNav";
 import { SearchableSelect, personnelSelectLabel } from "../components/SearchableSelect";
@@ -263,6 +264,7 @@ export function MissionFormPage() {
     mode === "edit" ? (routeMissionId ?? null) : null,
   );
   const [missionCode, setMissionCode] = useState<string | null>(null);
+  const [notesOpen, setNotesOpen] = useState(false);
   const [missionStatus, setMissionStatus] = useState<MissionStatus>("PLANNED");
   const [estimateApprovalTotal, setEstimateApprovalTotal] = useState(0);
   const [actualApprovalTotal, setActualApprovalTotal] = useState(0);
@@ -914,11 +916,17 @@ export function MissionFormPage() {
         <div className="border-b border-slate-200 px-4 py-2.5 sm:px-5">
           <PageHeaderBar
             title={pageTitle}
+            titleSuffix={
+              mode !== "create" ? [mode === "edit" ? missionCode : null, title.trim()].filter(Boolean).join(" · ") || null : null
+            }
             extras={
               <>
                 <Link to="/missions" className={toolbarLinkBtnClass}>
                   ← กลับรายการภารกิจ
                 </Link>
+                <button type="button" className={toolbarLinkBtnClass} onClick={() => setNotesOpen(true)}>
+                  โน้ตสำคัญ
+                </button>
                 <button type="button" className={toolbarLinkBtnClass} onClick={closeForm}>
                   ยกเลิก
                 </button>
@@ -1792,6 +1800,7 @@ export function MissionFormPage() {
           void load();
         }}
       />
+      <MissionRateNotesModal open={notesOpen} onClose={() => setNotesOpen(false)} />
     </div>
   );
 }

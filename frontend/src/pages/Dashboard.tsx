@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { DashboardStatDetailModal, type DashboardStatKind } from "../components/DashboardStatDetailModal";
 import { FitSingleLine } from "../components/FitSingleLine";
 import { MissionIncidentStatsCard } from "../components/MissionIncidentStatsSection";
@@ -28,6 +29,8 @@ function formatBahtStr(s: string | undefined) {
 const chartCardClass =
   "flex min-h-0 min-w-0 flex-col rounded-xl border border-slate-200 bg-white/70 px-2 pb-1 pt-2 print:border-0 print:bg-transparent print:p-0";
 const chartTitleClass = "px-1 text-xs font-black text-[#1e1b4b] print:text-[9pt]";
+const clickableCardClass =
+  "cursor-pointer transition hover:border-[#4d47b6]/40 hover:bg-white hover:shadow-sm print:cursor-default";
 
 function formatLitersStr(s: string | undefined) {
   const n = Number(s ?? 0);
@@ -46,7 +49,15 @@ function axisScale(max: number) {
   return { div, unitLabel: div > 1 ? "ล้าน" : "", tickFormatter: fmt, width };
 }
 
-function AreaSummaryPanel({ areas, className = "" }: { areas: MissionYearAreaStat[]; className?: string }) {
+function AreaSummaryPanel({
+  areas,
+  className = "",
+  onOpen,
+}: {
+  areas: MissionYearAreaStat[];
+  className?: string;
+  onOpen?: (area?: string) => void;
+}) {
   const rows = useMemo(
     () =>
       areas
@@ -61,7 +72,11 @@ function AreaSummaryPanel({ areas, className = "" }: { areas: MissionYearAreaSta
     total > 0 ? `${((n / total) * 100).toLocaleString("th-TH", { maximumFractionDigits: 1 })}%` : "—";
 
   return (
-    <div className={`${chartCardClass} min-h-[220px] print:break-inside-avoid ${className}`}>
+    <div
+      className={`${chartCardClass} ${onOpen ? clickableCardClass : ""} min-h-[220px] print:break-inside-avoid ${className}`}
+      onClick={() => onOpen?.()}
+      title={onOpen ? "คลิกดูรายละเอียด" : undefined}
+    >
       <div className="flex items-baseline justify-between gap-2 px-1">
         <h3 className={chartTitleClass}>ส่งทรัพย์สินรายพื้นที่ (บาท)</h3>
         <span className="truncate text-[10.5px] font-bold tabular-nums text-[#4d47b6]">
@@ -75,7 +90,16 @@ function AreaSummaryPanel({ areas, className = "" }: { areas: MissionYearAreaSta
       ) : (
         <ul className="mt-1 flex min-h-0 flex-1 flex-col justify-around px-1 pb-1">
           {rows.map((r, i) => (
-            <li key={r.code} className="flex items-center gap-2 text-[11px] leading-tight">
+            <li
+              key={r.code}
+              className={`flex items-center gap-2 rounded text-[11px] leading-tight ${onOpen ? "hover:bg-indigo-50/70" : ""}`}
+              onClick={(e) => {
+                if (!onOpen) return;
+                e.stopPropagation();
+                onOpen(r.code);
+              }}
+              title={onOpen ? `ดูรายละเอียดพื้นที่ ${r.code}` : undefined}
+            >
               <span className="w-3.5 shrink-0 text-right font-bold tabular-nums text-slate-400">{i + 1}</span>
               <span className={`w-9 shrink-0 font-black ${i === 0 ? "text-[#4d47b6]" : "text-[#1e1b4b]"}`}>{r.code}</span>
               <div className="h-2 min-w-[2rem] flex-1 overflow-hidden rounded-full bg-slate-100">
@@ -121,6 +145,7 @@ function MetricBarChart<T extends MetricRow>({
   extra,
   compact,
   className = "",
+  onOpen,
 }: {
   title: string;
   data: T[];
@@ -132,11 +157,16 @@ function MetricBarChart<T extends MetricRow>({
   /** การ์ดแคบ — ให้ recharts ข้ามป้ายเดือนที่ชนกัน */
   compact?: boolean;
   className?: string;
+  onOpen?: () => void;
 }) {
   const total = data.reduce((s, row) => s + (Number(row[dataKey]) || 0), 0);
   const scale = axisScale(data.reduce((m, row) => Math.max(m, Number(row[dataKey]) || 0), 0));
   return (
-    <div className={`${chartCardClass} h-[220px] lg:h-auto print:h-auto ${className}`}>
+    <div
+      className={`${chartCardClass} ${onOpen ? clickableCardClass : ""} h-[220px] lg:h-auto print:h-auto ${className}`}
+      onClick={onOpen}
+      title={onOpen ? "คลิกดูรายละเอียด" : undefined}
+    >
       <div className="flex items-baseline justify-between gap-2 px-1">
         <h3 className={chartTitleClass}>
           {title}
@@ -207,6 +237,12 @@ export function Dashboard() {
   const [statsLoading, setStatsLoading] = useState(true);
   const [listFilter, setListFilter] = useState("");
   const [detailKind, setDetailKind] = useState<DashboardStatKind | null>(null);
+  const navigate = useNavigate();
+  const openOverview = (focus: "cargo" | "expense" | "area", area?: string) => {
+    const qs = new URLSearchParams({ year: String(selectedYear + 543), focus });
+    if (area) qs.set("area", area);
+    navigate(`/missions/overview?${qs.toString()}`);
+  };
 
   useEffect(() => {
     let cancelled = false;
@@ -488,6 +524,7 @@ export function Dashboard() {
               dataKey="cargoBaht"
               color={chartSeries.cargo}
               unit="บาท"
+              onOpen={() => openOverview("cargo")}
               extra={(row) => `จำนวนตู้ ${row.containers.toLocaleString("th-TH")} ใบ`}
             />
             <MetricBarChart
@@ -497,6 +534,7 @@ export function Dashboard() {
               dataKey="expenseBaht"
               color={chartSeries.expense}
               unit="บาท"
+              onOpen={() => openOverview("expense")}
               extra={(row) =>
                 row.cargoBaht > 0
                   ? `คิดเป็น ${((row.expenseBaht / row.cargoBaht) * 100).toLocaleString("th-TH", {
@@ -512,6 +550,7 @@ export function Dashboard() {
               dataKey="truckBaht"
               color="#059669"
               unit="บาท"
+              onOpen={() => openOverview("expense")}
               extra={(row) =>
                 row.cargoBaht > 0
                   ? `คิดเป็น ${((row.truckBaht / row.cargoBaht) * 100).toLocaleString("th-TH", {
@@ -520,7 +559,11 @@ export function Dashboard() {
                   : null
               }
             />
-            <div className={`${chartCardClass} h-[220px] lg:col-span-3 lg:h-auto print:h-auto`}>
+            <div
+              className={`${chartCardClass} ${clickableCardClass} h-[220px] lg:col-span-3 lg:h-auto print:h-auto`}
+              onClick={() => setDetailKind("gasoline")}
+              title="คลิกดูรายละเอียด"
+            >
               <h3 className={chartTitleClass}>น้ำมันภารกิจ (ลิตร)</h3>
               <div className="min-h-0 w-full min-w-0 flex-1 print:h-[4.6cm] print:flex-none">
                 <ResponsiveContainer width="100%" height="100%">
@@ -586,11 +629,13 @@ export function Dashboard() {
               color={chartSeries.maintenance}
               unit="บาท"
               compact
+              onOpen={() => setDetailKind("maintenance")}
             />
             <MissionIncidentStatsCard year={selectedYear} className="lg:col-span-3" />
             <AreaSummaryPanel
               areas={filteredAreas}
               className="lg:col-span-3 lg:min-h-0 print:col-span-2"
+              onOpen={(area) => openOverview("area", area)}
             />
           </div>
         )}

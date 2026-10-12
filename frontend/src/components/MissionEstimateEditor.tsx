@@ -25,11 +25,6 @@ import {
 } from "../lib/missionEstimate";
 import { toolbarLinkBtnClass } from "../lib/uiTokens";
 import { blankEstimateQuantities } from "../lib/trip2569Amounts";
-import {
-  BOT_PER_DIEM_JRAS,
-  BOT_PER_DIEM_OTHER,
-  BOT_SPECIAL_ALLOWANCE_PER_DAY,
-} from "../lib/botAllowancePrint";
 import type {
   MissionEstimatePrevious,
   MissionEstimateRecord,
@@ -37,34 +32,6 @@ import type {
   MissionTrip2569Meta,
   RouteMaster,
 } from "../types";
-
-/** ค่ายานพาหนะไป-กลับ จนท.ธปท. ต่อคน (ข้อ 5.2) */
-const BOT_VEHICLE_TRAVEL_PER_PERSON = 400;
-
-function BotPerDiemRateNote() {
-  return (
-    <div className="rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-[11px] leading-relaxed text-amber-900">
-      <p className="font-bold">โน้ตสำคัญ — อัตราเบี้ยเลี้ยง พนักงาน ธปท. (ต่อคน/วัน)</p>
-      <ul className="mt-1 list-disc space-y-0.5 pl-4">
-        <li>
-          ชั้น 4 ลงมา (รวม 4(ควบ) / จรส.) และชั้น 5 ={" "}
-          <span className="font-semibold tabular-nums">{formatBaht(BOT_PER_DIEM_JRAS)}</span> บาท
-        </li>
-        <li>
-          ชั้น 5(ควบ) และชั้น 6 ขึ้นไป ={" "}
-          <span className="font-semibold tabular-nums">{formatBaht(BOT_PER_DIEM_OTHER)}</span> บาท
-        </li>
-        <li>
-          เบี้ยพิเศษสำหรับภารกิจขนส่ง (ข้อ 8.1){" "}
-          <span className="font-semibold tabular-nums">{formatBaht(BOT_SPECIAL_ALLOWANCE_PER_DAY)}</span> บาท/คน/วัน ·
-          ค่ายานพาหนะไป-กลับ (ข้อ 5.2){" "}
-          <span className="font-semibold tabular-nums">{formatBaht(BOT_VEHICLE_TRAVEL_PER_PERSON)}</span> บาท/คน
-        </li>
-        <li>ถ้าเมนูบุคลากรกำหนดอัตราเบี้ยเลี้ยงรายคนไว้ ระบบใช้อัตรานั้นก่อนระดับชั้น</li>
-      </ul>
-    </div>
-  );
-}
 
 function deltaClass(n: number): string {
   if (!Number.isFinite(n) || n === 0) return "text-slate-600";
@@ -849,13 +816,6 @@ export const MissionEstimateEditor = forwardRef<MissionEstimateEditorHandle, Mis
                       ) : null}
                     </td>
                   </tr>
-                  {line.itemCode === "5.3" ? (
-                    <tr>
-                      <td colSpan={8} className="border-b border-slate-100 px-2 py-2">
-                        <BotPerDiemRateNote />
-                      </td>
-                    </tr>
-                  ) : null}
                   {isLastGroup8 ? (
                     <tr>
                       <td colSpan={8} className="border-b border-slate-100 px-2 py-2 text-right">

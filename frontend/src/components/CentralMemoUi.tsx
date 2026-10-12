@@ -7,11 +7,7 @@ export function MemoBackButton({ fallback }: { fallback: string }) {
   return (
     <button
       type="button"
-      onClick={() => {
-        const idx = (window.history.state as { idx?: number } | null)?.idx ?? 0;
-        if (idx > 0) navigate(-1);
-        else navigate(fallback);
-      }}
+      onClick={() => navigate(fallback)}
       className="inline-flex items-center gap-1.5 rounded-full border border-slate-200 bg-white px-3.5 py-1.5 text-sm font-semibold text-slate-700 shadow-sm hover:bg-slate-50"
     >
       <span aria-hidden>←</span> ย้อนกลับ
