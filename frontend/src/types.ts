@@ -767,6 +767,13 @@ export interface MissionListItem {
 
 export type MissionEstimateLineKind = "GROUP" | "ITEM";
 
+/** GET/PUT /api/mission-estimates/references */
+export interface EstimateReferenceDoc {
+  id: string;
+  name: string;
+  url: string;
+}
+
 export interface MissionEstimateLine {
   sortOrder: number;
   kind: MissionEstimateLineKind;

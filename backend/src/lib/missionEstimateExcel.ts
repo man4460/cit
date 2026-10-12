@@ -2,6 +2,7 @@ import XLSX from "xlsx-js-style";
 import { withExcelFont } from "./excelFont.js";
 import {
   computeEstimateTotals,
+  lineCurrentAmount,
   type EstimateLineInput,
 } from "./missionEstimateTemplate.js";
 
@@ -14,6 +15,8 @@ export type EstimateExportPayload = {
   previousTitle?: string | null;
   currentTitle?: string | null;
   lines: EstimateLineInput[];
+  /** ชีท «หลักเกณฑ์» — ชื่อเอกสาร + ลิงก์ */
+  references?: { name: string; url: string }[];
 };
 
 type CellStyle = XLSX.CellObject["s"];
@@ -47,13 +50,7 @@ function num(v: number | string | null | undefined): number | "" {
   return Number.isFinite(n) ? n : "";
 }
 
-function lineAmount(line: EstimateLineInput): number {
-  const qty = num(line.quantity);
-  const rate = num(line.unitPrice);
-  if (line.qtyEditable && line.rateEditable && qty !== "" && rate !== "") return Number(qty) * Number(rate);
-  const amt = num(line.amount);
-  return amt === "" ? 0 : Number(amt);
-}
+const lineAmount = lineCurrentAmount;
 
 function moneyStyle(extra?: Partial<CellStyle>): CellStyle {
   return {
@@ -375,5 +372,51 @@ export function buildEstimateWorkbook(payload: EstimateExportPayload): Buffer {
 
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws, "ประมาณการค่าใช้จ่าย");
+  const refs = (payload.references ?? []).filter((r) => r.name.trim() || r.url.trim());
+  if (refs.length) XLSX.utils.book_append_sheet(wb, buildReferenceSheet(refs), "หลักเกณฑ์");
   return XLSX.write(wb, { type: "buffer", bookType: "xlsx" }) as Buffer;
+}
+
+function buildReferenceSheet(refs: { name: string; url: string }[]): XLSX.WorkSheet {
+  const ws: XLSX.WorkSheet = {};
+  merge(ws, 0, 0, 0, 2);
+  setCell(ws, 0, 0, "หลักเกณฑ์ / ระเบียบ / คำสั่งที่เกี่ยวข้อง", {
+    font: { bold: true, sz: 14, color: { rgb: C.dark } },
+    alignment: { horizontal: "left", vertical: "center" },
+  });
+  const headers = ["ที่", "ชื่อเอกสาร", "ลิงก์"];
+  headers.forEach((h, c) =>
+    setCell(ws, 2, c, h, {
+      fill: { fgColor: { rgb: C.headerBg } },
+      font: { bold: true, sz: 10, color: { rgb: C.slate } },
+      border: thinBorder,
+      alignment: { horizontal: c === 0 ? "center" : "left", vertical: "center" },
+    }),
+  );
+  refs.forEach((ref, i) => {
+    const r = 3 + i;
+    setCell(ws, r, 0, i + 1, {
+      font: { sz: 10 },
+      border: thinBorder,
+      alignment: { horizontal: "center", vertical: "center" },
+    });
+    setCell(ws, r, 1, ref.name || ref.url, textStyle({ font: { sz: 10, color: { rgb: C.dark } } }));
+    const url = ref.url.trim();
+    setCell(
+      ws,
+      r,
+      2,
+      url,
+      textStyle({ font: { sz: 10, underline: Boolean(url), color: { rgb: url ? "1D4ED8" : C.slate } } }),
+    );
+    if (url) {
+      const target = /^[a-z]+:\/\//i.test(url) ? url : `https://${url}`;
+      ws[XLSX.utils.encode_cell({ r, c: 1 })]!.l = { Target: target, Tooltip: url };
+      ws[XLSX.utils.encode_cell({ r, c: 2 })]!.l = { Target: target, Tooltip: url };
+    }
+  });
+  ws["!ref"] = XLSX.utils.encode_range({ s: { r: 0, c: 0 }, e: { r: 2 + refs.length, c: 2 } });
+  ws["!cols"] = [{ wch: 6 }, { wch: 60 }, { wch: 70 }];
+  ws["!rows"] = [{ hpt: 24 }];
+  return ws;
 }

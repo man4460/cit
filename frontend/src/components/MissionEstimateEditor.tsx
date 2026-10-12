@@ -28,6 +28,7 @@ import {
 import { toolbarLinkBtnClass } from "../lib/uiTokens";
 import { blankEstimateQuantities } from "../lib/trip2569Amounts";
 import type {
+  EstimateReferenceDoc,
   MissionEstimatePrevious,
   MissionEstimateRecord,
   MissionEstimateTemplate,
@@ -112,6 +113,19 @@ export const MissionEstimateEditor = forwardRef<MissionEstimateEditorHandle, Mis
     const [currentDateRange, setCurrentDateRange] = useState("");
     const [previousDateRange, setPreviousDateRange] = useState("");
     const [notes, setNotes] = useState("");
+    const [refs, setRefs] = useState<EstimateReferenceDoc[]>([]);
+    const [refsDirty, setRefsDirty] = useState(false);
+    const [refsSaving, setRefsSaving] = useState(false);
+
+    useEffect(() => {
+      let cancelled = false;
+      apiJson<EstimateReferenceDoc[]>("/api/mission-estimates/references", { skipCache: true })
+        .then((rows) => !cancelled && setRefs(rows))
+        .catch(() => undefined);
+      return () => {
+        cancelled = true;
+      };
+    }, []);
     const [previousMissionId, setPreviousMissionId] = useState<string | null>(null);
     const [previousInfo, setPreviousInfo] = useState<MissionEstimatePrevious | null>(null);
     const [lines, setLines] = useState<MissionEstimateRecord["lines"]>([]);
@@ -457,7 +471,32 @@ export const MissionEstimateEditor = forwardRef<MissionEstimateEditorHandle, Mis
       );
     }
 
+    async function saveReferences(): Promise<boolean> {
+      if (!refsDirty) return true;
+      setRefsSaving(true);
+      try {
+        const saved = await apiJson<EstimateReferenceDoc[]>("/api/mission-estimates/references", {
+          method: "PUT",
+          body: JSON.stringify({ items: refs }),
+        });
+        setRefs(saved);
+        setRefsDirty(false);
+        return true;
+      } catch (e) {
+        alert(e instanceof Error ? e.message : "บันทึกหลักเกณฑ์ไม่สำเร็จ");
+        return false;
+      } finally {
+        setRefsSaving(false);
+      }
+    }
+
+    function patchRef(i: number, patch: Partial<EstimateReferenceDoc>) {
+      setRefs((cur) => cur.map((r, idx) => (idx === i ? { ...r, ...patch } : r)));
+      setRefsDirty(true);
+    }
+
     async function downloadExcel() {
+      if (!(await saveReferences())) return;
       try {
         await apiDownload(
           "/api/mission-estimates/export",
@@ -861,6 +900,86 @@ export const MissionEstimateEditor = forwardRef<MissionEstimateEditorHandle, Mis
             onChange={(e) => setNotes(e.target.value)}
           />
         </label>
+
+        <section className="rounded-xl border border-slate-200 bg-white/90 p-3">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div>
+              <p className="text-xs font-bold text-[#1e1b3a]">หลักเกณฑ์ / ระเบียบ / คำสั่งอ้างอิง</p>
+              <p className="text-[11px] text-slate-500">
+                ใช้ร่วมทุกประมาณการ — ใส่ในชีท «หลักเกณฑ์» เมื่อดาวน์โหลด Excel
+              </p>
+            </div>
+            <div className="flex items-center gap-1.5">
+              <button
+                type="button"
+                className={toolbarLinkBtnClass}
+                onClick={() => {
+                  setRefs((cur) => [...cur, { id: "", name: "", url: "" }]);
+                  setRefsDirty(true);
+                }}
+              >
+                + เพิ่มเอกสาร
+              </button>
+              {refsDirty ? (
+                <button
+                  type="button"
+                  className="rounded-lg bg-[#4d47b6] px-3 py-1.5 text-xs font-semibold text-white hover:bg-[#3f3a99] disabled:opacity-60"
+                  disabled={refsSaving}
+                  onClick={() => void saveReferences()}
+                >
+                  {refsSaving ? "กำลังบันทึก…" : "บันทึกรายการ"}
+                </button>
+              ) : null}
+            </div>
+          </div>
+          {refs.length === 0 ? (
+            <p className="mt-2 text-[11px] text-slate-400">ยังไม่มีเอกสาร — กด «+ เพิ่มเอกสาร»</p>
+          ) : (
+            <ul className="mt-2 space-y-1.5">
+              {refs.map((r, i) => (
+                <li key={r.id || `new-${i}`} className="grid grid-cols-[1.5rem_minmax(0,1fr)_minmax(0,1.2fr)_auto_auto] items-center gap-1.5">
+                  <span className="text-right text-[11px] tabular-nums text-slate-400">{i + 1}</span>
+                  <input
+                    aria-label={`ชื่อเอกสาร ${i + 1}`}
+                    className="w-full rounded-md border border-slate-200 px-2 py-1 text-xs"
+                    placeholder="ชื่อเอกสาร เช่น ระเบียบ ธปท. ว่าด้วยค่าใช้จ่ายในการเดินทาง"
+                    value={r.name}
+                    onChange={(e) => patchRef(i, { name: e.target.value })}
+                  />
+                  <input
+                    aria-label={`ลิงก์เอกสาร ${i + 1}`}
+                    className="w-full rounded-md border border-slate-200 px-2 py-1 text-xs"
+                    placeholder="https://…"
+                    value={r.url}
+                    onChange={(e) => patchRef(i, { url: e.target.value })}
+                  />
+                  {r.url.trim() ? (
+                    <a
+                      href={/^[a-z]+:\/\//i.test(r.url.trim()) ? r.url.trim() : `https://${r.url.trim()}`}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="rounded-md px-1.5 py-1 text-[11px] font-semibold text-[#4d47b6] hover:bg-indigo-50"
+                    >
+                      เปิด
+                    </a>
+                  ) : (
+                    <span />
+                  )}
+                  <button
+                    type="button"
+                    className="rounded-md px-1.5 py-1 text-[11px] font-semibold text-rose-600 hover:bg-rose-50"
+                    onClick={() => {
+                      setRefs((cur) => cur.filter((_, idx) => idx !== i));
+                      setRefsDirty(true);
+                    }}
+                  >
+                    ลบ
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
+        </section>
 
         <p className="text-[11px] text-slate-500">
           ประมาณการบันทึกแยกจากค่าใช้จ่ายจริง — บันทึกพร้อมภารกิจในขั้นตอนถัดไปหรือปุ่ม «บันทึกข้อมูล»

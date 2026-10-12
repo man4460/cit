@@ -409,10 +409,46 @@ missionEstimatesRouter.get("/", async (_req, res, next) => {
   }
 });
 
+async function loadReferenceDocs() {
+  const rows = await prisma.estimateReferenceDoc.findMany({ orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }] });
+  return rows.map((r) => ({ id: r.id, name: r.name, url: r.url }));
+}
+
+missionEstimatesRouter.get("/references", async (_req, res, next) => {
+  try {
+    res.json(await loadReferenceDocs());
+  } catch (e) {
+    next(e);
+  }
+});
+
+/** แทนที่รายการทั้งหมด — body: { items: [{ name, url }] } */
+missionEstimatesRouter.put("/references", async (req, res, next) => {
+  try {
+    const raw = Array.isArray(req.body?.items) ? (req.body.items as unknown[]) : [];
+    const items = raw
+      .map((x) => {
+        const o = (x ?? {}) as Record<string, unknown>;
+        return { name: String(o.name ?? "").trim(), url: String(o.url ?? "").trim() };
+      })
+      .filter((x) => x.name || x.url);
+    await prisma.$transaction([
+      prisma.estimateReferenceDoc.deleteMany({}),
+      prisma.estimateReferenceDoc.createMany({
+        data: items.map((x, i) => ({ name: x.name || x.url, url: x.url, sortOrder: i })),
+      }),
+    ]);
+    res.json(await loadReferenceDocs());
+  } catch (e) {
+    next(e);
+  }
+});
+
 missionEstimatesRouter.post("/export", async (req, res, next) => {
   try {
     const body = req.body as EstimateExportPayload;
     const buf = buildEstimateWorkbook({
+      references: await loadReferenceDocs(),
       currentLabel: body.currentLabel,
       previousLabel: body.previousLabel,
       currentDateRange: body.currentDateRange,
@@ -443,6 +479,7 @@ missionEstimatesRouter.get("/:id/export", async (req, res, next) => {
     });
     if (!row) return res.status(404).json({ error: "ไม่พบประมาณการ" });
     const buf = buildEstimateWorkbook({
+      references: await loadReferenceDocs(),
       currentLabel: row.currentLabel,
       previousLabel: row.previousLabel,
       currentDateRange: row.currentDateRange,
