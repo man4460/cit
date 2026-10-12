@@ -287,7 +287,7 @@ export function buildEstimateWorkbook(payload: EstimateExportPayload): Buffer {
       ws,
       row,
       7,
-      isItem ? String(line.lineNote ?? "").trim() : "",
+      String(line.lineNote ?? "").trim(),
       textStyle({
         fill: { fgColor: { rgb: rowFill } },
         font: { sz: 10, color: { rgb: C.slate } },

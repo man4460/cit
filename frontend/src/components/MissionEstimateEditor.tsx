@@ -804,16 +804,14 @@ export const MissionEstimateEditor = forwardRef<MissionEstimateEditorHandle, Mis
                       {Number.isFinite(delta) ? formatBaht(delta) : ""}
                     </td>
                     <td className="border-b border-slate-100 px-1 py-1">
-                      {isItem ? (
-                        <input
-                          type="text"
-                          aria-label={`หมายเหตุ ${line.name}`}
-                          className="w-full rounded border border-transparent bg-transparent px-1 py-0.5 text-[11px] text-slate-600 placeholder:text-slate-300 hover:border-slate-200 focus:border-slate-300 focus:outline-none"
-                          placeholder="หมายเหตุ…"
-                          value={line.lineNote ?? ""}
-                          onChange={(e) => patchLine(idx, { lineNote: e.target.value })}
-                        />
-                      ) : null}
+                      <input
+                        type="text"
+                        aria-label={`หมายเหตุ ${line.name}`}
+                        className="w-full rounded border border-transparent bg-transparent px-1 py-0.5 text-[11px] text-slate-600 placeholder:text-slate-300 hover:border-slate-200 focus:border-slate-300 focus:outline-none"
+                        placeholder="หมายเหตุ…"
+                        value={line.lineNote ?? ""}
+                        onChange={(e) => patchLine(idx, { lineNote: e.target.value })}
+                      />
                     </td>
                   </tr>
                   {isLastGroup8 ? (
