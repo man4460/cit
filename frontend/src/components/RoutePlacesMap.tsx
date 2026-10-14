@@ -1,9 +1,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
-import { apiJson } from "../api/client";
+import { createPortal } from "react-dom";
+import { apiFormJson, apiJson } from "../api/client";
 import { routeSegments, type GeoLocationCode } from "../lib/routeSegments";
-import type { RouteMaster, RoutePlace, RoutePlaceKind } from "../types";
+import type { RouteMaster, RoutePlace, RoutePlaceKind, RoutePlacePhoto } from "../types";
 import { ROUTE_PLACE_KINDS } from "./RoutePlacesPanel";
 
 const KIND_COLOR: Record<RoutePlaceKind, string> = {
@@ -34,30 +35,30 @@ function placeIcon(p: RoutePlace): string {
   return KIND_ICON.OTHER;
 }
 
-type Brand = { label: string; bg: string; fg: string; border?: string };
+type Brand = { label: string; bg: string; fg: string; border?: string; logo?: string };
 
-/** ป้ายแบรนด์ (สีประจำแบรนด์ + ชื่อย่อ) — จับจากชื่อสถานที่ */
+/** แบรนด์ — จับจากชื่อสถานที่ · logo = ไฟล์ใน public/brands (ใช้ภายในหน่วยงาน) · ไม่มี logo = ป้ายสีแบรนด์ */
 const BRANDS: { re: RegExp; brand: Brand }[] = [
-  { re: /ปตท|p\s?t\s?t/i, brand: { label: "PTT", bg: "#0b4ea2", fg: "#ffffff" } },
-  { re: /พีที|\bPT\b/i, brand: { label: "PT", bg: "#00a651", fg: "#ffde00" } },
-  { re: /บางจาก|bangchak/i, brand: { label: "บางจาก", bg: "#00843d", fg: "#ffffff" } },
-  { re: /เชลล์|shell/i, brand: { label: "Shell", bg: "#ffd500", fg: "#dd1d21" } },
-  { re: /คาลเท็กซ์|caltex/i, brand: { label: "Caltex", bg: "#ffffff", fg: "#e2231a", border: "#e2231a" } },
-  { re: /เอสโซ่|esso/i, brand: { label: "Esso", bg: "#ffffff", fg: "#0b4ea2", border: "#e2231a" } },
-  { re: /ซัสโก้|susco/i, brand: { label: "Susco", bg: "#e30613", fg: "#ffffff" } },
-  { re: /ปิโตรนาส|petronas/i, brand: { label: "Petronas", bg: "#00a19c", fg: "#ffffff" } },
-  { re: /คอสโม|cosmo/i, brand: { label: "Cosmo", bg: "#e60012", fg: "#ffffff" } },
-  { re: /โตโยต้า|toyota/i, brand: { label: "TOYOTA", bg: "#ffffff", fg: "#eb0a1e", border: "#eb0a1e" } },
-  { re: /อีซูซุ|isuzu/i, brand: { label: "ISUZU", bg: "#ffffff", fg: "#c8102e", border: "#c8102e" } },
-  { re: /b-?quik|บี-?ควิก/i, brand: { label: "B-Quik", bg: "#ffd200", fg: "#1a1a1a" } },
+  { re: /ปตท|p\s?t\s?t/i, brand: { label: "PTT", bg: "#0b4ea2", fg: "#ffffff", logo: "/brands/ptt.png" } },
+  { re: /พีที|\bPT\b/i, brand: { label: "PT", bg: "#00a651", fg: "#ffde00", logo: "/brands/pt.png" } },
+  { re: /บางจาก|bangchak/i, brand: { label: "บางจาก", bg: "#00843d", fg: "#ffffff", logo: "/brands/bangchak.png" } },
+  { re: /เชลล์|shell/i, brand: { label: "Shell", bg: "#ffd500", fg: "#dd1d21", logo: "/brands/shell.png" } },
+  { re: /คาลเท็กซ์|caltex/i, brand: { label: "Caltex", bg: "#ffffff", fg: "#e2231a", border: "#e2231a", logo: "/brands/caltex.png" } },
+  { re: /เอสโซ่|esso/i, brand: { label: "Esso", bg: "#ffffff", fg: "#0b4ea2", border: "#e2231a", logo: "/brands/esso.png" } },
+  { re: /ซัสโก้|susco/i, brand: { label: "Susco", bg: "#e30613", fg: "#ffffff", logo: "/brands/susco.png" } },
+  { re: /ปิโตรนาส|petronas/i, brand: { label: "Petronas", bg: "#00a19c", fg: "#ffffff", logo: "/brands/petronas.png" } },
+  { re: /คอสโม|cosmo/i, brand: { label: "Cosmo", bg: "#e60012", fg: "#ffffff", logo: "/brands/cosmo.png" } },
+  { re: /โตโยต้า|toyota/i, brand: { label: "TOYOTA", bg: "#ffffff", fg: "#eb0a1e", border: "#eb0a1e", logo: "/brands/toyota.png" } },
+  { re: /อีซูซุ|isuzu/i, brand: { label: "ISUZU", bg: "#ffffff", fg: "#c8102e", border: "#c8102e", logo: "/brands/isuzu.png" } },
+  { re: /b-?quik|บี-?ควิก/i, brand: { label: "B-Quik", bg: "#ffd200", fg: "#1a1a1a", logo: "/brands/bquik.png" } },
   { re: /cockpit|ค็อกพิท/i, brand: { label: "Cockpit", bg: "#e4002b", fg: "#ffffff" } },
-  { re: /goodyear|กู๊ดเยียร์/i, brand: { label: "Goodyear", bg: "#0b2c7a", fg: "#ffdd00" } },
+  { re: /goodyear|กู๊ดเยียร์/i, brand: { label: "Goodyear", bg: "#0b2c7a", fg: "#ffdd00", logo: "/brands/goodyear.png" } },
   { re: /tyre\s?plus|ไทร์พลัส/i, brand: { label: "Tyreplus", bg: "#27509b", fg: "#ffffff" } },
-  { re: /michelin|มิชลิน/i, brand: { label: "Michelin", bg: "#27509b", fg: "#fce500" } },
-  { re: /bridgestone|บริดจสโตน/i, brand: { label: "Bridgestone", bg: "#111111", fg: "#ffffff" } },
-  { re: /dunlop|ดันลอป/i, brand: { label: "Dunlop", bg: "#ffcd00", fg: "#111111" } },
+  { re: /michelin|มิชลิน/i, brand: { label: "Michelin", bg: "#27509b", fg: "#fce500", logo: "/brands/michelin.png" } },
+  { re: /bridgestone|บริดจสโตน/i, brand: { label: "Bridgestone", bg: "#111111", fg: "#ffffff", logo: "/brands/bridgestone.png" } },
+  { re: /dunlop|ดันลอป/i, brand: { label: "Dunlop", bg: "#ffcd00", fg: "#111111", logo: "/brands/dunlop.png" } },
   { re: /ตำรวจทางหลวง|highway police/i, brand: { label: "ตร.ทางหลวง", bg: "#1d4ed8", fg: "#ffffff" } },
-  { re: /bangkok hospital|โรงพยาบาลกรุงเทพ/i, brand: { label: "BDMS", bg: "#004b8d", fg: "#ffffff" } },
+  { re: /bangkok hospital|โรงพยาบาลกรุงเทพ/i, brand: { label: "BDMS", bg: "#004b8d", fg: "#ffffff", logo: "/brands/bdms.png" } },
 ];
 
 function placeBrand(p: RoutePlace): Brand | null {
@@ -81,6 +82,15 @@ const fmtKm = (km: number) => (km < 1 ? `${Math.round(km * 1000)} ม.` : `${km.
 function pinIcon(p: RoutePlace) {
   const ring = p.isFavorite ? "#f59e0b" : "#ffffff";
   const brand = placeBrand(p);
+  if (brand?.logo) {
+    return L.divIcon({
+      className: "",
+      iconSize: [34, 34],
+      iconAnchor: [17, 17],
+      popupAnchor: [0, -16],
+      html: `<div style="position:relative;width:34px;height:34px;border-radius:9999px;background:#fff;border:3px solid ${p.isFavorite ? "#f59e0b" : KIND_COLOR[p.kind]};box-shadow:0 1px 5px rgba(0,0,0,.45);display:flex;align-items:center;justify-content:center;opacity:${p.verified ? 1 : 0.9}"><img src="${brand.logo}" alt="${esc(brand.label)}" style="width:22px;height:22px;object-fit:contain" /><span style="position:absolute;right:-5px;bottom:-5px;width:16px;height:16px;border-radius:9999px;background:${KIND_COLOR[p.kind]};border:1.5px solid #fff;display:flex;align-items:center;justify-content:center;font-size:9px">${placeIcon(p)}</span></div>`,
+    });
+  }
   if (brand) {
     return L.divIcon({
       className: "",
@@ -98,30 +108,219 @@ function pinIcon(p: RoutePlace) {
   });
 }
 
-function popupHtml(p: RoutePlace, segmentLabel: string, fromMe: number | null): string {
+const googlePlaceUrl = (p: RoutePlace) =>
+  `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent([p.name, p.location].filter(Boolean).join(" "))}`;
+
+const streetViewUrl = (lat: number, lng: number) => `https://www.google.com/maps/@?api=1&map_action=pano&viewpoint=${lat},${lng}`;
+
+/** เนื้อหา popup จุดบริการ — ข้อมูล · โทร · นำทาง · รูปจากเจ้าหน้าที่ · ลิงก์ภาพ Google Maps / Street View */
+function PlacePopup({
+  place: p,
+  segmentLabel,
+  fromMe,
+  onResize,
+  onViewPhoto,
+}: {
+  place: RoutePlace;
+  segmentLabel: string;
+  fromMe: number | null;
+  onResize: () => void;
+  onViewPhoto: (photos: RoutePlacePhoto[], index: number) => void;
+}) {
+  const [photos, setPhotos] = useState<RoutePlacePhoto[] | null>(null);
+  const [uploading, setUploading] = useState(false);
+  const fileRef = useRef<HTMLInputElement>(null);
   const kind = ROUTE_PLACE_KINDS.find((k) => k.id === p.kind)?.label ?? "อื่นๆ";
   const brand = placeBrand(p);
   const tel = p.phone ? p.phone.replace(/[^\d+]/g, "") : "";
-  const nav = p.lat != null && p.lng != null ? navUrl(p.lat, p.lng) : p.mapUrl ?? "";
-  const btn = "display:inline-flex;align-items:center;gap:4px;border-radius:9999px;padding:6px 12px;font-weight:700;font-size:12px;text-decoration:none";
-  return `<div style="min-width:15rem;max-width:19rem;font-size:12px;line-height:1.45">
-    <div style="display:flex;gap:4px;align-items:center;flex-wrap:wrap;margin-bottom:2px">
-      <span style="background:${KIND_COLOR[p.kind]};color:#fff;border-radius:4px;padding:0 6px;font-size:10px;font-weight:700">${placeIcon(p)} ${esc(kind)}</span>
-      ${brand ? `<span style="background:${brand.bg};color:${brand.fg};border:1px solid ${brand.border ?? brand.bg};border-radius:4px;padding:0 6px;font-size:10px;font-weight:900">${esc(brand.label)}</span>` : ""}
-      ${p.verified ? "" : '<span style="background:#fae8ff;color:#a21caf;border-radius:4px;padding:0 5px;font-size:10px;font-weight:700">AI · รอตรวจ</span>'}
-      ${p.isFavorite ? '<span style="color:#f59e0b">★</span>' : ""}
+  const hasPos = p.lat != null && p.lng != null;
+
+  useEffect(() => {
+    let alive = true;
+    apiJson<RoutePlacePhoto[]>(`/api/route-master/places/${p.id}/photos`, { skipCache: true })
+      .then((rows) => alive && setPhotos(rows))
+      .catch(() => alive && setPhotos([]));
+    return () => {
+      alive = false;
+    };
+  }, [p.id]);
+
+  useEffect(() => {
+    onResize();
+  }, [photos, onResize]);
+
+  async function uploadFiles(files: FileList | null) {
+    if (!files?.length) return;
+    const fd = new FormData();
+    for (const f of Array.from(files)) fd.append("files", f);
+    setUploading(true);
+    try {
+      setPhotos(await apiFormJson<RoutePlacePhoto[]>(`/api/route-master/places/${p.id}/photos`, fd));
+    } catch (err) {
+      alert(err instanceof Error ? err.message : "อัปโหลดรูปไม่สำเร็จ");
+    } finally {
+      setUploading(false);
+      if (fileRef.current) fileRef.current.value = "";
+    }
+  }
+
+  const btn = "inline-flex items-center gap-1 rounded-full px-3 py-1.5 text-[12px] font-bold no-underline";
+
+  return (
+    <div className="w-[17rem] text-[12px] leading-snug sm:w-[19rem]">
+      <div className="mb-1 flex flex-wrap items-center gap-1">
+        {brand?.logo ? <img src={brand.logo} alt={brand.label} className="h-6 w-6 rounded object-contain" /> : null}
+        <span className="rounded px-1.5 text-[10px] font-bold text-white" style={{ background: KIND_COLOR[p.kind] }}>
+          {placeIcon(p)} {kind}
+        </span>
+        {brand ? (
+          <span
+            className="rounded px-1.5 text-[10px] font-black"
+            style={{ background: brand.bg, color: brand.fg, border: `1px solid ${brand.border ?? brand.bg}` }}
+          >
+            {brand.label}
+          </span>
+        ) : null}
+        {!p.verified ? <span className="rounded bg-fuchsia-100 px-1.5 text-[10px] font-bold text-fuchsia-700">AI · รอตรวจ</span> : null}
+        {p.isFavorite ? <span className="text-amber-500">★</span> : null}
+      </div>
+      <p className="text-[14px] font-extrabold text-[#1e1b3a]">{p.name}</p>
+      {fromMe != null ? <p className="font-bold text-sky-700">ห่างจากคุณ ~{fmtKm(fromMe)} (เส้นตรง)</p> : null}
+      {segmentLabel ? <p className="text-[#4d47b6]">{segmentLabel}</p> : null}
+      {p.location ? <p className="text-slate-600">{p.location}</p> : null}
+      {p.openingHours ? <p className="text-slate-600">เวลาเปิด: {p.openingHours}</p> : null}
+      {p.note ? <p className="mt-0.5 text-amber-800">{p.note}</p> : null}
+
+      <div className="mt-2">
+        <div className="mb-1 flex items-center justify-between">
+          <span className="text-[11px] font-black text-[#2e2a58]">📷 รูปถ่าย {photos ? `(${photos.length})` : ""}</span>
+          <button
+            type="button"
+            disabled={uploading}
+            onClick={() => fileRef.current?.click()}
+            className="rounded-full bg-[#f5f3ff] px-2 py-0.5 text-[11px] font-bold text-[#4d47b6] ring-1 ring-[#dcd8f0] hover:bg-[#ede9fe] disabled:opacity-50"
+          >
+            {uploading ? "กำลังอัปโหลด…" : "+ เพิ่มรูป"}
+          </button>
+          <input ref={fileRef} type="file" accept="image/*" multiple className="hidden" onChange={(e) => void uploadFiles(e.target.files)} />
+        </div>
+        {photos === null ? (
+          <p className="text-[11px] text-slate-400">กำลังโหลดรูป…</p>
+        ) : photos.length ? (
+          <div className="flex gap-1.5 overflow-x-auto pb-1">
+            {photos.map((ph, i) => (
+              <button
+                key={ph.id}
+                type="button"
+                onClick={() => onViewPhoto(photos, i)}
+                className="h-16 w-20 shrink-0 overflow-hidden rounded-lg ring-1 ring-slate-200 hover:ring-[#5b61ff]"
+              >
+                <img src={ph.fileUrl} alt={ph.originalName ?? p.name} className="h-full w-full object-cover" loading="lazy" />
+              </button>
+            ))}
+          </div>
+        ) : (
+          <p className="text-[11px] text-slate-400">ยังไม่มีรูป — กด «+ เพิ่มรูป» เช่น ทางเข้า ที่จอดรถใหญ่ หน้าร้าน</p>
+        )}
+        <div className="mt-1 flex flex-wrap gap-x-3 gap-y-0.5 text-[11px]">
+          <a href={googlePlaceUrl(p)} target="_blank" rel="noopener noreferrer" className="font-semibold text-[#5b61ff] hover:underline">
+            🖼️ ภาพใน Google Maps ↗
+          </a>
+          {hasPos ? (
+            <a href={streetViewUrl(p.lat!, p.lng!)} target="_blank" rel="noopener noreferrer" className="font-semibold text-[#5b61ff] hover:underline">
+              🚶 Street View ↗
+            </a>
+          ) : null}
+        </div>
+      </div>
+
+      <div className="mt-2 flex flex-wrap gap-1.5">
+        {tel ? (
+          <a href={`tel:${tel}`} className={`${btn} bg-emerald-600 !text-white`}>
+            📞 โทร {p.phone}
+          </a>
+        ) : (
+          <span className="self-center text-[11px] text-slate-400">ไม่มีเบอร์โทร</span>
+        )}
+        {hasPos ? (
+          <a href={navUrl(p.lat!, p.lng!)} target="_blank" rel="noopener noreferrer" className={`${btn} bg-[#0000BF] !text-white`}>
+            🧭 นำทาง
+          </a>
+        ) : null}
+      </div>
     </div>
-    <div style="font-weight:800;font-size:14px;color:#1e1b3a">${esc(p.name)}</div>
-    ${fromMe != null ? `<div style="color:#0369a1;font-weight:700">ห่างจากคุณ ~${fmtKm(fromMe)} (เส้นตรง)</div>` : ""}
-    ${segmentLabel ? `<div style="color:#4d47b6">${esc(segmentLabel)}</div>` : ""}
-    ${p.location ? `<div style="color:#475569">${esc(p.location)}</div>` : ""}
-    ${p.openingHours ? `<div style="color:#475569">เวลาเปิด: ${esc(p.openingHours)}</div>` : ""}
-    ${p.note ? `<div style="color:#92400e;margin-top:2px">${esc(p.note)}</div>` : ""}
-    <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:8px">
-      ${tel ? `<a href="tel:${esc(tel)}" style="${btn};background:#059669;color:#fff">📞 โทร ${esc(p.phone)}</a>` : '<span style="color:#94a3b8;font-size:11px;align-self:center">ไม่มีเบอร์โทร</span>'}
-      ${nav ? `<a href="${esc(nav)}" target="_blank" rel="noopener noreferrer" style="${btn};background:#0000BF;color:#fff">🧭 นำทาง</a>` : ""}
+  );
+}
+
+/** ดูรูปขนาดเต็ม เลื่อนซ้าย/ขวาได้ */
+function PhotoLightbox({ photos, index, onClose }: { photos: RoutePlacePhoto[]; index: number; onClose: () => void }) {
+  const [i, setI] = useState(index);
+  const go = useCallback((d: number) => setI((x) => (x + d + photos.length) % photos.length), [photos.length]);
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        e.stopPropagation();
+        onClose();
+      } else if (e.key === "ArrowLeft") go(-1);
+      else if (e.key === "ArrowRight") go(1);
+    };
+    window.addEventListener("keydown", onKey, true);
+    return () => window.removeEventListener("keydown", onKey, true);
+  }, [go, onClose]);
+  const ph = photos[i];
+  if (!ph) return null;
+  return (
+    <div className="absolute inset-0 z-[3000] flex flex-col bg-black/90" onClick={onClose} role="dialog" aria-modal="true">
+      <div className="flex items-center justify-between px-4 py-2 text-white">
+        <span className="text-xs text-white/70">
+          {i + 1} / {photos.length}
+        </span>
+        <div className="flex items-center gap-2">
+          <a
+            href={ph.fileUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            onClick={(e) => e.stopPropagation()}
+            className="rounded-lg px-2 py-1 text-xs text-white/80 hover:bg-white/10"
+          >
+            เปิดไฟล์เต็ม ↗
+          </a>
+          <button type="button" onClick={onClose} className="flex h-8 w-8 items-center justify-center rounded-full text-lg hover:bg-white/15" aria-label="ปิด">
+            ✕
+          </button>
+        </div>
+      </div>
+      <div className="relative flex min-h-0 flex-1 items-center justify-center px-12 pb-6">
+        <img src={ph.fileUrl} alt={ph.originalName ?? ""} className="max-h-full max-w-full rounded-lg object-contain" onClick={(e) => e.stopPropagation()} />
+        {photos.length > 1 ? (
+          <>
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                go(-1);
+              }}
+              className="absolute left-2 top-1/2 flex h-10 w-10 -translate-y-1/2 items-center justify-center rounded-full bg-white/15 text-2xl text-white hover:bg-white/25"
+              aria-label="รูปก่อนหน้า"
+            >
+              ‹
+            </button>
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                go(1);
+              }}
+              className="absolute right-2 top-1/2 flex h-10 w-10 -translate-y-1/2 items-center justify-center rounded-full bg-white/15 text-2xl text-white hover:bg-white/25"
+              aria-label="รูปถัดไป"
+            >
+              ›
+            </button>
+          </>
+        ) : null}
+      </div>
     </div>
-  </div>`;
+  );
 }
 
 type MyPos = { lat: number; lng: number; accuracy: number };
@@ -153,9 +352,10 @@ export function RoutePlacesMap({
   const markersRef = useRef<Map<string, L.Marker>>(new Map());
   const watchRef = useRef<number | null>(null);
   const centeredRef = useRef(false);
-  const meRef = useRef<MyPos | null>(null);
-  meRef.current = me;
   const fittedRef = useRef(false);
+  const [openPopup, setOpenPopup] = useState<{ place: RoutePlace; el: HTMLElement; popup: L.Popup } | null>(null);
+  const [lightbox, setLightbox] = useState<{ photos: RoutePlacePhoto[]; index: number } | null>(null);
+  const resizePopup = useCallback(() => openPopup?.popup.update(), [openPopup]);
 
   useEffect(() => {
     let alive = true;
@@ -247,18 +447,15 @@ export function RoutePlacesMap({
     layer.clearLayers();
     markersRef.current.clear();
     for (const p of shown) {
+      const el = document.createElement("div");
       const m = L.marker([p.lat!, p.lng!], { icon: pinIcon(p), title: p.name })
-        .bindPopup(
-          () => {
-            const cur = meRef.current;
-            return popupHtml(p, segLabel(p), cur ? distanceKm([cur.lat, cur.lng], [p.lat!, p.lng!]) : null);
-          },
-          { maxWidth: 320 },
-        )
+        .bindPopup(el, { maxWidth: 340, minWidth: 260, autoPanPaddingTopLeft: [10, 60] })
         .addTo(layer);
+      m.on("popupopen", (e) => setOpenPopup({ place: p, el, popup: (e as L.PopupEvent).popup }));
+      m.on("popupclose", () => setOpenPopup((cur) => (cur?.place.id === p.id ? null : cur)));
       markersRef.current.set(p.id, m);
     }
-  }, [shown, segLabel]);
+  }, [shown]);
 
   useEffect(() => {
     const map = mapRef.current;
@@ -401,6 +598,19 @@ export function RoutePlacesMap({
 
       <div className="relative min-h-0 flex-1">
         <div ref={elRef} className="absolute inset-0" />
+        {openPopup
+          ? createPortal(
+              <PlacePopup
+                key={openPopup.place.id}
+                place={openPopup.place}
+                segmentLabel={segLabel(openPopup.place)}
+                fromMe={me ? distanceKm([me.lat, me.lng], [openPopup.place.lat!, openPopup.place.lng!]) : null}
+                onResize={resizePopup}
+                onViewPhoto={(photos, index) => setLightbox({ photos, index })}
+              />,
+              openPopup.el,
+            )
+          : null}
 
         <div className="absolute right-3 top-3 z-[1000] flex flex-col items-end gap-2">
           <button
@@ -489,6 +699,7 @@ export function RoutePlacesMap({
           </div>
         ) : null}
       </div>
+      {lightbox ? <PhotoLightbox photos={lightbox.photos} index={lightbox.index} onClose={() => setLightbox(null)} /> : null}
     </div>
   );
 }

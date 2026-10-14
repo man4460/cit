@@ -3,6 +3,7 @@ import { Prisma, RouteMasterStatus } from "@prisma/client";
 import { prisma } from "../lib/prisma.js";
 import { computeRouteDistanceKm, knownLocationLabels } from "../lib/routeDistance.js";
 import { routeParam } from "../lib/routeParam.js";
+import { persistUpload, publicUploadPath, unlinkUploadFile, upload } from "../lib/upload.js";
 import { locationCodesRouter } from "./locationCodes.js";
 
 export const routeMasterRouter = Router();
@@ -212,7 +213,13 @@ const placeOrder: Prisma.RoutePlaceOrderByWithRelationInput[] = [
 
 routeMasterRouter.get("/:id/places", async (req, res, next) => {
   try {
-    res.json(await prisma.routePlace.findMany({ where: { routeId: routeParam(req.params.id) }, orderBy: placeOrder }));
+    res.json(
+      await prisma.routePlace.findMany({
+        where: { routeId: routeParam(req.params.id) },
+        orderBy: placeOrder,
+        include: { _count: { select: { photos: true } } },
+      }),
+    );
   } catch (e) {
     next(e);
   }
@@ -359,9 +366,84 @@ routeMasterRouter.put("/places/:placeId", async (req, res, next) => {
   }
 });
 
+const MAX_PLACE_PHOTOS_PER_UPLOAD = 10;
+
+function serializePlacePhoto(p: { id: string; storedFilename: string; originalName: string | null; createdAt: Date }) {
+  return { id: p.id, fileUrl: publicUploadPath(p.storedFilename), originalName: p.originalName, createdAt: p.createdAt };
+}
+
+routeMasterRouter.get("/places/:placeId/photos", async (req, res, next) => {
+  try {
+    const rows = await prisma.routePlacePhoto.findMany({
+      where: { placeId: routeParam(req.params.placeId) },
+      orderBy: { createdAt: "desc" },
+    });
+    res.json(rows.map(serializePlacePhoto));
+  } catch (e) {
+    next(e);
+  }
+});
+
+routeMasterRouter.post(
+  "/places/:placeId/photos",
+  (req, res, next) => {
+    upload.array("files", MAX_PLACE_PHOTOS_PER_UPLOAD)(req, res, (err: unknown) => {
+      if (!err) return next();
+      const code = err && typeof err === "object" && "code" in err ? String((err as { code: unknown }).code) : "";
+      if (code === "LIMIT_FILE_SIZE") return res.status(400).json({ error: "ไฟล์ใหญ่เกินกำหนด" });
+      if (code === "LIMIT_FILE_COUNT")
+        return res.status(400).json({ error: `เลือกรูปได้ไม่เกิน ${MAX_PLACE_PHOTOS_PER_UPLOAD} รูปต่อครั้ง` });
+      next(err);
+    });
+  },
+  async (req, res, next) => {
+    try {
+      const place = await prisma.routePlace.findUnique({ where: { id: routeParam(req.params.placeId) }, select: { id: true } });
+      if (!place) return res.status(404).json({ error: "ไม่พบจุดบริการ" });
+      const files = req.files as Express.Multer.File[] | undefined;
+      if (!files?.length) return res.status(400).json({ error: "ไม่ได้รับไฟล์รูป" });
+      for (const f of files) {
+        try {
+          const saved = await persistUpload(f, { module: "routes", userId: req.auth?.userId, kind: "place", forceImage: true });
+          await prisma.routePlacePhoto.create({
+            data: {
+              placeId: place.id,
+              storedFilename: saved.relativePath,
+              mimeType: saved.mimeType,
+              originalName: saved.displayName,
+              uploadedById: req.auth?.userId ?? null,
+            },
+          });
+        } catch (e) {
+          return res.status(400).json({ error: e instanceof Error ? e.message : "อัปโหลดรูปไม่สำเร็จ" });
+        }
+      }
+      const rows = await prisma.routePlacePhoto.findMany({ where: { placeId: place.id }, orderBy: { createdAt: "desc" } });
+      res.status(201).json(rows.map(serializePlacePhoto));
+    } catch (e) {
+      next(e);
+    }
+  },
+);
+
+routeMasterRouter.delete("/places/photos/:photoId", async (req, res, next) => {
+  try {
+    const photo = await prisma.routePlacePhoto.findUnique({ where: { id: routeParam(req.params.photoId) } });
+    if (!photo) return res.status(404).json({ error: "ไม่พบ" });
+    await prisma.routePlacePhoto.delete({ where: { id: photo.id } });
+    unlinkUploadFile(photo.storedFilename);
+    res.status(204).send();
+  } catch (e) {
+    next(e);
+  }
+});
+
 routeMasterRouter.delete("/places/:placeId", async (req, res, next) => {
   try {
-    await prisma.routePlace.delete({ where: { id: routeParam(req.params.placeId) } });
+    const placeId = routeParam(req.params.placeId);
+    const photos = await prisma.routePlacePhoto.findMany({ where: { placeId }, select: { storedFilename: true } });
+    await prisma.routePlace.delete({ where: { id: placeId } });
+    for (const p of photos) unlinkUploadFile(p.storedFilename);
     res.status(204).send();
   } catch (e: unknown) {
     if (e && typeof e === "object" && "code" in e && (e as { code: string }).code === "P2025")

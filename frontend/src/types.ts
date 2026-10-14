@@ -292,6 +292,14 @@ export interface RoutePlace {
   verified: boolean;
   createdAt: string;
   updatedAt: string;
+  _count?: { photos: number };
+}
+
+export interface RoutePlacePhoto {
+  id: string;
+  fileUrl: string;
+  originalName: string | null;
+  createdAt: string;
 }
 
 export interface HighwaySegment {
