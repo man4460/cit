@@ -4,6 +4,7 @@ import { apiFormJson, apiJson, apiUrl } from "../api/client";
 import { MissionIncidentsPanel } from "../components/MissionIncidentsPanel";
 import { MissionInsuranceExportModal } from "../components/MissionInsuranceExportModal";
 import { MissionReportModal } from "../components/MissionReportModal";
+import { MissionRouteMapButton } from "../components/MissionRouteMapButton";
 import { filterBotAllowancePersonnel } from "../lib/botAllowancePrint";
 import { formatBaht, formatInt, formatLiters } from "../lib/formatNumber";
 import { filterPoliceAllowancePersonnel } from "../lib/policeAllowancePrint";
@@ -216,6 +217,11 @@ export function MissionSummaryPage() {
         ) : null}
 
         <div className="mt-4 flex flex-wrap gap-2 border-t border-slate-100 pt-4">
+          <MissionRouteMapButton
+            routeId={summary.route?.id}
+            label="แผนที่เส้นทาง"
+            className="rounded-full border border-sky-200 bg-white px-3.5 py-1.5 text-xs font-bold text-sky-700 shadow-sm hover:bg-sky-50 disabled:opacity-60 sm:text-sm"
+          />
           <ActionButton tone="indigo" onClick={() => navigate(`/missions/${summary.missionId}/bot-allowance`)}>
             พิมพ์รายการเบี้ยเลี้ยง ธปท.{botCount ? ` (${botCount})` : ""}
           </ActionButton>

@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { apiDownload, apiJson } from "../api/client";
 import { MissionRateNotesModal } from "../components/MissionRateNotesModal";
+import { MissionRouteMapButton } from "../components/MissionRouteMapButton";
 import { ModuleDocumentsModal } from "../components/ModuleDocumentsModal";
 import { PageHeaderBar } from "../components/PageHeaderBar";
 import { MissionsSubNav } from "../components/MissionsSubNav";
@@ -295,6 +296,10 @@ export function MissionsPage() {
                       >
                         สรุป
                       </button>
+                      <MissionRouteMapButton
+                        routeId={m.route?.id}
+                        className="rounded-lg border border-sky-200 bg-sky-50 px-2.5 py-1 text-xs font-medium text-sky-700 hover:bg-sky-100 disabled:opacity-60"
+                      />
                     </div>
                   </div>
                 </li>
