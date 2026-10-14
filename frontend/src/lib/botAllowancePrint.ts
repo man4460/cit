@@ -1,16 +1,17 @@
 /** อัตราเบี้ยพิเศษฯ ตามแบบฟอร์ม ธปท. (บาท/วัน) */
 export const BOT_SPECIAL_ALLOWANCE_PER_DAY = 1400;
 
-/** อัตราเบี้ยเลี้ยง/วัน — จรส. = 450; จรส.(ควบ) และอื่นๆ = 500 */
+/** อัตราเบี้ยเลี้ยง/วัน — จรส. = 450; จรส.(ควบ) และอื่นๆ = 500; ชั้น 7(ควบ) และ 8 ขึ้นไป = 550 */
 export const BOT_PER_DIEM_JRAS = 450;
 export const BOT_PER_DIEM_OTHER = 500;
+export const BOT_PER_DIEM_SENIOR = 550;
 
 /** ชื่อประเภทบุคลากรที่ใช้คำนวณค่าตอบแทนอัตโนมัติ */
 export const BOT_PERSONNEL_CATEGORY_NAME = "ธปท.";
 
 /**
  * อัตราเบี้ยเลี้ยงต่อวันตามระดับชั้น/จรส.
- * จรส. → 450 · จรส.(ควบ) และอื่นๆ → 500
+ * จรส. → 450 · จรส.(ควบ) และอื่นๆ → 500 · ชั้น 7(ควบ) และ 8 ขึ้นไป → 550
  * (ชั้นตัวเลข 4–5 ไม่ควบ = อัตราเดียวกับ จรส.)
  */
 export function botPerDiemDailyRate(gradeLevel: string | null | undefined): number {
@@ -26,6 +27,7 @@ export function botPerDiemDailyRate(gradeLevel: string | null | undefined): numb
     const concurrent = /ควบ/.test(g);
     if (n <= 4) return BOT_PER_DIEM_JRAS;
     if (n === 5 && !concurrent) return BOT_PER_DIEM_JRAS;
+    if (n >= 8 || (n === 7 && concurrent)) return BOT_PER_DIEM_SENIOR;
   }
 
   return BOT_PER_DIEM_OTHER;

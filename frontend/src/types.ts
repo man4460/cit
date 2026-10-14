@@ -262,8 +262,43 @@ export interface RouteMaster {
   externalPersonnelCompensation?: string | null;
   /** จำนวนวันภารกิจมาตรฐาน */
   missionDays?: number | null;
+  /** ช่วงทางหลวงตามลำดับการเดินทาง */
+  highwaySegments?: HighwaySegment[] | null;
   /** ACTIVE = ใช้งาน, INACTIVE = เลิกใช้ */
   status?: RouteMasterStatus;
+  _count?: { places: number };
+}
+
+export type RoutePlaceKind = "FUEL" | "REPAIR" | "TIRE" | "POLICE" | "MILITARY" | "OTHER";
+
+export interface RoutePlace {
+  id: string;
+  routeId: string;
+  kind: RoutePlaceKind;
+  name: string;
+  segmentIndex: number | null;
+  location: string;
+  phone: string;
+  mapUrl: string | null;
+  note: string | null;
+  lat: number | null;
+  lng: number | null;
+  openingHours: string | null;
+  rating: number | null;
+  isFavorite: boolean;
+  /** MANUAL | AI */
+  source: string;
+  externalId: string | null;
+  verified: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface HighwaySegment {
+  highway: string;
+  districts: string;
+  provinces: string;
+  distance: string;
 }
 
 export interface FireExtinguisher {

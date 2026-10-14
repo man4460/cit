@@ -814,10 +814,10 @@ export function PersonnelPage() {
                 className="mt-1 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-slate-900"
                 value={form.perDiemRate}
                 onChange={(e) => setForm((f) => ({ ...f, perDiemRate: e.target.value }))}
-                placeholder="จรส. = 450 · อื่นๆ / จรส.(ควบ) = 500"
+                placeholder="จรส. = 450 · อื่นๆ = 500 · 7(ควบ)/8+ = 550"
               />
               <span className="mt-0.5 block text-[10px] text-slate-500">
-                ประเภท ธปท.: จรส. ได้ 450/วัน · จรส.(ควบ) และอื่นๆ ได้ 500/วัน (ใส่ระดับชั้นแล้วจะเติมให้อัตโนมัติ)
+                ประเภท ธปท.: จรส. ได้ 450/วัน · จรส.(ควบ) และอื่นๆ ได้ 500/วัน · ชั้น 7(ควบ) และ 8 ขึ้นไป ได้ 550/วัน (ใส่ระดับชั้นแล้วจะเติมให้อัตโนมัติ)
               </span>
             </label>
             <label className="block">

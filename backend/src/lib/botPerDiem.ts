@@ -1,10 +1,12 @@
 /** อัตราเบี้ยเลี้ยง/วัน สำหรับบุคลากรประเภท ธปท. */
 export const BOT_PER_DIEM_JRAS = 450;
 export const BOT_PER_DIEM_OTHER = 500;
+export const BOT_PER_DIEM_SENIOR = 550;
 
 /**
  * จรส. → 450 บาท/วัน
  * จรส.(ควบ) และอื่นๆ → 500 บาท/วัน
+ * ชั้น 7(ควบ) และชั้น 8 ขึ้นไป → 550 บาท/วัน
  *
  * รองรับค่าชั้นจากแบบฟอร์มตัวเลขด้วย: ชั้น 4–5 (ไม่ควบ) = อัตราเดียวกับ จรส.
  */
@@ -21,6 +23,7 @@ export function botPerDiemDailyRate(gradeLevel: string | null | undefined): numb
     const concurrent = /ควบ/.test(g);
     if (n <= 4) return BOT_PER_DIEM_JRAS;
     if (n === 5 && !concurrent) return BOT_PER_DIEM_JRAS;
+    if (n >= 8 || (n === 7 && concurrent)) return BOT_PER_DIEM_SENIOR;
   }
 
   return BOT_PER_DIEM_OTHER;

@@ -1,4 +1,9 @@
-import { BOT_PER_DIEM_JRAS, BOT_PER_DIEM_OTHER, BOT_SPECIAL_ALLOWANCE_PER_DAY } from "../lib/botAllowancePrint";
+import {
+  BOT_PER_DIEM_JRAS,
+  BOT_PER_DIEM_OTHER,
+  BOT_PER_DIEM_SENIOR,
+  BOT_SPECIAL_ALLOWANCE_PER_DAY,
+} from "../lib/botAllowancePrint";
 import { OTHER_MISSION_COMP_RATES, POLICE_COMP_NOTES, POLICE_DEST_GROUPS } from "../lib/policeCompensationRates";
 import { Modal, ModalFormBody, ModalFormSection } from "./Modal";
 
@@ -22,7 +27,8 @@ export function MissionRateNotesModal({ open, onClose }: { open: boolean; onClos
               <tbody>
                 {[
                   ["ชั้น 4 ลงมา (รวม 4(ควบ) / จรส.) และชั้น 5", `${BOT_PER_DIEM_JRAS.toLocaleString("th-TH")} บาท/คน/วัน`],
-                  ["ชั้น 5(ควบ) และชั้น 6 ขึ้นไป", `${BOT_PER_DIEM_OTHER.toLocaleString("th-TH")} บาท/คน/วัน`],
+                  ["ชั้น 5(ควบ) ถึงชั้น 7", `${BOT_PER_DIEM_OTHER.toLocaleString("th-TH")} บาท/คน/วัน`],
+                  ["ชั้น 7(ควบ) และชั้น 8 ขึ้นไป", `${BOT_PER_DIEM_SENIOR.toLocaleString("th-TH")} บาท/คน/วัน`],
                   ["เบี้ยพิเศษสำหรับภารกิจขนส่ง (ข้อ 8.1)", `${BOT_SPECIAL_ALLOWANCE_PER_DAY.toLocaleString("th-TH")} บาท/คน/วัน`],
                   ["ค่ายานพาหนะไป-กลับ (ข้อ 5.2)", `${BOT_VEHICLE_TRAVEL_PER_PERSON.toLocaleString("th-TH")} บาท/คน`],
                 ].map(([label, rate]) => (

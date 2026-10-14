@@ -699,12 +699,47 @@ model RouteMaster {
   externalPersonnelCompensation  Decimal?
   /// จำนวนวันภารกิจมาตรฐาน — ใช้คำนวณเบี้ยเลี้ยง ธปท. อัตโนมัติ
   missionDays                    Int?
+  /// ช่วงทางหลวงตามลำดับ: [{ highway, districts, provinces, distance }]
+  highwaySegments                Json?
   /// ใช้งาน | เลิกใช้
   status                         RouteMasterStatus @default(ACTIVE)
   createdAt                      DateTime          @default(now())
   updatedAt                      DateTime          @updatedAt
 
   missions Mission[]
+  places   RoutePlace[]
+}
+
+/// จุดบริการระหว่างเส้นทาง — ปั๊มน้ำมัน / ร้านซ่อม / ปะยาง / อื่นๆ
+model RoutePlace {
+  id           String      @id @default(uuid())
+  routeId      String
+  route        RouteMaster @relation(fields: [routeId], references: [id], onDelete: Cascade)
+  /// FUEL | REPAIR | TIRE | POLICE | MILITARY | OTHER
+  kind         String      @default("OTHER")
+  name         String
+  /// ลำดับช่วงทางหลวงในเส้นทาง (เริ่ม 0) — ไม่บังคับ
+  segmentIndex Int?
+  location     String      @default("")
+  phone        String      @default("")
+  mapUrl       String?     @db.Text
+  note         String?     @db.Text
+  lat          Float?
+  lng          Float?
+  openingHours String?
+  rating       Float?
+  isFavorite   Boolean     @default(false)
+  /// MANUAL = คนกรอก · AI = ระบบ/AI ดึงมา
+  source       String      @default("MANUAL")
+  /// รหัสจากแหล่งข้อมูลภายนอก เช่น Google place_id — ใช้กันบันทึกซ้ำ
+  externalId   String?
+  /// false = ข้อมูลจาก AI ที่ยังไม่มีคนตรวจ
+  verified     Boolean     @default(true)
+  createdAt    DateTime    @default(now())
+  updatedAt    DateTime    @updatedAt
+
+  @@index([routeId])
+  @@index([routeId, externalId])
 }
 
 /// รหัสพื้นที่ / ศูนย์จัดการธนบัตร เช่น ศสร = สุราษฎร์ธานี — ใช้แปลงรหัสในเส้นทาง คำนวณระยะทาง และไฟล์ประกัน

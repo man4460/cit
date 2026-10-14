@@ -6,6 +6,9 @@ import { Modal, ModalFormActions, ModalFormBody } from "../components/Modal";
 import { PageHeaderBar } from "../components/PageHeaderBar";
 import { MissionsSubNav } from "../components/MissionsSubNav";
 import { PrintA4Table } from "../components/PrintA4Table";
+import { RouteMapViewer, RouteSegmentsEditor, RouteSegmentsTable } from "../components/RouteHighwaySegments";
+import { RoutePlacesPanel } from "../components/RoutePlacesPanel";
+import { routeSegments, type GeoLocationCode } from "../lib/routeSegments";
 import { rowMatchesFilter } from "../lib/searchNormalize";
 import {
   brandGradientFillClass,
@@ -16,7 +19,7 @@ import {
   toolbarMasterGroupClass,
   toolbarPrimaryBtnClass,
 } from "../lib/uiTokens";
-import type { RouteMaster, RouteMasterStatus } from "../types";
+import type { HighwaySegment, RouteMaster, RouteMasterStatus } from "../types";
 
 function routeStatusLabel(status?: RouteMasterStatus) {
   return status === "INACTIVE" ? "เลิกใช้" : "ใช้งาน";
@@ -39,6 +42,10 @@ export function RouteMasterPage() {
   const [estimating, setEstimating] = useState(false);
   const [recalcBusy, setRecalcBusy] = useState(false);
   const [locationsOpen, setLocationsOpen] = useState(false);
+  const [segments, setSegments] = useState<HighwaySegment[]>([]);
+  const [locations, setLocations] = useState<GeoLocationCode[]>([]);
+  const [mapRoute, setMapRoute] = useState<RouteMaster | null>(null);
+  const closeMap = useCallback(() => setMapRoute(null), []);
 
   const load = useCallback(async () => {
     setRows(await apiJson<RouteMaster[]>(`/api/route-master?status=${statusView}`));
@@ -47,6 +54,13 @@ export function RouteMasterPage() {
   useEffect(() => {
     load();
   }, [load]);
+
+  useEffect(() => {
+    if (locationsOpen) return;
+    apiJson<GeoLocationCode[]>("/api/route-master/locations")
+      .then(setLocations)
+      .catch(() => setLocations([]));
+  }, [locationsOpen]);
 
   function openAdd() {
     setEditingId(null);
@@ -57,6 +71,7 @@ export function RouteMasterPage() {
     setExternalComp("");
     setMissionDays("");
     setStatus("ACTIVE");
+    setSegments([]);
     setModalOpen(true);
   }
 
@@ -74,6 +89,7 @@ export function RouteMasterPage() {
     );
     setMissionDays(r.missionDays != null && r.missionDays > 0 ? String(r.missionDays) : "");
     setStatus(r.status === "INACTIVE" ? "INACTIVE" : "ACTIVE");
+    setSegments(routeSegments(r).map((s) => ({ ...s })));
     setModalOpen(true);
   }
 
@@ -144,6 +160,7 @@ export function RouteMasterPage() {
       distanceKm,
       externalPersonnelCompensation: externalComp.trim() === "" ? null : externalComp.trim(),
       missionDays: missionDays.trim() === "" ? null : Number(missionDays),
+      highwaySegments: segments,
       status,
     });
     try {
@@ -190,6 +207,7 @@ export function RouteMasterPage() {
           r.externalPersonnelCompensation,
           r.missionDays != null ? String(r.missionDays) : "",
           routeStatusLabel(r.status),
+          ...routeSegments(r).flatMap((s) => [s.highway, s.districts, s.provinces]),
         ]),
       ),
     [rows, listFilter],
@@ -259,6 +277,7 @@ export function RouteMasterPage() {
         open={modalOpen}
         onClose={closeModal}
         title={editingId ? "แก้ไขเส้นทาง" : "เพิ่มเส้นทาง"}
+        size="wide"
       >
         <form onSubmit={(e) => void save(e)}>
           <ModalFormBody className="!grid !space-y-0 gap-4 sm:grid-cols-2">
@@ -353,6 +372,9 @@ export function RouteMasterPage() {
                 <option value="INACTIVE">เลิกใช้</option>
               </select>
             </label>
+            <div className="sm:col-span-2">
+              <RouteSegmentsEditor value={segments} onChange={setSegments} />
+            </div>
           </ModalFormBody>
           <ModalFormActions>
             <button
@@ -434,6 +456,16 @@ export function RouteMasterPage() {
                           {Number(r.externalPersonnelCompensation).toLocaleString("th-TH")} ฿
                         </span>
                       ) : null}
+                      {routeSegments(r).length ? (
+                        <span className="inline-flex rounded-full bg-sky-500/10 px-2.5 py-0.5 text-[11px] font-bold tabular-nums text-sky-800">
+                          {routeSegments(r).length} ช่วงทางหลวง
+                        </span>
+                      ) : null}
+                      {r._count?.places ? (
+                        <span className="inline-flex rounded-full bg-violet-500/10 px-2.5 py-0.5 text-[11px] font-bold tabular-nums text-violet-800">
+                          {r._count.places} จุดบริการ
+                        </span>
+                      ) : null}
                     </p>
                   </div>
                   <div
@@ -441,6 +473,13 @@ export function RouteMasterPage() {
                     onClick={(e) => e.stopPropagation()}
                     onKeyDown={(e) => e.stopPropagation()}
                   >
+                    <button
+                      type="button"
+                      className="rounded-lg border border-sky-200 bg-sky-50 px-2.5 py-1 text-xs font-medium text-sky-700 hover:bg-sky-100"
+                      onClick={() => setMapRoute(r)}
+                    >
+                      แผนที่
+                    </button>
                     <button
                       type="button"
                       className="rounded-lg border border-amber-200 bg-amber-50 px-2.5 py-1 text-xs font-medium text-amber-800 hover:bg-amber-100"
@@ -467,7 +506,7 @@ export function RouteMasterPage() {
         open={Boolean(detail)}
         onClose={() => setDetail(null)}
         title={detail ? detail.name ?? `${detail.startLocation} → ${detail.endLocation}` : "รายละเอียดเส้นทาง"}
-        size="form"
+        size="viewer"
       >
         {detail ? (
           <>
@@ -495,14 +534,30 @@ export function RouteMasterPage() {
                   }
                 />
               </div>
+              <div className="mt-4">
+                <p className="mb-2 text-xs font-black text-[#4d47b6]">เส้นทางขบวนภารกิจ (ช่วงทางหลวง)</p>
+                <RouteSegmentsTable segments={routeSegments(detail)} />
+              </div>
+              <div className="mt-5 border-t border-[#ecebff] pt-4">
+                <RoutePlacesPanel route={detail} onChanged={() => void load()} />
+              </div>
             </ModalFormBody>
             <ModalFormActions>
+              <button
+                type="button"
+                className="rounded-full bg-gradient-to-r from-[#0000BF] via-[#8b5cf6] to-[#ec4899] px-4 py-2 text-sm font-bold text-white shadow-lg shadow-fuchsia-500/25"
+                onClick={() => setMapRoute(detail)}
+              >
+                เปิดแผนที่
+              </button>
               <button type="button" className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm font-medium text-amber-800 hover:bg-amber-100" onClick={() => openEdit(detail)}>แก้ไข</button>
               <button type="button" className="rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-700 hover:bg-slate-100" onClick={() => setDetail(null)}>ปิด</button>
             </ModalFormActions>
           </>
         ) : null}
       </Modal>
+
+      <RouteMapViewer route={mapRoute} locations={locations} onClose={closeMap} />
 
       <PrintA4Table
         columns={[

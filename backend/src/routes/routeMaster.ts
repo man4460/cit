@@ -30,6 +30,19 @@ function optionalInt(v: string | number | undefined | null) {
   return Math.floor(n);
 }
 
+const SEGMENT_FIELDS = ["highway", "districts", "provinces", "distance"] as const;
+
+/** undefined = ไม่แก้ · DbNull = ล้าง · array = ช่วงทางหลวงที่ตัดช่องว่างแล้ว */
+function parseHighwaySegments(v: unknown): Prisma.InputJsonValue | typeof Prisma.DbNull | undefined {
+  if (v === undefined) return undefined;
+  if (!Array.isArray(v)) return Prisma.DbNull;
+  const rows = v
+    .filter((r): r is Record<string, unknown> => Boolean(r) && typeof r === "object")
+    .map((r) => Object.fromEntries(SEGMENT_FIELDS.map((k) => [k, String(r[k] ?? "").trim()])))
+    .filter((r) => SEGMENT_FIELDS.some((k) => r[k]));
+  return rows.length ? rows : Prisma.DbNull;
+}
+
 function parseStatus(v: unknown): RouteMasterStatus | undefined {
   if (v === undefined || v === null || v === "") return undefined;
   const s = String(v).toUpperCase();
@@ -47,6 +60,7 @@ routeMasterRouter.get("/", async (req, res, next) => {
     const rows = await prisma.routeMaster.findMany({
       where,
       orderBy: { startLocation: "asc" },
+      include: { _count: { select: { places: true } } },
     });
     res.json(rows);
   } catch (e) {
@@ -125,6 +139,226 @@ routeMasterRouter.post("/recalculate-distances", async (req, res, next) => {
   }
 });
 
+// --- จุดบริการระหว่างทาง ---
+
+const PLACE_KINDS = new Set(["FUEL", "REPAIR", "TIRE", "POLICE", "MILITARY", "OTHER"]);
+
+function placeData(body: Record<string, unknown>) {
+  const data: Record<string, unknown> = {};
+  if (body.kind !== undefined) {
+    const k = String(body.kind).toUpperCase();
+    data.kind = PLACE_KINDS.has(k) ? k : "OTHER";
+  }
+  if (body.name !== undefined) data.name = String(body.name ?? "").trim();
+  if (body.segmentIndex !== undefined) data.segmentIndex = optionalInt(body.segmentIndex as string | number | null);
+  for (const k of ["location", "phone"] as const) {
+    if (body[k] !== undefined) data[k] = String(body[k] ?? "").trim();
+  }
+  for (const k of ["mapUrl", "note", "openingHours", "externalId"] as const) {
+    if (body[k] !== undefined) data[k] = String(body[k] ?? "").trim() || null;
+  }
+  for (const k of ["lat", "lng", "rating"] as const) {
+    if (body[k] !== undefined) {
+      const n = body[k] === null || body[k] === "" ? NaN : Number(body[k]);
+      data[k] = Number.isFinite(n) ? n : null;
+    }
+  }
+  if (body.isFavorite !== undefined) data.isFavorite = Boolean(body.isFavorite);
+  if (body.verified !== undefined) data.verified = Boolean(body.verified);
+  return data;
+}
+
+const KIND_SEARCH: Record<string, string> = {
+  FUEL: "ปั๊มน้ำมัน",
+  REPAIR: "อู่ซ่อมรถ",
+  TIRE: "ร้านปะยาง",
+  POLICE: "สถานีตำรวจ",
+  MILITARY: "หน่วยทหาร ค่ายทหาร",
+};
+
+type Segment = { highway?: string; districts?: string; provinces?: string; distance?: string };
+
+const splitSlash = (s: string | undefined) =>
+  (s ?? "")
+    .split(/\s*\/\s*/)
+    .map((x) => x.trim())
+    .filter(Boolean);
+
+function segmentArea(s: Segment): string {
+  const district = splitSlash(s.districts)
+    .filter((d) => !/^ถึง|^ออกจาก/.test(d))
+    .pop();
+  return [district, splitSlash(s.provinces).pop()].filter(Boolean).join(" ");
+}
+
+const normName = (s: string) => s.replace(/\s+/g, "").toLowerCase();
+
+const placeOrder: Prisma.RoutePlaceOrderByWithRelationInput[] = [
+  { isFavorite: "desc" },
+  { segmentIndex: "asc" },
+  { name: "asc" },
+];
+
+routeMasterRouter.get("/:id/places", async (req, res, next) => {
+  try {
+    res.json(await prisma.routePlace.findMany({ where: { routeId: routeParam(req.params.id) }, orderBy: placeOrder }));
+  } catch (e) {
+    next(e);
+  }
+});
+
+/**
+ * สำหรับ AI/บริการอัตโนมัติ: ข้อมูลเส้นทาง + ช่วงทางหลวง + คำค้นแนะนำ + จุดที่มีอยู่แล้ว
+ * ใช้คู่กับ POST /:id/places/bulk
+ */
+routeMasterRouter.get("/:id/search-plan", async (req, res, next) => {
+  try {
+    const route = await prisma.routeMaster.findUnique({
+      where: { id: routeParam(req.params.id) },
+      include: { places: { select: { id: true, kind: true, name: true, segmentIndex: true, externalId: true, verified: true } } },
+    });
+    if (!route) return res.status(404).json({ error: "ไม่พบเส้นทาง" });
+    const segments = (Array.isArray(route.highwaySegments) ? route.highwaySegments : []) as Segment[];
+    res.json({
+      route: {
+        id: route.id,
+        name: route.name,
+        startLocation: route.startLocation,
+        endLocation: route.endLocation,
+        distanceKm: Number(route.distanceKm),
+      },
+      kinds: [
+        { id: "FUEL", label: "ปั๊มน้ำมัน" },
+        { id: "REPAIR", label: "ร้านซ่อมรถ" },
+        { id: "TIRE", label: "ปะยาง" },
+        { id: "POLICE", label: "สถานีตำรวจ" },
+        { id: "MILITARY", label: "หน่วยทหาร" },
+        { id: "OTHER", label: "อื่นๆ" },
+      ],
+      segments: segments.map((s, index) => {
+        const area = segmentArea(s);
+        return {
+          index,
+          ...s,
+          area,
+          queries: Object.fromEntries(Object.entries(KIND_SEARCH).map(([k, q]) => [k, `${q} ${s.highway ?? ""} ${area}`.trim()])),
+        };
+      }),
+      existingPlaces: route.places,
+      bulkEndpoint: `/api/route-master/${route.id}/places/bulk`,
+    });
+  } catch (e) {
+    next(e);
+  }
+});
+
+/**
+ * บันทึกหลายจุดพร้อมกัน (ใช้กับ AI) — body: { places: [{ kind, name, segmentIndex?, location?, phone?,
+ * mapUrl?, lat?, lng?, openingHours?, rating?, note?, externalId? }], source?: "AI" }
+ * กันซ้ำด้วย externalId หรือ ชื่อ+ช่วงทางหลวง · ไม่เขียนทับจุดที่คนกรอก/ยืนยันแล้ว
+ * จุดจาก AI จะเป็น verified=false จนกว่าคนกด «ยืนยัน»
+ */
+routeMasterRouter.post("/:id/places/bulk", async (req, res, next) => {
+  try {
+    const routeId = routeParam(req.params.id);
+    const input = req.body?.places;
+    if (!Array.isArray(input) || !input.length) return res.status(400).json({ error: "ส่ง places เป็น array" });
+    if (input.length > 200) return res.status(400).json({ error: "ส่งได้ไม่เกิน 200 รายการต่อครั้ง" });
+    const route = await prisma.routeMaster.findUnique({ where: { id: routeId }, select: { id: true } });
+    if (!route) return res.status(404).json({ error: "ไม่พบเส้นทาง" });
+
+    const source = String(req.body?.source ?? "AI").trim().toUpperCase() || "AI";
+    const existing = await prisma.routePlace.findMany({ where: { routeId } });
+    const result = { created: 0, updated: 0, skipped: 0, errors: [] as { index: number; error: string }[] };
+
+    for (let i = 0; i < input.length; i++) {
+      const raw = input[i];
+      if (!raw || typeof raw !== "object") {
+        result.errors.push({ index: i, error: "รูปแบบไม่ถูกต้อง" });
+        continue;
+      }
+      const data = placeData(raw as Record<string, unknown>);
+      delete data.isFavorite;
+      delete data.verified;
+      if (!data.name) {
+        result.errors.push({ index: i, error: "ไม่มีชื่อสถานที่" });
+        continue;
+      }
+      const extId = (data.externalId as string | null | undefined) ?? null;
+      const seg = (data.segmentIndex as number | null | undefined) ?? null;
+      const match = existing.find(
+        (p) =>
+          (extId && p.externalId === extId) ||
+          (normName(p.name) === normName(String(data.name)) && (p.segmentIndex ?? null) === seg),
+      );
+      if (match) {
+        if (match.source === "MANUAL" || match.verified) {
+          result.skipped++;
+          continue;
+        }
+        const row = await prisma.routePlace.update({ where: { id: match.id }, data });
+        Object.assign(match, row);
+        result.updated++;
+      } else {
+        const row = await prisma.routePlace.create({
+          data: {
+            ...(data as Omit<Prisma.RoutePlaceUncheckedCreateInput, "routeId">),
+            name: String(data.name),
+            routeId,
+            source,
+            verified: source === "MANUAL",
+          },
+        });
+        existing.push(row);
+        result.created++;
+      }
+    }
+    res.json(result);
+  } catch (e) {
+    next(e);
+  }
+});
+
+routeMasterRouter.post("/:id/places", async (req, res, next) => {
+  try {
+    const routeId = routeParam(req.params.id);
+    const data = placeData(req.body ?? {});
+    if (!data.name) return res.status(400).json({ error: "กรอกชื่อสถานที่" });
+    const route = await prisma.routeMaster.findUnique({ where: { id: routeId }, select: { id: true } });
+    if (!route) return res.status(404).json({ error: "ไม่พบเส้นทาง" });
+    const row = await prisma.routePlace.create({
+      data: { ...(data as Omit<Prisma.RoutePlaceUncheckedCreateInput, "routeId">), name: String(data.name), routeId },
+    });
+    res.status(201).json(row);
+  } catch (e) {
+    next(e);
+  }
+});
+
+routeMasterRouter.put("/places/:placeId", async (req, res, next) => {
+  try {
+    const data = placeData(req.body ?? {});
+    if (data.name !== undefined && !data.name) return res.status(400).json({ error: "ชื่อสถานที่ต้องไม่ว่าง" });
+    const row = await prisma.routePlace.update({ where: { id: routeParam(req.params.placeId) }, data });
+    res.json(row);
+  } catch (e: unknown) {
+    if (e && typeof e === "object" && "code" in e && (e as { code: string }).code === "P2025")
+      return res.status(404).json({ error: "ไม่พบ" });
+    next(e);
+  }
+});
+
+routeMasterRouter.delete("/places/:placeId", async (req, res, next) => {
+  try {
+    await prisma.routePlace.delete({ where: { id: routeParam(req.params.placeId) } });
+    res.status(204).send();
+  } catch (e: unknown) {
+    if (e && typeof e === "object" && "code" in e && (e as { code: string }).code === "P2025")
+      return res.status(404).json({ error: "ไม่พบ" });
+    next(e);
+  }
+});
+
 routeMasterRouter.get("/:id", async (req, res, next) => {
   try {
     const row = await prisma.routeMaster.findUnique({ where: { id: routeParam(req.params.id) } });
@@ -137,8 +371,16 @@ routeMasterRouter.get("/:id", async (req, res, next) => {
 
 routeMasterRouter.post("/", async (req, res, next) => {
   try {
-    const { name, startLocation, endLocation, distanceKm, externalPersonnelCompensation, missionDays, status } =
-      req.body;
+    const {
+      name,
+      startLocation,
+      endLocation,
+      distanceKm,
+      externalPersonnelCompensation,
+      missionDays,
+      status,
+      highwaySegments,
+    } = req.body;
     if (!startLocation || !endLocation)
       return res.status(400).json({ error: "startLocation, endLocation required" });
 
@@ -157,6 +399,7 @@ routeMasterRouter.post("/", async (req, res, next) => {
         distanceKm: km,
         externalPersonnelCompensation: optionalDec(externalPersonnelCompensation) ?? null,
         missionDays: optionalInt(missionDays) ?? null,
+        highwaySegments: parseHighwaySegments(highwaySegments) ?? Prisma.DbNull,
         status: parseStatus(status) ?? RouteMasterStatus.ACTIVE,
       },
     });
@@ -168,9 +411,19 @@ routeMasterRouter.post("/", async (req, res, next) => {
 
 routeMasterRouter.put("/:id", async (req, res, next) => {
   try {
-    const { name, startLocation, endLocation, distanceKm, externalPersonnelCompensation, missionDays, status } =
-      req.body;
+    const {
+      name,
+      startLocation,
+      endLocation,
+      distanceKm,
+      externalPersonnelCompensation,
+      missionDays,
+      status,
+      highwaySegments,
+    } = req.body;
     const data: Record<string, unknown> = {};
+    const segments = parseHighwaySegments(highwaySegments);
+    if (segments !== undefined) data.highwaySegments = segments;
     if (name !== undefined) data.name = name || null;
     if (startLocation !== undefined) data.startLocation = startLocation;
     if (endLocation !== undefined) data.endLocation = endLocation;
