@@ -708,6 +708,16 @@ model RouteMaster {
 
   missions Mission[]
   places   RoutePlace[]
+  geometry RouteGeometry?
+}
+
+/// แนวเส้นทางบนแผนที่ — แยกตารางเพราะข้อมูลใหญ่ ไม่ให้ติดไปกับ include route
+model RouteGeometry {
+  routeId   String      @id
+  route     RouteMaster @relation(fields: [routeId], references: [id], onDelete: Cascade)
+  /// [[lat, lng], ...]
+  points    Json
+  updatedAt DateTime    @updatedAt
 }
 
 /// จุดบริการระหว่างเส้นทาง — ปั๊มน้ำมัน / ร้านซ่อม / ปะยาง / อื่นๆ

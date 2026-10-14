@@ -213,20 +213,17 @@ export function RouteMapViewer({
   onClose: () => void;
 }) {
   const stops = useMemo(() => (route ? routeMapStops(route, locations) : null), [route, locations]);
-  const [tab, setTab] = useState<"route" | "places">("route");
+  const [tab, setTab] = useState<"route" | "places">("places");
   const [places, setPlaces] = useState<RoutePlace[]>([]);
 
   useEffect(() => {
     if (!route) return;
     let alive = true;
     setPlaces([]);
+    setTab("places");
     apiJson<RoutePlace[]>(`/api/route-master/${route.id}/places`)
-      .then((rows) => {
-        if (!alive) return;
-        setPlaces(rows);
-        setTab(rows.length ? "places" : "route");
-      })
-      .catch(() => alive && setTab("route"));
+      .then((rows) => alive && setPlaces(rows))
+      .catch(() => alive && setPlaces([]));
     return () => {
       alive = false;
     };
@@ -261,8 +258,8 @@ export function RouteMapViewer({
         <div className="flex shrink-0 rounded-lg bg-white/10 p-0.5 text-xs font-semibold">
           {(
             [
-              ["route", "เส้นทาง"],
-              ["places", `จุดบริการ (${places.length})`],
+              ["places", `เส้นทาง + จุดบริการ (${places.length})`],
+              ["route", "Google Maps"],
             ] as const
           ).map(([id, label]) => (
             <button
@@ -279,7 +276,7 @@ export function RouteMapViewer({
           href={googleMapsDirectionsUrl(stops)}
           target="_blank"
           rel="noopener noreferrer"
-          className="shrink-0 rounded-lg px-2.5 py-1.5 text-xs font-medium text-white/90 hover:bg-white/10"
+          className="hidden shrink-0 rounded-lg px-2.5 py-1.5 text-xs font-medium text-white/90 hover:bg-white/10 sm:block"
         >
           เปิดใน Google Maps
         </a>

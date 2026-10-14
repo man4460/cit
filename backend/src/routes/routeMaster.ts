@@ -43,6 +43,17 @@ function parseHighwaySegments(v: unknown): Prisma.InputJsonValue | typeof Prisma
   return rows.length ? rows : Prisma.DbNull;
 }
 
+/** null = ไม่มีแนวเส้นทาง · array = [[lat, lng], ...] ที่อยู่ในประเทศไทย */
+function parseRouteGeometry(v: unknown): number[][] | null {
+  if (!Array.isArray(v)) return null;
+  const pts = v
+    .filter((p): p is unknown[] => Array.isArray(p) && p.length >= 2)
+    .map((p) => [Number(p[0]), Number(p[1])])
+    .filter(([lat, lng]) => lat >= 5 && lat <= 21 && lng >= 97 && lng <= 106)
+    .map(([lat, lng]) => [Math.round(lat * 1e5) / 1e5, Math.round(lng * 1e5) / 1e5]);
+  return pts.length >= 2 ? pts : null;
+}
+
 function parseStatus(v: unknown): RouteMasterStatus | undefined {
   if (v === undefined || v === null || v === "") return undefined;
   const s = String(v).toUpperCase();
@@ -355,6 +366,37 @@ routeMasterRouter.delete("/places/:placeId", async (req, res, next) => {
   } catch (e: unknown) {
     if (e && typeof e === "object" && "code" in e && (e as { code: string }).code === "P2025")
       return res.status(404).json({ error: "ไม่พบ" });
+    next(e);
+  }
+});
+
+routeMasterRouter.get("/:id/geometry", async (req, res, next) => {
+  try {
+    const row = await prisma.routeGeometry.findUnique({ where: { routeId: routeParam(req.params.id) } });
+    res.json({ points: Array.isArray(row?.points) ? row.points : [], updatedAt: row?.updatedAt ?? null });
+  } catch (e) {
+    next(e);
+  }
+});
+
+/** body: { points: [[lat, lng], ...] } · ส่ง points ว่าง/ไม่ใช่ array = ลบแนวเส้นทาง */
+routeMasterRouter.put("/:id/geometry", async (req, res, next) => {
+  try {
+    const routeId = routeParam(req.params.id);
+    const route = await prisma.routeMaster.findUnique({ where: { id: routeId }, select: { id: true } });
+    if (!route) return res.status(404).json({ error: "ไม่พบเส้นทาง" });
+    const points = parseRouteGeometry(req.body?.points);
+    if (!points) {
+      await prisma.routeGeometry.deleteMany({ where: { routeId } });
+      return res.json({ points: [] });
+    }
+    const row = await prisma.routeGeometry.upsert({
+      where: { routeId },
+      create: { routeId, points },
+      update: { points },
+    });
+    res.json({ points: row.points, updatedAt: row.updatedAt });
+  } catch (e) {
     next(e);
   }
 });
