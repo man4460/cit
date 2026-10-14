@@ -8,7 +8,9 @@ import {
   routeMapStops,
   type GeoLocationCode,
 } from "../lib/routeSegments";
-import type { HighwaySegment, RouteMaster } from "../types";
+import type { HighwaySegment, RouteMaster, RoutePlace } from "../types";
+import { apiJson } from "../api/client";
+import { RoutePlacesMap } from "./RoutePlacesMap";
 
 const thClass = "border-b border-[#dcd8f0] px-2.5 py-2 text-left text-[11px] font-black text-[#2e2a58]";
 const tdClass = "border-b border-[#ecebff] px-2.5 py-2 align-top text-[12px] leading-relaxed text-slate-700";
@@ -211,6 +213,24 @@ export function RouteMapViewer({
   onClose: () => void;
 }) {
   const stops = useMemo(() => (route ? routeMapStops(route, locations) : null), [route, locations]);
+  const [tab, setTab] = useState<"route" | "places">("route");
+  const [places, setPlaces] = useState<RoutePlace[]>([]);
+
+  useEffect(() => {
+    if (!route) return;
+    let alive = true;
+    setPlaces([]);
+    apiJson<RoutePlace[]>(`/api/route-master/${route.id}/places`)
+      .then((rows) => {
+        if (!alive) return;
+        setPlaces(rows);
+        setTab(rows.length ? "places" : "route");
+      })
+      .catch(() => alive && setTab("route"));
+    return () => {
+      alive = false;
+    };
+  }, [route]);
 
   useEffect(() => {
     if (!route) return;
@@ -238,6 +258,23 @@ export function RouteMapViewer({
             {Number(route.distanceKm).toLocaleString("th-TH", { maximumFractionDigits: 1 })} กม. · จุดผ่าน {stops.waypoints.length} จุด
           </p>
         </div>
+        <div className="flex shrink-0 rounded-lg bg-white/10 p-0.5 text-xs font-semibold">
+          {(
+            [
+              ["route", "เส้นทาง"],
+              ["places", `จุดบริการ (${places.length})`],
+            ] as const
+          ).map(([id, label]) => (
+            <button
+              key={id}
+              type="button"
+              onClick={() => setTab(id)}
+              className={`rounded-md px-2.5 py-1 transition ${tab === id ? "bg-white text-[#2e2a58]" : "text-white/80 hover:bg-white/10"}`}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
         <a
           href={googleMapsDirectionsUrl(stops)}
           target="_blank"
@@ -255,7 +292,11 @@ export function RouteMapViewer({
           ✕
         </button>
       </div>
-      <iframe title={`แผนที่ ${title}`} src={googleMapsEmbedUrl(stops)} className="min-h-0 w-full flex-1 border-0 bg-white" loading="lazy" />
+      {tab === "places" ? (
+        <RoutePlacesMap route={route} places={places} locations={locations} />
+      ) : (
+        <iframe title={`แผนที่ ${title}`} src={googleMapsEmbedUrl(stops)} className="min-h-0 w-full flex-1 border-0 bg-white" loading="lazy" />
+      )}
     </div>,
     document.body,
   );
