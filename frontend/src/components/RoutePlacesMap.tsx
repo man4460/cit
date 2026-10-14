@@ -34,6 +34,36 @@ function placeIcon(p: RoutePlace): string {
   return KIND_ICON.OTHER;
 }
 
+type Brand = { label: string; bg: string; fg: string; border?: string };
+
+/** ป้ายแบรนด์ (สีประจำแบรนด์ + ชื่อย่อ) — จับจากชื่อสถานที่ */
+const BRANDS: { re: RegExp; brand: Brand }[] = [
+  { re: /ปตท|p\s?t\s?t/i, brand: { label: "PTT", bg: "#0b4ea2", fg: "#ffffff" } },
+  { re: /พีที|\bPT\b/i, brand: { label: "PT", bg: "#00a651", fg: "#ffde00" } },
+  { re: /บางจาก|bangchak/i, brand: { label: "บางจาก", bg: "#00843d", fg: "#ffffff" } },
+  { re: /เชลล์|shell/i, brand: { label: "Shell", bg: "#ffd500", fg: "#dd1d21" } },
+  { re: /คาลเท็กซ์|caltex/i, brand: { label: "Caltex", bg: "#ffffff", fg: "#e2231a", border: "#e2231a" } },
+  { re: /เอสโซ่|esso/i, brand: { label: "Esso", bg: "#ffffff", fg: "#0b4ea2", border: "#e2231a" } },
+  { re: /ซัสโก้|susco/i, brand: { label: "Susco", bg: "#e30613", fg: "#ffffff" } },
+  { re: /ปิโตรนาส|petronas/i, brand: { label: "Petronas", bg: "#00a19c", fg: "#ffffff" } },
+  { re: /คอสโม|cosmo/i, brand: { label: "Cosmo", bg: "#e60012", fg: "#ffffff" } },
+  { re: /โตโยต้า|toyota/i, brand: { label: "TOYOTA", bg: "#ffffff", fg: "#eb0a1e", border: "#eb0a1e" } },
+  { re: /อีซูซุ|isuzu/i, brand: { label: "ISUZU", bg: "#ffffff", fg: "#c8102e", border: "#c8102e" } },
+  { re: /b-?quik|บี-?ควิก/i, brand: { label: "B-Quik", bg: "#ffd200", fg: "#1a1a1a" } },
+  { re: /cockpit|ค็อกพิท/i, brand: { label: "Cockpit", bg: "#e4002b", fg: "#ffffff" } },
+  { re: /goodyear|กู๊ดเยียร์/i, brand: { label: "Goodyear", bg: "#0b2c7a", fg: "#ffdd00" } },
+  { re: /tyre\s?plus|ไทร์พลัส/i, brand: { label: "Tyreplus", bg: "#27509b", fg: "#ffffff" } },
+  { re: /michelin|มิชลิน/i, brand: { label: "Michelin", bg: "#27509b", fg: "#fce500" } },
+  { re: /bridgestone|บริดจสโตน/i, brand: { label: "Bridgestone", bg: "#111111", fg: "#ffffff" } },
+  { re: /dunlop|ดันลอป/i, brand: { label: "Dunlop", bg: "#ffcd00", fg: "#111111" } },
+  { re: /ตำรวจทางหลวง|highway police/i, brand: { label: "ตร.ทางหลวง", bg: "#1d4ed8", fg: "#ffffff" } },
+  { re: /bangkok hospital|โรงพยาบาลกรุงเทพ/i, brand: { label: "BDMS", bg: "#004b8d", fg: "#ffffff" } },
+];
+
+function placeBrand(p: RoutePlace): Brand | null {
+  return BRANDS.find((b) => b.re.test(p.name))?.brand ?? null;
+}
+
 const esc = (s: string) => s.replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]!);
 
 const navUrl = (lat: number, lng: number) => `https://www.google.com/maps/dir/?api=1&destination=${lat},${lng}&travelmode=driving`;
@@ -50,6 +80,15 @@ const fmtKm = (km: number) => (km < 1 ? `${Math.round(km * 1000)} ม.` : `${km.
 
 function pinIcon(p: RoutePlace) {
   const ring = p.isFavorite ? "#f59e0b" : "#ffffff";
+  const brand = placeBrand(p);
+  if (brand) {
+    return L.divIcon({
+      className: "",
+      iconSize: [0, 0],
+      popupAnchor: [0, -14],
+      html: `<div style="position:absolute;transform:translate(-50%,-50%);display:flex;align-items:center;gap:3px;white-space:nowrap;border-radius:9999px;background:${brand.bg};color:${brand.fg};border:2px solid ${p.isFavorite ? "#f59e0b" : brand.border ?? "#ffffff"};box-shadow:0 1px 5px rgba(0,0,0,.45);padding:2px 7px 2px 3px;font-weight:900;font-size:11px;line-height:18px;opacity:${p.verified ? 1 : 0.9}"><span style="display:inline-flex;width:18px;height:18px;border-radius:9999px;background:${KIND_COLOR[p.kind]};align-items:center;justify-content:center;font-size:11px">${placeIcon(p)}</span>${esc(brand.label)}</div>`,
+    });
+  }
   return L.divIcon({
     className: "",
     iconSize: [30, 30],
@@ -61,12 +100,14 @@ function pinIcon(p: RoutePlace) {
 
 function popupHtml(p: RoutePlace, segmentLabel: string, fromMe: number | null): string {
   const kind = ROUTE_PLACE_KINDS.find((k) => k.id === p.kind)?.label ?? "อื่นๆ";
+  const brand = placeBrand(p);
   const tel = p.phone ? p.phone.replace(/[^\d+]/g, "") : "";
   const nav = p.lat != null && p.lng != null ? navUrl(p.lat, p.lng) : p.mapUrl ?? "";
   const btn = "display:inline-flex;align-items:center;gap:4px;border-radius:9999px;padding:6px 12px;font-weight:700;font-size:12px;text-decoration:none";
   return `<div style="min-width:15rem;max-width:19rem;font-size:12px;line-height:1.45">
     <div style="display:flex;gap:4px;align-items:center;flex-wrap:wrap;margin-bottom:2px">
       <span style="background:${KIND_COLOR[p.kind]};color:#fff;border-radius:4px;padding:0 6px;font-size:10px;font-weight:700">${placeIcon(p)} ${esc(kind)}</span>
+      ${brand ? `<span style="background:${brand.bg};color:${brand.fg};border:1px solid ${brand.border ?? brand.bg};border-radius:4px;padding:0 6px;font-size:10px;font-weight:900">${esc(brand.label)}</span>` : ""}
       ${p.verified ? "" : '<span style="background:#fae8ff;color:#a21caf;border-radius:4px;padding:0 5px;font-size:10px;font-weight:700">AI · รอตรวจ</span>'}
       ${p.isFavorite ? '<span style="color:#f59e0b">★</span>' : ""}
     </div>
@@ -397,6 +438,7 @@ export function RoutePlacesMap({
               <ul className="max-h-[40vh] overflow-auto border-t border-[#ecebff]">
                 {nearest.map(({ p, km }) => {
                   const tel = p.phone ? p.phone.replace(/[^\d+]/g, "") : "";
+                  const brand = placeBrand(p);
                   return (
                     <li key={p.id} className="flex items-center gap-2 border-b border-[#f1f0fb] px-3 py-1.5 last:border-0">
                       <span
@@ -407,7 +449,17 @@ export function RoutePlacesMap({
                         {placeIcon(p)}
                       </span>
                       <button type="button" onClick={() => focusPlace(p)} className="min-w-0 flex-1 text-left">
-                        <p className="truncate text-[12px] font-semibold text-[#1e1b3a]">{p.name}</p>
+                        <p className="flex items-center gap-1 truncate text-[12px] font-semibold text-[#1e1b3a]">
+                          {brand ? (
+                            <span
+                              className="shrink-0 rounded px-1 text-[10px] font-black"
+                              style={{ background: brand.bg, color: brand.fg, border: `1px solid ${brand.border ?? brand.bg}` }}
+                            >
+                              {brand.label}
+                            </span>
+                          ) : null}
+                          <span className="truncate">{p.name}</span>
+                        </p>
                         <p className="text-[11px] text-sky-700">~{fmtKm(km)}</p>
                       </button>
                       {tel ? (
