@@ -46,8 +46,14 @@ type MissionState = {
   returnDate: string;
   roundedSpend: string;
   reserve: string;
+  /** ยอดจากหน้าประมาณการตอนบันทึกล่าสุด — ถ้าประมาณการเปลี่ยน ให้ใช้ยอดใหม่แทนค่าที่จำไว้ */
+  estRounded?: string;
+  estReserve?: string;
   overrides: Record<string, string>;
 };
+
+/** ข้อความที่มียอดเงิน — ถ้าผู้ใช้แก้เองไว้ ต้องสร้างใหม่เมื่อยอดประมาณการเปลี่ยน */
+const AMOUNT_OVERRIDE_KEYS = ["plan", "conclusion"];
 
 const SETTINGS_KEY = "cit.centralMemo.v1";
 const missionKey = (id: string) => `cit.centralMemo.m2.${id}`;
@@ -83,6 +89,15 @@ export function MissionCentralMemoPage() {
     ...(readJson<Settings>(SETTINGS_KEY) ?? {}),
   }));
   const [ms, setMs] = useState<MissionState | null>(null);
+  const [reloadKey, setReloadKey] = useState(0);
+
+  useEffect(() => {
+    const onVisible = () => {
+      if (document.visibilityState === "visible") setReloadKey((k) => k + 1);
+    };
+    document.addEventListener("visibilitychange", onVisible);
+    return () => document.removeEventListener("visibilitychange", onVisible);
+  }, []);
 
   useEffect(() => {
     let alive = true;
@@ -96,19 +111,33 @@ export function MissionCentralMemoPage() {
         setSummary(s);
         setLocations(locs);
         const saved = readJson<MissionState>(missionKey(id));
-        setMs({
+        const estRounded = est?.roundedSpend ? String(Math.round(Number(est.roundedSpend))) : "";
+        const estReserve = est?.reserveAmount ? String(Math.round(Number(est.reserveAmount))) : "";
+        const next: MissionState = {
           ...defaultMissionDates(s),
-          roundedSpend: est?.roundedSpend ? String(Math.round(Number(est.roundedSpend))) : "",
-          reserve: est?.reserveAmount ? String(Math.round(Number(est.reserveAmount))) : "",
+          roundedSpend: estRounded,
+          reserve: estReserve,
           overrides: {},
           ...(saved ?? {}),
-        });
+          estRounded,
+          estReserve,
+        };
+        const estimateChanged =
+          saved != null && (saved.estRounded !== estRounded || saved.estReserve !== estReserve);
+        if (estimateChanged && (estRounded || estReserve)) {
+          next.roundedSpend = estRounded;
+          next.reserve = estReserve;
+          const overrides = { ...next.overrides };
+          for (const k of AMOUNT_OVERRIDE_KEYS) delete overrides[k];
+          next.overrides = overrides;
+        }
+        setMs(next);
       })
       .catch((e) => alive && setErr(e instanceof Error ? e.message : "โหลดข้อมูลไม่สำเร็จ"));
     return () => {
       alive = false;
     };
-  }, [id]);
+  }, [id, reloadKey]);
 
   useEffect(() => {
     localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings));

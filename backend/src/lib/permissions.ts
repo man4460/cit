@@ -32,6 +32,7 @@ export const PERMISSION_MODULES: { key: string; apiPrefixes: string[] }[] = [
   { key: "weapons", apiPrefixes: ["/firearms", "/ammunition"] },
   { key: "fire", apiPrefixes: ["/fire-extinguishers", "/fire-hosts"] },
   { key: "documents", apiPrefixes: ["/library-documents", "/document-types"] },
+  { key: "coordination", apiPrefixes: ["/coordination-contacts", "/coordination-categories"] },
 ];
 
 const MODULE_KEYS = new Set(PERMISSION_MODULES.map((m) => m.key));

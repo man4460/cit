@@ -51,6 +51,15 @@ export const NavIcons = {
       <path strokeLinecap="round" strokeLinejoin="round" d="M6 3h9l5 5v13a1 1 0 01-1 1H6a1 1 0 01-1-1V4a1 1 0 011-1z" />
     </Svg>
   ),
+  phone: (p: IconProps) => (
+    <Svg {...p}>
+      <path
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        d="M5 4h3l2 5-2.5 1.5a11 11 0 005 5L14 13l5 2v3a2 2 0 01-2 2A16 16 0 013 6a2 2 0 012-2z"
+      />
+    </Svg>
+  ),
   admin: (p: IconProps) => (
     <Svg {...p}>
       <path strokeLinecap="round" strokeLinejoin="round" d="M12 15.5a3.5 3.5 0 100-7 3.5 3.5 0 000 7z" />
@@ -235,6 +244,13 @@ export const GROUP_TONES: Record<string, NavTone> = {
     ring: "ring-indigo-500/25",
     bar: "from-indigo-500 via-violet-500 to-fuchsia-500",
   },
+  coordination: {
+    icon: "phone",
+    text: "text-teal-700",
+    chip: "bg-teal-500/12 text-teal-700 ring-teal-500/25",
+    ring: "ring-teal-500/25",
+    bar: "from-teal-500 via-cyan-500 to-sky-500",
+  },
   investigation: {
     icon: "search",
     text: "text-cyan-800",
@@ -301,6 +317,7 @@ const ITEM_VISUALS: ({ match: RegExp } & ItemVisual)[] = [
   { match: /^\/radios/, icon: "radio", tone: "text-blue-600", chip: "bg-blue-500/12 text-blue-600 ring-blue-500/25" },
   { match: /^\/weapons/, icon: "gun", tone: "text-slate-700", chip: "bg-slate-500/12 text-slate-700 ring-slate-500/25" },
   { match: /fire-safety/, icon: "fire", tone: "text-rose-600", chip: "bg-rose-500/12 text-rose-600 ring-rose-500/25" },
+  { match: /^\/coordination/, icon: "phone", tone: "text-teal-600", chip: "bg-teal-500/12 text-teal-600 ring-teal-500/25" },
   { match: /^\/documents/, icon: "folder", tone: "text-indigo-600", chip: "bg-indigo-500/12 text-indigo-600 ring-indigo-500/25" },
   {
     match: /^\/investigation\/cases/,
@@ -326,6 +343,7 @@ const ITEM_VISUALS: ({ match: RegExp } & ItemVisual)[] = [
     tone: "text-cyan-700",
     chip: "bg-cyan-500/12 text-cyan-700 ring-cyan-500/25",
   },
+  { match: /^\/admin\/notes/, icon: "documents", tone: "text-amber-600", chip: "bg-amber-500/12 text-amber-600 ring-amber-500/25" },
   { match: /^\/admin\/registrations/, icon: "admin", tone: "text-emerald-600", chip: "bg-emerald-500/12 text-emerald-600 ring-emerald-500/25" },
   { match: /^\/admin/, icon: "user", tone: "text-[#4d47b6]", chip: "bg-[#4d47b6]/12 text-[#4d47b6] ring-[#4d47b6]/25" },
   {

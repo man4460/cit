@@ -31,6 +31,8 @@ import { ScanPage } from "./pages/ScanPage";
 import { AdminPage } from "./pages/AdminPage";
 import { RegistrationReviewPage } from "./pages/RegistrationReviewPage";
 import { DocumentsPage } from "./pages/DocumentsPage";
+import { CoordinationPage } from "./pages/CoordinationPage";
+import { AdminNotesPage } from "./pages/AdminNotesPage";
 import { FireSafetyPage } from "./pages/FireSafetyPage";
 import { WeaponsPage } from "./pages/WeaponsPage";
 import { ArmorVestsPage } from "./pages/ArmorVestsPage";
@@ -76,6 +78,7 @@ export default function App() {
               <Route path="vehicles/weekly-inspection" element={<VehicleWeeklyInspectionPage />} />
               <Route path="vehicles/:vehicleId/maintenance" element={<VehicleMaintenancePage />} />
               <Route path="documents" element={<DocumentsPage />} />
+              <Route path="coordination" element={<CoordinationPage />} />
               <Route path="fire-safety" element={<FireSafetyPage />} />
               <Route path="weapons" element={<WeaponsPage />} />
               <Route path="vests" element={<ArmorVestsPage />} />
@@ -125,6 +128,7 @@ export default function App() {
                 <Route path="admin" element={<AdminPage />} />
                 <Route path="admin/registrations" element={<RegistrationReviewPage />} />
                 <Route path="audit-trail" element={<AuditTrailPage />} />
+                <Route path="admin/notes" element={<AdminNotesPage />} />
               </Route>
               <Route path="*" element={<Navigate to="/" replace />} />
             </Route>

@@ -159,6 +159,11 @@ libraryDocumentsRouter.put("/:id", upload.single("file"), async (req, res, next)
       } catch (e) {
         return res.status(400).json({ error: e instanceof Error ? e.message : "อัปโหลดไฟล์ไม่สำเร็จ" });
       }
+    } else if (String(req.body.removeFile ?? "") === "1") {
+      data.fileUrl = null;
+      data.mimeType = null;
+      data.originalName = null;
+      data.extractedText = null;
     }
 
     const row = await prisma.libraryDocument.update({

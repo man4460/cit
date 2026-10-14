@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { createPortal } from "react-dom";
 import { useSearchParams } from "react-router-dom";
 import { apiFormJson, apiJson } from "../api/client";
 import { CrudNameMasterModal } from "../components/CrudNameMasterModal";
@@ -43,7 +44,26 @@ function libraryEmbedKind(doc: Pick<LibraryDocument, "mimeType" | "originalName"
 }
 
 function emptyDocForm() {
-  return { title: "", documentTypeId: "", details: "", file: null as File | null };
+  return { title: "", documentTypeId: "", details: "", file: null as File | null, removeFile: false };
+}
+
+function LibraryFileEmbed({
+  doc,
+  className,
+}: {
+  doc: Pick<LibraryDocument, "mimeType" | "originalName" | "fileUrl" | "title">;
+  className: string;
+}) {
+  if (!doc.fileUrl) return null;
+  const src = fileUrlForEmbed(doc.fileUrl);
+  const kind = libraryEmbedKind(doc);
+  if (kind === "image") {
+    return <img src={src} alt={doc.originalName || doc.title} className={`${className} object-contain`} />;
+  }
+  if (kind === "pdf" || kind === "text") {
+    return <iframe title={doc.title} src={src} className={`${className} border-0 bg-white`} />;
+  }
+  return null;
 }
 
 export function DocumentsPage() {
@@ -126,15 +146,22 @@ export function DocumentsPage() {
     setFormOpen(true);
   }
 
-  function openEdit(d: LibraryDocument) {
+  async function openEdit(d: LibraryDocument) {
     setEditing(d);
     setForm({
       title: d.title,
       documentTypeId: d.documentTypeId ?? "",
       details: d.details,
       file: null,
+      removeFile: false,
     });
     setFormOpen(true);
+    try {
+      const fresh = await apiJson<LibraryDocument>(`/api/library-documents/${d.id}`);
+      setEditing((v) => (v?.id === d.id ? fresh : v));
+    } catch {
+      /* ใช้ข้อมูลจากรายการถ้าโหลดรายละเอียดไม่ได้ */
+    }
   }
 
   function closeForm() {
@@ -156,6 +183,7 @@ export function DocumentsPage() {
       fd.append("details", form.details);
       fd.append("documentTypeId", form.documentTypeId.trim());
       if (form.file) fd.append("file", form.file);
+      else if (editing && form.removeFile) fd.append("removeFile", "1");
 
       if (editing) {
         await apiFormJson<LibraryDocument>(`/api/library-documents/${editing.id}`, fd, "PUT");
@@ -185,6 +213,20 @@ export function DocumentsPage() {
     setViewing(null);
     void load();
   }
+
+  useEffect(() => {
+    if (!viewing) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") closeView();
+    };
+    window.addEventListener("keydown", onKey);
+    const prevOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      window.removeEventListener("keydown", onKey);
+      document.body.style.overflow = prevOverflow;
+    };
+  }, [viewing]);
 
   async function openView(d: LibraryDocument) {
     setViewing(d);
@@ -260,90 +302,58 @@ export function DocumentsPage() {
         onChanged={() => void load({ silent: true })}
       />
 
-      <Modal open={!!viewing} onClose={closeView} title="ดูเอกสาร" size="viewer">
-        {viewing ? (
-          <ModalFormBody className="!space-y-4">
-            <div className="flex flex-wrap items-start justify-between gap-2">
-              <div className="min-w-0 flex-1">
-                <p className="text-sm font-semibold text-[#1e1b3a]">{viewing.title}</p>
-                <div className="mt-1 flex flex-wrap gap-1">
-                  {viewing.documentType?.name ? (
-                    <span className="rounded bg-violet-500/15 px-1.5 py-0.5 text-[10px] font-medium text-violet-700">
-                      {viewing.documentType.name}
-                    </span>
-                  ) : null}
-                </div>
-              </div>
-              {viewing.fileUrl ? (
-                <a
-                  href={viewFileSrc || viewing.fileUrl}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="shrink-0 rounded-lg border border-slate-200 px-2.5 py-1.5 text-xs font-medium text-[#5b61ff] hover:bg-slate-100"
-                >
-                  เปิดในแท็บใหม่
-                </a>
-              ) : null}
+      {viewing ? createPortal(
+        <div className="print:hidden fixed inset-0 z-[200] flex h-[100dvh] w-screen flex-col bg-[#525659]" role="dialog" aria-modal="true">
+          <div className="flex h-12 shrink-0 items-center gap-3 bg-[#323639] px-3 text-white shadow-md sm:px-4">
+            <div className="min-w-0 flex-1">
+              <p className="truncate text-sm font-semibold">{viewing.title}</p>
+              <p className="truncate text-[11px] text-white/60">
+                {[viewing.documentType?.name, viewing.originalName].filter(Boolean).join(" · ") || "ไม่มีไฟล์แนบ"}
+              </p>
             </div>
-
             {viewing.fileUrl ? (
-              viewEmbedKind !== "none" ? (
-                <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-inner">
-                  {viewEmbedKind === "image" ? (
-                    <img
-                      src={viewFileSrc}
-                      alt={viewing.originalName || viewing.title}
-                      className="mx-auto max-h-[min(72vh,880px)] w-full object-contain"
-                    />
-                  ) : (
-                    <iframe
-                      title={viewing.title}
-                      src={viewFileSrc}
-                      className="h-[min(72vh,880px)] w-full border-0 bg-white/90"
-                    />
-                  )}
-                </div>
-              ) : (
-                <p className="rounded-xl border border-amber-900/40 bg-amber-50 p-4 text-sm text-amber-800">
-                  รูปแบบไฟล์นี้ไม่สามารถแสดงในหน้าต่างนี้ได้ — กด «เปิดในแท็บใหม่» หรือลิงก์ด้านล่าง
-                </p>
-              )
-            ) : (
-              <p className="text-sm text-slate-600">ไม่มีไฟล์แนบ</p>
-            )}
-
-            {viewing.fileUrl ? (
-              <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-slate-600">
-                <span>ไฟล์:</span>
-                <a
-                  href={viewFileSrc || viewing.fileUrl}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="text-[#5b61ff] underline-offset-2 hover:underline"
-                >
-                  {viewing.originalName || "ดาวน์โหลด / เปิดไฟล์"}
-                </a>
-              </div>
-            ) : null}
-
-            {viewing.details?.trim() ? (
-              <div>
-                <p className="text-xs font-medium text-slate-700">รายละเอียด</p>
-                <p className="mt-1 whitespace-pre-wrap text-sm text-slate-700">{viewing.details}</p>
-              </div>
-            ) : null}
-            <div className="flex justify-end border-t border-slate-200 pt-3">
-              <button
-                type="button"
-                className="rounded-lg border border-slate-200 px-4 py-2 text-sm text-slate-700 hover:bg-slate-100"
-                onClick={closeView}
+              <a
+                href={viewFileSrc || viewing.fileUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="shrink-0 rounded-lg px-2.5 py-1.5 text-xs font-medium text-white/90 hover:bg-white/10"
               >
-                ปิด
-              </button>
-            </div>
-          </ModalFormBody>
-        ) : null}
-      </Modal>
+                เปิดในแท็บใหม่
+              </a>
+            ) : null}
+            <button
+              type="button"
+              onClick={closeView}
+              aria-label="ปิด"
+              className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-lg text-white/90 hover:bg-white/15"
+            >
+              ✕
+            </button>
+          </div>
+          <div className="flex min-h-0 flex-1 items-center justify-center overflow-auto">
+            {viewing.fileUrl && viewEmbedKind !== "none" ? (
+              <LibraryFileEmbed
+                doc={viewing}
+                className={viewEmbedKind === "image" ? "max-h-full max-w-full" : "h-full w-full"}
+              />
+            ) : (
+              <div className="max-w-lg rounded-xl bg-white p-6 text-sm text-slate-700 shadow-lg">
+                {viewing.fileUrl ? (
+                  <p className="text-amber-800">
+                    รูปแบบไฟล์นี้แสดงในหน้าต่างนี้ไม่ได้ — กด «เปิดในแท็บใหม่»
+                  </p>
+                ) : (
+                  <p>ไม่มีไฟล์แนบ</p>
+                )}
+                {viewing.details?.trim() ? (
+                  <p className="mt-3 whitespace-pre-wrap text-slate-700">{viewing.details}</p>
+                ) : null}
+              </div>
+            )}
+          </div>
+        </div>,
+        document.body,
+      ) : null}
 
       <Modal
         open={formOpen}
@@ -389,21 +399,48 @@ export function DocumentsPage() {
                     onChange={(e) => setForm((f) => ({ ...f, details: e.target.value }))}
                   />
                 </label>
-                <label className="block sm:col-span-2">
-                  <span className="text-xs font-medium text-slate-700">
-                    ไฟล์แนบ {editing?.fileUrl ? "(เว้นว่าง = คงไฟล์เดิม)" : ""}
-                  </span>
-                  <input
-                    type="file"
-                    className="mt-1 w-full text-sm text-slate-700 file:mr-3 file:rounded-lg file:border-0 file:bg-[#0000BF]/10 file:px-3 file:py-2 file:text-sm file:text-[#2e2a58]"
-                    onChange={(e) =>
-                      setForm((f) => ({ ...f, file: e.target.files?.[0] ?? null }))
-                    }
-                  />
-                  {editing?.originalName ? (
-                    <p className="mt-1 text-[11px] text-slate-600">ปัจจุบัน: {editing.originalName}</p>
-                  ) : null}
-                </label>
+                {editing?.fileUrl && !form.removeFile && !form.file ? (
+                  <div className="sm:col-span-2">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <span className="text-xs font-medium text-slate-700">ไฟล์ปัจจุบัน</span>
+                      <div className="flex gap-2">
+                        <button
+                          type="button"
+                          className="rounded-lg border border-rose-200 bg-rose-50 px-2.5 py-1 text-xs font-medium text-rose-600 hover:bg-rose-100"
+                          onClick={() => setForm((f) => ({ ...f, removeFile: true }))}
+                        >
+                          ลบไฟล์
+                        </button>
+                      </div>
+                    </div>
+                    <p className="mt-1 truncate rounded-lg border border-[#e8e6fc] bg-[#faf9ff] px-3 py-2 text-sm text-[#2e2a58]">
+                      {editing.originalName || "ไฟล์แนบ"}
+                    </p>
+                  </div>
+                ) : (
+                  <label className="block sm:col-span-2">
+                    <span className="text-xs font-medium text-slate-700">
+                      {editing?.fileUrl ? "อัปโหลดไฟล์ใหม่" : "ไฟล์แนบ"}
+                    </span>
+                    <input
+                      type="file"
+                      className="mt-1 w-full text-sm text-slate-700 file:mr-3 file:rounded-lg file:border-0 file:bg-[#0000BF]/10 file:px-3 file:py-2 file:text-sm file:text-[#2e2a58]"
+                      onChange={(e) => setForm((f) => ({ ...f, file: e.target.files?.[0] ?? null }))}
+                    />
+                    {editing?.fileUrl ? (
+                      <p className="mt-1 text-[11px] text-slate-600">
+                        {form.file ? `จะแทนที่: ${editing.originalName ?? "ไฟล์เดิม"}` : "ไฟล์เดิมจะถูกลบเมื่อบันทึก"}{" "}
+                        <button
+                          type="button"
+                          className="font-medium text-[#5b61ff] hover:underline"
+                          onClick={() => setForm((f) => ({ ...f, file: null, removeFile: false }))}
+                        >
+                          คืนไฟล์เดิม
+                        </button>
+                      </p>
+                    ) : null}
+                  </label>
+                )}
               </div>
             </ModalFormSection>
           </ModalFormBody>

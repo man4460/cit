@@ -350,6 +350,44 @@ model LibraryDocument {
   osContractLinks   OsContractDocument[]
 }
 
+// --- บันทึกโน้ตของผู้ดูแลระบบ ---
+model AdminNote {
+  id          String   @id @default(uuid())
+  title       String
+  content     String   @db.Text
+  createdById String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+// --- ประสานงาน (ทะเบียนหน่วยงานที่ติดต่อ) ---
+model CoordinationCategory {
+  id        String   @id @default(uuid())
+  name      String   @unique
+  imageUrl  String?  @db.Text
+  sortOrder Int      @default(0)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  contacts CoordinationContact[]
+}
+
+model CoordinationContact {
+  id          String                @id @default(uuid())
+  agency      String
+  contactName String                @default("")
+  address     String                @db.Text
+  phone       String                @default("")
+  note        String                @db.Text
+  photoUrl    String?               @db.Text
+  categoryId  String?
+  category    CoordinationCategory? @relation(fields: [categoryId], references: [id], onDelete: Restrict)
+  createdAt   DateTime              @default(now())
+  updatedAt   DateTime              @updatedAt
+
+  @@index([categoryId])
+}
+
 // --- อัคคีภัย / ถังดับเพลิง ---
 
 model FireExtinguisher {

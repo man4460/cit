@@ -32,6 +32,7 @@ export const PERMISSION_MODULES: { key: string; label: string; group: string; ro
   { key: "weapons", label: "อาวุธปืนและกระสุน", group: "ครุภัณฑ์", routePrefixes: ["/weapons"] },
   { key: "fire", label: "อัคคีภัย", group: "วัสดุทั่วไป", routePrefixes: ["/fire-safety"] },
   { key: "documents", label: "คลังเอกสาร", group: "คลังเอกสาร", routePrefixes: ["/documents"] },
+  { key: "coordination", label: "ประสานงาน", group: "ประสานงาน", routePrefixes: ["/coordination"] },
 ];
 
 export type PermissionViewer = { role: string; permissions?: PermissionMap | null } | null | undefined;

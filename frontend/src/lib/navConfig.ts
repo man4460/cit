@@ -107,6 +107,12 @@ export const navGroups: NavGroup[] = [
     items: [{ to: "/documents", label: "คลังเอกสาร", end: true }],
   },
   {
+    id: "coordination",
+    titleTh: "ประสานงาน",
+    titleEn: "Coordination",
+    items: [{ to: "/coordination", label: "ประสานงาน", end: true }],
+  },
+  {
     id: "admin",
     titleTh: "ผู้ดูแลระบบ",
     titleEn: "Administration",
@@ -114,6 +120,7 @@ export const navGroups: NavGroup[] = [
       { to: "/admin", label: "จัดการผู้ใช้", end: true, adminOnly: true },
       { to: "/admin/registrations", label: "อนุมัติสมาชิก", adminOnly: true },
       { to: "/audit-trail", label: "ความเคลื่อนไหว", adminOnly: true },
+      { to: "/admin/notes", label: "บันทึกโน้ต", adminOnly: true },
       { to: "/scan", label: "สแกน QR", adminOnly: true },
     ],
   },

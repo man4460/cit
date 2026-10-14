@@ -49,6 +49,37 @@ export interface LibraryDocument {
   updatedAt: string;
 }
 
+export interface AdminNote {
+  id: string;
+  title: string;
+  content: string;
+  createdById: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface CoordinationCategory {
+  id: string;
+  name: string;
+  imageUrl: string | null;
+  sortOrder: number;
+  _count?: { contacts: number };
+}
+
+export interface CoordinationContact {
+  id: string;
+  agency: string;
+  contactName: string;
+  address: string;
+  phone: string;
+  note: string;
+  photoUrl: string | null;
+  categoryId: string | null;
+  category: CoordinationCategory | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
 export interface TrainingEnrollment {
   id: string;
   personnelId: string;
