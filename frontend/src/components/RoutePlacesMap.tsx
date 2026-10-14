@@ -120,12 +120,16 @@ function PlacePopup({
   fromMe,
   onResize,
   onViewPhoto,
+  isFavorite,
+  onToggleFavorite,
 }: {
   place: RoutePlace;
   segmentLabel: string;
   fromMe: number | null;
   onResize: () => void;
   onViewPhoto: (photos: RoutePlacePhoto[], index: number) => void;
+  isFavorite: boolean;
+  onToggleFavorite: () => void;
 }) {
   const [photos, setPhotos] = useState<RoutePlacePhoto[] | null>(null);
   const [uploading, setUploading] = useState(false);
@@ -182,9 +186,20 @@ function PlacePopup({
           </span>
         ) : null}
         {!p.verified ? <span className="rounded bg-fuchsia-100 px-1.5 text-[10px] font-bold text-fuchsia-700">AI · รอตรวจ</span> : null}
-        {p.isFavorite ? <span className="text-amber-500">★</span> : null}
       </div>
-      <p className="text-[14px] font-extrabold text-[#1e1b3a]">{p.name}</p>
+      <div className="flex items-start gap-2">
+        <p className="min-w-0 flex-1 text-[14px] font-extrabold text-[#1e1b3a]">{p.name}</p>
+        <button
+          type="button"
+          onClick={onToggleFavorite}
+          title={isFavorite ? "เลิกชื่นชอบ" : "เพิ่มในรายการชื่นชอบ"}
+          className={`shrink-0 rounded-full px-2 py-0.5 text-[11px] font-bold ring-1 transition ${
+            isFavorite ? "bg-amber-400 text-white ring-amber-400" : "bg-white text-amber-700 ring-amber-300 hover:bg-amber-50"
+          }`}
+        >
+          {isFavorite ? "★ ชื่นชอบแล้ว" : "☆ เพิ่มชื่นชอบ"}
+        </button>
+      </div>
       {fromMe != null ? <p className="font-bold text-sky-700">ห่างจากคุณ ~{fmtKm(fromMe)} (เส้นตรง)</p> : null}
       {segmentLabel ? <p className="text-[#4d47b6]">{segmentLabel}</p> : null}
       {p.location ? <p className="text-slate-600">{p.location}</p> : null}
@@ -367,11 +382,36 @@ export function RoutePlacesMap({
     };
   }, [route.id]);
 
+  const [fav, setFav] = useState<Set<string>>(() => new Set(places.filter((p) => p.isFavorite).map((p) => p.id)));
+  const favRef = useRef(fav);
+  favRef.current = fav;
+  useEffect(() => setFav(new Set(places.filter((p) => p.isFavorite).map((p) => p.id))), [places]);
+
   const located = useMemo(() => places.filter((p) => p.lat != null && p.lng != null), [places]);
+  /** fav เป็น dependency เฉพาะตอนกรอง «ชื่นชอบ» — ไม่งั้นการกดดาวจะสร้างหมุดใหม่และปิด popup */
+  const favFilter = favOnly ? fav : null;
   const shown = useMemo(
-    () => located.filter((p) => kinds.has(p.kind) && (seg === "" || p.segmentIndex === Number(seg)) && (!favOnly || p.isFavorite)),
-    [located, kinds, seg, favOnly],
+    () => located.filter((p) => kinds.has(p.kind) && (seg === "" || p.segmentIndex === Number(seg)) && (!favFilter || favFilter.has(p.id))),
+    [located, kinds, seg, favFilter],
   );
+
+  async function toggleFavorite(p: RoutePlace) {
+    const next = !favRef.current.has(p.id);
+    const apply = (on: boolean) =>
+      setFav((s) => {
+        const n = new Set(s);
+        if (on) n.add(p.id);
+        else n.delete(p.id);
+        return n;
+      });
+    apply(next);
+    try {
+      await apiJson(`/api/route-master/places/${p.id}`, { method: "PUT", body: JSON.stringify({ isFavorite: next }) });
+    } catch (err) {
+      apply(!next);
+      alert(err instanceof Error ? err.message : "บันทึกไม่สำเร็จ");
+    }
+  }
 
   /** ศูนย์ต้นทาง/ปลายทาง — ถ้ามีแนวเส้นทาง ใช้ปลายเส้นเป็นต้นทาง/ปลายทาง และดึงศูนย์ระหว่างทางเข้าหาเส้นที่ใกล้สุด */
   const stops = useMemo(() => {
@@ -448,7 +488,7 @@ export function RoutePlacesMap({
     markersRef.current.clear();
     for (const p of shown) {
       const el = document.createElement("div");
-      const m = L.marker([p.lat!, p.lng!], { icon: pinIcon(p), title: p.name })
+      const m = L.marker([p.lat!, p.lng!], { icon: pinIcon({ ...p, isFavorite: favRef.current.has(p.id) }), title: p.name })
         .bindPopup(el, { maxWidth: 340, minWidth: 260, autoPanPaddingTopLeft: [10, 60] })
         .addTo(layer);
       m.on("popupopen", (e) => setOpenPopup({ place: p, el, popup: (e as L.PopupEvent).popup }));
@@ -456,6 +496,10 @@ export function RoutePlacesMap({
       markersRef.current.set(p.id, m);
     }
   }, [shown]);
+
+  useEffect(() => {
+    for (const p of shown) markersRef.current.get(p.id)?.setIcon(pinIcon({ ...p, isFavorite: fav.has(p.id) }));
+  }, [fav, shown]);
 
   useEffect(() => {
     const map = mapRef.current;
@@ -575,7 +619,7 @@ export function RoutePlacesMap({
             favOnly ? "bg-amber-400 text-white shadow" : "bg-white text-amber-700 ring-1 ring-amber-200"
           }`}
         >
-          ★ ชื่นชอบ
+          ★ ชื่นชอบ {fav.size}
         </button>
         {segments.length ? (
           <select
@@ -607,6 +651,8 @@ export function RoutePlacesMap({
                 fromMe={me ? distanceKm([me.lat, me.lng], [openPopup.place.lat!, openPopup.place.lng!]) : null}
                 onResize={resizePopup}
                 onViewPhoto={(photos, index) => setLightbox({ photos, index })}
+                isFavorite={fav.has(openPopup.place.id)}
+                onToggleFavorite={() => void toggleFavorite(openPopup.place)}
               />,
               openPopup.el,
             )
@@ -671,6 +717,14 @@ export function RoutePlacesMap({
                           <span className="truncate">{p.name}</span>
                         </p>
                         <p className="text-[11px] text-sky-700">~{fmtKm(km)}</p>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => void toggleFavorite(p)}
+                        title={fav.has(p.id) ? "เลิกชื่นชอบ" : "เพิ่มในรายการชื่นชอบ"}
+                        className={`shrink-0 text-lg leading-none transition hover:scale-110 ${fav.has(p.id) ? "text-amber-400" : "text-slate-300 hover:text-amber-300"}`}
+                      >
+                        {fav.has(p.id) ? "★" : "☆"}
                       </button>
                       {tel ? (
                         <a href={`tel:${tel}`} className="shrink-0 rounded-full bg-emerald-600 px-2 py-1 text-[11px] font-bold text-white" title={p.phone}>
