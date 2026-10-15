@@ -41,7 +41,6 @@ h1,h2,h3{text-wrap:balance;margin:0}
 .dot{width:8px;height:8px;border-radius:50%;background:var(--muted)}
 .live.on .dot{background:var(--s0)}
 .live.stale .dot{background:var(--s1)}
-
 .legend{display:flex;flex-wrap:wrap;gap:6px 14px;margin:12px 0 4px;font-size:.8rem;color:var(--muted)}
 .legend span{display:inline-flex;align-items:center;gap:6px}
 .sw{width:10px;height:10px;border-radius:2px;display:inline-block}
@@ -150,7 +149,6 @@ tbody tr:hover{background:var(--soft)}
 .chip .up b{font-weight:600}
 
 /* upstream chain */
-.up-head{display:flex;flex-wrap:wrap;gap:8px 14px;align-items:center;margin-bottom:10px}
 .up-note{font-size:.92rem;margin:0 0 14px;max-width:none}
 .chain{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;position:relative}
 .chain::before{content:"";position:absolute;left:11px;top:8px;bottom:8px;width:2px;background:var(--water-soft)}
@@ -349,6 +347,14 @@ tbody tr:hover{background:var(--soft)}
 .ana > div{background:var(--soft);border-radius:8px;padding:10px 12px;min-width:0}
 .ana .k{font-size:.72rem;color:var(--muted);font-weight:600}
 .ana .v{font-weight:600}
+.f72{width:100%;border-collapse:collapse;font-size:.84rem;margin:4px 0 8px}
+.f72 th{font-size:.7rem;color:var(--muted);font-weight:600;text-align:right;padding:4px 8px;border-bottom:1px solid var(--line)}
+.f72 th:first-child,.f72 td:first-child{text-align:left}
+.f72 td{padding:6px 8px;border-top:1px solid var(--line);text-align:right;white-space:nowrap;font-variant-numeric:tabular-nums}
+.f72 td.c[data-s="1"]{background:var(--s1-bg)}.f72 td.c[data-s="2"]{background:var(--s2-bg)}.f72 td.c[data-s="3"]{background:var(--s3-bg)}
+.f72 tr.why td{border-top:0;padding-top:0;white-space:normal;text-align:left;color:var(--muted);font-size:.78rem}
+.f72 tr.why ul{margin:0;padding-left:18px}
+@media (max-width:860px){.f72-wrap{overflow-x:auto}}
 .steps{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px}
 @media (max-width:860px){.steps{grid-template-columns:minmax(0,1fr)}}
 .steps .measure{opacity:.6}
@@ -403,6 +409,17 @@ tbody tr:hover{background:var(--soft)}
 .hb .v{font-family:var(--f-data);font-weight:600;text-align:right;white-space:nowrap}
 .src{display:inline-block;font-size:.66rem;font-weight:700;padding:1px 6px;border-radius:4px;background:var(--water-soft);color:var(--accent);margin-left:6px;vertical-align:1px}
 .proxy{font-size:.74rem;color:var(--muted);margin-top:2px}
+.manual{margin-top:10px;padding:10px 12px;border:1px solid var(--line);border-radius:10px;background:var(--water-soft)}
+.manual .nm{font-weight:600}.manual .nm small{font-weight:400;color:var(--muted);margin-left:6px}
+.manual-f{display:flex;flex-wrap:wrap;gap:8px 12px;align-items:flex-end;margin-top:8px}
+.manual-f label{display:flex;flex-direction:column;gap:3px;font-size:.76rem;color:var(--muted)}
+.manual-f label.grow{flex:1 1 220px}
+.manual-f input,.manual-f select{font:inherit;font-size:.88rem;color:var(--ink);background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:6px 8px;min-width:0}
+.manual-f input[name=value]{width:9em}
+.manual-list{list-style:none;margin:8px 0 0;padding:0;font-size:.8rem}
+.manual-list li{padding:3px 0;border-top:1px dashed var(--line)}
+.manual-list li.on b{color:var(--accent)}
+.linkbtn{appearance:none;border:0;background:none;color:var(--s3);font:inherit;font-size:.76rem;cursor:pointer;margin-left:6px;text-decoration:underline}
 
 .empty{padding:28px 20px;color:var(--muted);text-align:center}
 .foot{margin-top:24px;font-size:.8rem;color:var(--muted);display:flex;flex-direction:column;gap:6px}
@@ -418,12 +435,12 @@ tbody tr:hover{background:var(--soft)}
         <span><i class="sw" style="background:var(--s1)"></i>เหลือง</span>
         <span><i class="sw" style="background:var(--s2)"></i>ส้ม</span>
         <span><i class="sw" style="background:var(--s3)"></i>แดง</span>
-        <span title="สนญ. สพฐ. สภอ. สภน. สภต. ใช้เกณฑ์ ธปท. 9 ต.ค. 2569 · พื้นที่อื่นใช้การประเมินของระบบติดตามน้ำ">ⓘ เกณฑ์ ธปท.</span>
+        <span title="ทุกพื้นที่ใช้เกณฑ์ ธปท. 9 ต.ค. 2569 · สนญ. สพฐ. ตามจุดวัดที่กำหนด · สภอ. สภน. สภต. % ความจุลำน้ำ (≤30 เขียว · >30 เหลือง · >70 ส้ม · >100 แดง) · ศูนย์จัดการธนบัตร 5 แห่งใช้เกณฑ์ % ความจุแบบ สนภ. กับสถานีใกล้ที่ตั้ง">ⓘ เกณฑ์ ธปท.</span>
       </div>
     </div>
     <div class="stamp">
       <span class="live" id="live"><span class="dot"></span><span id="liveTxt">กำลังเชื่อมต่อข้อมูล…</span></span>
-      <span>อัปเดต <b id="updated" class="num">–</b></span>
+      <span id="updatedWrap">อัปเดต <b id="updated" class="num">–</b></span>
       <button class="btn pri rep-btn" data-report="open"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="8" y="8" width="12" height="12" rx="2"/><path d="M16 8V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h2"/></svg>รายงานผู้บังคับบัญชา</button>
     </div>
   </header>
@@ -451,7 +468,7 @@ tbody tr:hover{background:var(--soft)}
 
   <footer class="foot">
     <details><summary>แหล่งข้อมูลและข้อจำกัด</summary>
-      <div>ข้อมูลสด (ระดับน้ำ/ปริมาณน้ำรายชั่วโมง ฝน 1 และ 24 ชม. เขื่อนขนาดใหญ่) ดึงจากคลังข้อมูลน้ำแห่งชาติ <a href="https://nationalthaiwater.onwr.go.th/" target="_blank" rel="noopener">nationalthaiwater.onwr.go.th</a> (สทนช. / สสน.) ทุก 10 นาที — ใช้ค่าล่าสุดแทนรอบ 3 ชม. เมื่อใหม่กว่า · ฝนคาดการณ์ 3 วันจากแบบจำลอง MET Norway ณ พิกัดที่ตั้ง · ภาพกล้องจากกล้องสาธารณะของหน่วยงานรัฐ รวบรวมโดย cctv.maholan.net · แผนที่ © OpenStreetMap</div>
+      <div>ข้อมูลสด (ระดับน้ำ/ปริมาณน้ำรายชั่วโมง ฝน 1 และ 24 ชม. เขื่อนขนาดใหญ่) ดึงจากคลังข้อมูลน้ำแห่งชาติ <a href="https://nationalthaiwater.onwr.go.th/" target="_blank" rel="noopener">nationalthaiwater.onwr.go.th</a> (สทนช. / สสน.) ทุก 10 นาที — ใช้ค่าล่าสุดแทนรอบ 3 ชม. เมื่อใหม่กว่า · ฝนคาดการณ์ 3 วันจาก Open-Meteo ณ พิกัดที่ตั้ง · ภาพกล้องจากกล้องสาธารณะของหน่วยงานรัฐ (กรมทรัพยากรน้ำ กรมชลประทาน กรมทางหลวง กทม. เทศบาล กฟผ. ฯลฯ) รวบรวมจาก <a href="https://flood.pop.in.th/" target="_blank" rel="noopener">POPNIX Flood</a> · <a href="https://cctv.maholan.net/" target="_blank" rel="noopener">cctv.maholan.net</a> · คลังข้อมูลน้ำแห่งชาติ · แผนที่ © OpenStreetMap</div>
       <div>สถานะเป็นการประเมินเบื้องต้นเพื่อการเฝ้าระวังภายใน ใช้ประกอบการตัดสินใจร่วมกับประกาศทางการของ ปภ. กรมอุตุนิยมวิทยา และกรมชลประทาน · พิกัดที่ตั้งเป็นค่าโดยประมาณ</div>
     </details>
   </footer>
@@ -506,6 +523,7 @@ const SITES = [
    more:["https://www.siamnews.com/flood/surat-thani","สถานการณ์น้ำสุราษฎร์ธานี"]},
 ];
 const COMMON_CAMS = [
+  ["POPNIX Flood CCTV","กล้องคลอง ถนน แม่น้ำ กทม.และทั่วประเทศ พร้อมระดับน้ำ","https://flood.pop.in.th/"],
   ["Flood CCTV Thailand","รวมกล้องน้ำท่วมทั่วไทย ~1,200 จุด เลือกจังหวัดได้","https://cctv.maholan.net/"],
   ["ThaiWater CCTV","กล้องเขื่อนและสถานีวัดน้ำ (สสน.)","https://www.thaiwater.net/water/cctv"],
 ];
@@ -537,6 +555,7 @@ const BOT_MEASURES = {
   ],
 };
 const regionalPoint = (station, where) => ({label:`สถานี${station}`, where, src:{station}, field:"pct", unit:"%", th:[30,70,100], gt:true, bands:BOT_REGIONAL_BANDS});
+const nearestPoint = station => regionalPoint(station, "สถานีใกล้ที่ตั้ง (ธปท. ยังไม่กำหนดจุดวัดเฉพาะ)");
 const BOT_TRIGGERS = {
   hq:{group:"สนญ.", measures:"hq", ind:[
     {label:"ปริมาณน้ำไหลผ่านสถานีสามโคก", where:"แม่น้ำเจ้าพระยา อ.สามโคก ปทุมธานี", src:{bot:"samkhok_q", station:"สามโคก"}, field:"q", unit:"ลบ.ม./วินาที", int:true,
@@ -559,13 +578,21 @@ const BOT_TRIGGERS = {
     regionalPoint("บ้านม่วงก็อง", "ต.พังลา อ.สะเดา จ.สงขลา"),
     regionalPoint("บ้านบางศาลา", "ต.บ้านพรุ อ.หาดใหญ่ จ.สงขลา"),
     regionalPoint("บ้านคลองหวะ", "ต.คอหงส์ อ.หาดใหญ่ จ.สงขลา")]},
+  /* ธปท. ยังไม่กำหนดจุดวัดของศูนย์จัดการธนบัตร — ใช้เกณฑ์ % ความจุลำน้ำแบบ สนภ. กับสถานีใกล้ที่ตั้ง */
+  ryg:{group:"ศรย.", measures:null, nearest:true, ind:["บ้านเขาโบสถ์", "บ้านเขาวังไทร", "บ้านค่าย"].map(nearestPoint)},
+  phs:{group:"ศพล.", measures:null, nearest:true, ind:["สะพานสุพรรณกัลยา", "ท้ายเขื่อนนเรศวร", "คลองผันน้ำยม-น่าน4", "เมืองพิษณุโลก"].map(nearestPoint)},
+  ubn:{group:"ศอบ.", measures:null, nearest:true, ind:["แม่น้ำมูล เมืองอุบลราชธานี (M.7)", "สะพานเสรีประชาธิปไตย", "แม่น้ำมูล วัดปากโดม", "แม่น้ำมูล บ้านคันไร่"].map(nearestPoint)},
+  nrm:{group:"ศนร.", measures:null, nearest:true, ind:["ตำบลในเมือง", "บ้านลาดบัวขาว", "บ้านท่ามะปรางค์", "สำนักเทคโนโลยีชีวภัณฑ์สัตว์"].map(nearestPoint)},
+  urt:{group:"ศสร.", measures:null, nearest:true, ind:["พุนพิน 3", "บ้านท่าข้าม", "บ้านย่านดินแดง", "บ้านเคียนซา"].map(nearestPoint)},
 };
 
 /* ค่าล่าสุดของจุดวัด: ค่าที่ ธปท. ป้อนเอง (bot) ก่อน ถ้าไม่มี/ค้าง ใช้ค่าที่ใหม่ที่สุดจากรอบ 3 ชม. หรือข้อมูลสด สทนช. */
 function botReading(ind, d){
   if(ind.src.bot){
     const b = d && d.bot && d.bot[ind.src.bot];
-    if(b && num(b.value) !== null && !isStale(b.time, d.updatedAt)) return {value:num(b.value), time:b.time};
+    if(b && num(b.value) !== null && !isStale(b.time, d.updatedAt))
+      return {value:num(b.value), time:b.time, manual:Boolean(b.manual),
+        note: b.manual ? `ค่าวัดจริงที่เจ้าหน้าที่กรอก${b.by ? ` โดย ${b.by}` : ""}${b.note ? ` — ${b.note}` : ""} · ใช้เป็นหลักแทนค่าจากสถานี${manualValidText(ind.src.bot)}` : undefined};
   }
   const cands = [];
   if(ind.src.bot){
@@ -606,7 +633,7 @@ const ACTIONS = [
 function actionsFor(id, level){
   if(level < 0) return [];
   const b = BOT_TRIGGERS[id];
-  return b ? BOT_MEASURES[b.measures][level] : ACTIONS[level];
+  return b && b.measures ? BOT_MEASURES[b.measures][level] : ACTIONS[level];
 }
 const plainActions = list => list.filter(t => !t.startsWith("#"));
 
@@ -632,11 +659,22 @@ function outlook(id){
   rainRisk = Math.max(rainRisk, hourRisk);
   const up = upstreamSummary(id);
   const obs = liveRain(id);
+  const tmd = (d && d.tmd || []).slice(0, 3);
+  const tide = d && d.tide || null;
+  if(tmd.some(x => (num(x.rainPct) || 0) >= 60)) rainRisk = Math.max(rainRisk, 1);
   const why = [];
   let proj = s;
+  const f72 = d && d.fc72;
+  if(f72 && s >= 0){
+    /* วิเคราะห์จากข้อมูลรายชั่วโมงย้อนหลัง 7 วัน (backend lib/waterForecast.ts) */
+    proj = Math.max(s, f72.lv72, f72.lvNow);
+    const trend = proj > s ? "up" : f72.lv["72"] < s ? "down" : "flat";
+    const rainTxt = fc.length ? `ฝน 3 วันรวม ${fmt1(total)} มม. สูงสุด ${fmt1(peakMm)} มม.${peak ? ` (${fmtDay(peak.date)})` : ""} · ระดับฝน${rc.n}` : "ไม่มีข้อมูลพยากรณ์";
+    return {s, proj: trend === "down" ? f72.lv["72"] : proj, trend, text: f72.text, rainTxt, rc, total, peak, peakMm, maxHour, up, rainRisk, obs, tmd, tide, f72};
+  }
   if(s >= 0){
-    if(up.s > proj){
-      proj = up.s;
+    if(up.s > proj && up.rising > 0){
+      proj = Math.min(up.s, s + 1);
       why.push(`น้ำเหนือ${STATUS[up.s]}${up.top ? ` ที่${up.top.p.name} ถึงที่ตั้งราว ${up.top.p.lead}` : ""}`);
     }
     if(rainRisk >= 2 && s < 3 && proj < s + 1){
@@ -646,6 +684,15 @@ function outlook(id){
     if(obs && obs.max > 90 && s < 3 && proj < s + 1){
       proj = s + 1;
       why.push(`ฝนตกจริง 24 ชม. ${fmt1(obs.max)} มม. ที่${obs.top.name} (${fmt1(obs.top.km)} กม.) ดินอุ้มน้ำเต็ม`);
+    }
+    const heavy = tmd.find(x => /หนัก/.test(x.desc) && (num(x.rainPct) || 0) >= 60);
+    if(heavy && s < 3 && proj < s + 1){
+      proj = s + 1;
+      why.push(`กรมอุตุฯ พยากรณ์${heavy.desc} โอกาส ${heavy.rainPct}% ${fmtDay(heavy.date)}`);
+    }
+    if(tide && num(tide.level) !== null && tide.level > proj){
+      proj = tide.level;
+      why.push(`กรมอุทกศาสตร์: น้ำทะเลหนุน + น้ำเหนือ คาดสูงสุด ${num(tide.estimate).toFixed(2)} ม.รทก. ที่ บก.ทร.`);
     }
   }
   const risingUp = up.rising > 0;
@@ -658,7 +705,7 @@ function outlook(id){
     ? `คาดว่าทรงตัวที่${STATUS[s]} — ${rainRisk >= 1 ? "ยังมีฝนต่อเนื่อง ระดับน้ำอาจไม่ลดลงเร็ว" : risingUp ? "ฝนน้อยแต่น้ำเหนือยังเพิ่มขึ้น" : "ปัจจัยเสี่ยงใหม่ไม่ชัดเจน"}`
     : `คาดว่าปกติต่อเนื่อง — ฝนและน้ำเหนือไม่เข้าเกณฑ์`;
   else text = "รอข้อมูล";
-  return {s, proj, trend, text, rainTxt, rc, total, peak, peakMm, maxHour, up, rainRisk, obs};
+  return {s, proj, trend, text, rainTxt, rc, total, peak, peakMm, maxHour, up, rainRisk, obs, tmd, tide};
 }
 const TREND_ICON = {up:"▲", down:"▼", flat:"●", na:"–"};
 const TREND_SHORT = {up:"แย่ลง", down:"คลี่คลาย", flat:"ทรงตัว", na:"รอข้อมูล"};
@@ -833,6 +880,8 @@ const damSites = name => SITES.filter(s => (SITE_DAMS[s.id] || []).includes(name
 const LIVE_BOT = {
   samkhok_q(){
     const m = ridStation("C.29B");
+    if(m && m.qMean24 && num(m.qMean24.q) !== null) return {value: num(m.qMean24.q), time: m.time, live: true,
+      note: `ค่าเฉลี่ย 24 ชม. (${m.qMean24.n} ชม.) ที่สถานี C.29B ${m.name} อ.${m.amphoe} (กรมชลประทาน) — ค่ารายชั่วโมงแกว่งตามน้ำขึ้นน้ำลง ล่าสุด ${fmtInt(m.q)} ลบ.ม./วิ. · ระดับน้ำ ${fmt1(m.msl)} ม.รทก.`};
     if(m && num(m.q) !== null) return {value: num(m.q), time: m.time, live: true,
       note: `วัดจริงที่สถานี C.29B ${m.name} อ.${m.amphoe} (กรมชลประทาน) · ระดับน้ำ ${fmt1(m.msl)} ม.รทก. · ${fmt1(m.qPct)}% ของความจุลำน้ำ`};
     const a = liveByCode("C.13"), b = liveByCode("S.26");
@@ -842,7 +891,10 @@ const LIVE_BOT = {
       note: `ประมาณการ = C.13 ท้ายเขื่อนเจ้าพระยา ${fmtInt(a.q)}${qb !== null ? ` + S.26 ท้ายเขื่อนพระรามหก ${fmtInt(qb)}` : ""} ลบ.ม./วิ. · น้ำถึงสามโคกราว 1–2 วัน`};
   },
   navy_msl(){
+    const p = ridStation("C.12") && ridStation("C.12").peak24;
     const a = [liveByCode("C.12"), ridStation("C.12")].filter(x => x && num(x.msl) !== null).reduce(newer, null);
+    if(p && num(p.msl) !== null)
+      return {value: num(p.msl), time: p.time, live: true, note: `ค่าแทน: ระดับน้ำขึ้นสูงสุดรอบ 24 ชม. ที่สถานี C.12 กรมชลประทานสามเสน ซึ่งอยู่เหนือ บก.ทร. ราว 5 กม. — ระดับจริงหน้า บก.ทร. มักต่ำกว่า กรอกค่าวัดจริงด้านล่างเพื่อใช้เป็นหลัก${a ? ` · C.12 ล่าสุด ${num(a.msl).toFixed(2)} ม. (${fmtTime(a.time)})` : ""}`};
     return a ? {value: num(a.msl), time: a.time, live: true, note: "ค่าแทนจากสถานี C.12 กรมชลประทานสามเสน (เจ้าพระยา ห่าง สนญ. ~2 กม.)"} : null;
   },
   phranakhon_rain(){
@@ -870,6 +922,8 @@ function fmtDay(s){
 }
 function isStale(t, ref){ const d = parseT(t), r = ref ? parseT(ref) : new Date(); return d && r && (r - d) > STALE_H*3600e3; }
 const pipelineStatus = id => { const d = data[id]; return d && Number.isFinite(d.status) ? d.status : -1; };
+/* สีพื้นที่ = ค่าวัดจริงที่จุดทริกเกอร์ตามเกณฑ์ ธปท. — ค่าประเมินภายใน 12 ชม. (assessOf) เป็นคำเตือนเท่านั้น */
+const assessOf = id => { const f = data[id] && data[id].fc72; return f && Number.isFinite(f.lvAssess) ? f.lvAssess : -1; };
 const sOf = id => { const b = botEval(id); return b && b.s >= 0 ? b.s : pipelineStatus(id); };
 
 function renderRail(){
@@ -930,14 +984,83 @@ function botHtml(s, d){
       <div class="bands">${ind.bands.map((t, i) => `<span class="band${e.s === i ? " on" : ""}" data-s="${i}">${esc(t)}</span>`).join("")}</div>
     </div>`;
   }).join("");
-  const ps = pipelineStatus(s.id);
-  const diff = b.s >= 0 && ps >= 0 && ps !== b.s
-    ? `<div class="tiny">ระบบติดตามน้ำประเมินจากภาพรวม (ฝน ระดับน้ำ น้ำเหนือ) เป็น <b>${STATUS[ps]}</b> — สถานะพื้นที่ใช้เกณฑ์ ธปท.</div>` : "";
+  const f = d && d.fc72, la = assessOf(s.id);
+  const diff = f && la > b.s && b.s >= 0
+    ? `<div class="proxy" style="color:var(--s${la})">⚠ เฝ้าระวัง: ค่าประเมินจุดทริกเกอร์ภายใน 12 ชม. (ลำน้ำ/คลองใกล้เคียง + ฝนตกจริง + แนวโน้ม) ถึง <span class="mini" data-s="${la}">${STATUS[la]}</span> — สีพื้นที่ยังใช้ค่าวัดจริงตามเกณฑ์ ธปท.<br>${esc(f.assessText || "")}</div>` : "";
   const noData = b.s < 0 ? `<div class="tiny">ยังไม่มีค่าจากจุดวัดตามเกณฑ์ ธปท. — สถานะพื้นที่ใช้การประเมินของระบบติดตามน้ำไปก่อน</div>` : "";
-  return `<div class="cell c12"><div class="lbl">จุดวัดตามเกณฑ์ ธปท. · ${esc(b.cfg.group)} <small>สีเขียว / เหลือง / ส้ม / แดง</small></div>
-    ${rows}${diff}${noData}
+  const form = manualForm(s.id);
+  return `<div class="cell c12"><div class="lbl">จุดวัดตามเกณฑ์ ธปท. · ${esc(b.cfg.group)} <small>${b.cfg.nearest ? "เกณฑ์ % ความจุลำน้ำแบบ สนภ. · สถานีใกล้ที่ตั้ง" : "สีเขียว / เหลือง / ส้ม / แดง"}</small></div>
+    ${rows}${form}${diff}${noData}
   </div>`;
 }
+
+/* ค่าวัดจริงหน้างานที่เจ้าหน้าที่กรอก — ส่งให้หน้าแม่บันทึกผ่าน API (ต้องล็อกอิน) */
+let manualData = null;
+const embedded = window.parent !== window;
+function bkkLocalNow(){ return new Date(Date.now() + 7 * 3600e3).toISOString().slice(0, 16); }
+const MANUAL_HINT = {
+  samkhok_q: {step: "1", ph: "เช่น รายงานกรมชลประทาน (C.29A/C.29B)", proxy: "C.29B สามโคก เฉลี่ย 24 ชม."},
+  phranakhon_rain: {step: "0.1", ph: "เช่น เครื่องวัดฝน สนญ. / น้ำสะสมที่สนามหญ้า 10 ซม.", proxy: "สถานีฝนรัศมี 10 กม."},
+  navy_msl: {step: "0.01", ph: "เช่น กรมอุทกศาสตร์ ทร. / ไม้วัดหน้า บก.ทร.", proxy: "C.12 สามเสน สูงสุด 24 ชม."},
+};
+function manualValidText(key){
+  const sp = manualData && manualData.keys && manualData.keys[key];
+  return sp ? ` นาน ${sp.validH} ชม. หลังเวลาที่วัด` : "";
+}
+const fmtManual = (v, unit) => unit === "ลบ.ม./วิ." ? fmtInt(v) : unit === "มม./ชม." ? fmt1(v) : num(v).toFixed(2);
+function manualForm(siteId){
+  if(!embedded || !manualData || !manualData.keys) return "";
+  const keys = Object.entries(manualData.keys).filter(([, sp]) => sp.site === siteId);
+  if(!keys.length) return "";
+  const active = manualData.active || {};
+  const recent = (manualData.recent || []).filter(e => manualData.keys[e.key] && manualData.keys[e.key].site === siteId).slice(0, 8);
+  const isOn = e => active[e.key] && active[e.key].id === e.id;
+  const list = recent.length ? `<ul class="manual-list">${recent.map(e => { const sp = manualData.keys[e.key]; return `<li${isOn(e) ? ' class="on"' : ""}>
+      ${esc(sp.label)}: <b>${fmtManual(e.value, sp.unit)}</b> ${esc(sp.unit)} · วัด ${fmtTime(e.time)}${e.by ? ` · ${esc(e.by)}` : ""}${e.note ? ` · ${esc(e.note)}` : ""}${isOn(e) ? ' <span class="src">ใช้อยู่</span>' : ""}
+      <button type="button" class="linkbtn" data-manual-del="${esc(e.id)}">ลบ</button></li>`; }).join("")}</ul>` : "";
+  const status = keys.map(([k, sp]) => active[k]
+    ? `${esc(sp.label)} <b>${fmtManual(active[k].value, sp.unit)}</b> (เจ้าหน้าที่)`
+    : `${esc(sp.label)}: ใช้${esc((MANUAL_HINT[k] || {}).proxy || "ค่าจากสถานี")}`).join(" · ");
+  const first = keys[0][0], h0 = MANUAL_HINT[first] || {};
+  return `<form class="manual" data-manual-site="${siteId}">
+    <div class="nm">กรอกค่าวัดจริงหน้างาน <small>${status}</small></div>
+    <div class="manual-f">
+      <label>จุดวัด<select name="key">${keys.map(([k, sp]) => `<option value="${k}">${esc(sp.label)} (${esc(sp.unit)})</option>`).join("")}</select></label>
+      <label>ค่าที่วัดได้ <span class="manual-unit">(${esc(keys[0][1].unit)})</span><input name="value" type="number" step="${h0.step || "any"}" min="${keys[0][1].min}" max="${keys[0][1].max}" required inputmode="decimal"></label>
+      <label>เวลาที่วัด<input name="time" type="datetime-local" value="${bkkLocalNow()}" max="${bkkLocalNow()}" required></label>
+      <label class="grow">แหล่งข้อมูล / หมายเหตุ<input name="note" maxlength="200" placeholder="${esc(h0.ph || "")}"></label>
+      <button type="submit" class="btn">บันทึก</button>
+    </div>
+    <div class="manual-msg tiny" aria-live="polite"></div>
+    ${list}
+    <div class="tiny">ค่าที่กรอกใช้เป็นหลักในการกำหนดสีตามเกณฑ์ ธปท. และการคาดการณ์ทันที แทนค่าจากสถานี — ระดับน้ำ/ปริมาณน้ำใช้ได้ 24 ชม. ฝนรายชั่วโมงใช้ได้ 3 ชม. นับจากเวลาที่วัด · ถ้ามีหลายค่าใช้ค่าที่วัดล่าสุด</div>
+  </form>`;
+}
+document.addEventListener("change", e => {
+  const sel = e.target.closest("form[data-manual-site] select[name=key]"); if(!sel) return;
+  const f = sel.form, sp = manualData.keys[sel.value], h = MANUAL_HINT[sel.value] || {};
+  const inp = f.querySelector("input[name=value]");
+  inp.step = h.step || "any"; inp.min = sp.min; inp.max = sp.max;
+  f.querySelector(".manual-unit").textContent = `(${sp.unit})`;
+  f.querySelector("input[name=note]").placeholder = h.ph || "";
+});
+function manualMsg(text, ok){
+  document.querySelectorAll(".manual-msg").forEach(el => { el.textContent = text; el.style.color = ok ? "" : "var(--s3)"; });
+}
+document.addEventListener("submit", e => {
+  const f = e.target.closest("form[data-manual-site]"); if(!f) return;
+  e.preventDefault();
+  const fd = new FormData(f);
+  manualMsg("กำลังบันทึกและคำนวณสถานะใหม่…", true);
+  parent.postMessage({type: "water-manual-save", key: fd.get("key"), value: fd.get("value"), time: fd.get("time"), note: fd.get("note")}, location.origin);
+  f.querySelectorAll("button,input,select").forEach(x => x.disabled = true);
+});
+document.addEventListener("click", e => {
+  const t = e.target.closest("[data-manual-del]"); if(!t) return;
+  if(!confirm("ลบค่าที่กรอกนี้?")) return;
+  manualMsg("กำลังลบและคำนวณสถานะใหม่…", true);
+  parent.postMessage({type: "water-manual-delete", id: t.dataset.manualDel}, location.origin);
+});
 
 /* วิเคราะห์เทียบพยากรณ์ + การเตรียมการทุกขั้น (ไฮไลต์ขั้นปัจจุบันและขั้นที่คาดว่าจะถึง) */
 function analysisHtml(s){
@@ -953,17 +1076,58 @@ function analysisHtml(s){
     : "ไม่มีข้อมูล";
   return `<div class="cell c12"><div class="lbl">วิเคราะห์เทียบพยากรณ์อากาศ 72 ชม.</div>
     <div class="ana">
-      <div><div class="k">สถานะตอนนี้</div><div class="v"><span class="mini" data-s="${o.s}">${STATUS[o.s]}</span></div></div>
       <div><div class="k">พยากรณ์ฝน ณ ที่ตั้ง</div><div class="v">${esc(o.rainTxt)}</div></div>
       <div><div class="k">น้ำเหนือ</div><div class="v">${upTxt}</div></div>
       <div><div class="k">ฝนตกจริง 24 ชม. รัศมี 20 กม. <span class="src">สด สทนช.</span></div><div class="v">${o.obs
         ? `สูงสุด ${fmt1(o.obs.max)} มม. (${esc(o.obs.top.name)}) · เฉลี่ย ${fmt1(o.obs.avg)} มม. จาก ${o.obs.n} สถานี · ฝน${rainClass(o.obs.max).n}`
         : onwr ? "ไม่มีสถานีรายงานในรัศมี" : "กำลังโหลด…"}</div></div>
+      <div><div class="k">พยากรณ์ กรมอุตุนิยมวิทยา <span class="src">TMD</span></div><div class="v">${o.tmd.length
+        ? o.tmd.map(x => `${fmtDay(x.date)} โอกาสฝน <b>${x.rainPct ?? "–"}%</b>`).join(" · ") + ` · ${esc([...new Set(o.tmd.map(x => x.desc))].join(", "))}`
+        : "รอรอบรายงานถัดไป"}</div></div>
+      ${o.tide ? `<div><div class="k">น้ำทะเลหนุนหน้า บก.ทร. <span class="src">กรมอุทกศาสตร์</span></div><div class="v">
+        น้ำขึ้นสูงสุดทำนาย <b>${num(o.tide.navyHigh).toFixed(2)}</b> ม.รทก. (${esc(o.tide.navyHighTime)} น.)
+        ${num(o.tide.observed) !== null ? ` · ระดับจริง ${o.tide.observedBy === "manual" ? "ณ บก.ทร. (เจ้าหน้าที่กรอก)" : "C.12"} ${num(o.tide.observed).toFixed(2)} ม.${num(o.tide.surplus) > 0.05 ? ` <span style="color:var(--s2)">สูงกว่าทำนาย ${num(o.tide.surplus).toFixed(2)} ม.</span>` : ""}` : ""}
+        · คาดสูงสุดราว <b>${num(o.tide.estimate).toFixed(2)}</b> ม.รทก. <span class="mini" data-s="${o.tide.level}">${STATUS[o.tide.level]}</span></div></div>` : ""}
     </div>
-    <div class="outl ${o.trend}">${TREND_ICON[o.trend]} ${esc(o.text)}</div>
-    <div class="lbl" style="margin-top:16px">การเตรียมการ / Action แต่ละขั้น <small>${b ? `มาตรการป้องกัน ${esc(b.group)} ตามแนวทาง ธปท.` : "แนวทางมาตรฐานสำหรับศูนย์จัดการธนบัตร"}</small></div>
+    <div class="outl ${o.trend}" style="white-space:normal">${TREND_ICON[o.trend]} ${esc(o.text)}</div>
+    ${f72Html(o.f72)}
+    <div class="lbl" style="margin-top:16px">การเตรียมการ / Action แต่ละขั้น <small>${b && b.measures ? `มาตรการป้องกัน ${esc(b.group)} ตามแนวทาง ธปท.` : "แนวทางมาตรฐานสำหรับศูนย์จัดการธนบัตร"}</small></div>
     <div class="steps">${steps}</div>
   </div>`;
+}
+
+/* ตารางคาดการณ์ 72 ชม. รายจุดวัด + ที่มาของตัวเลข */
+function f72Val(v, unit){
+  if(v === null || v === undefined) return "–";
+  if(unit === "ลบ.ม./วิ.") return fmtInt(v);
+  if(unit === "%") return fmt1(v) + "%";
+  if(unit === "มม./ชม.") return fmt1(v);
+  return num(v).toFixed(2);
+}
+function f72Rate(v, unit){
+  if(v === null || v === undefined) return "–";
+  const s = v > 0 ? "+" : v < 0 ? "−" : "", a = Math.abs(v);
+  if(unit === "ลบ.ม./วิ.") return `${s}${fmtInt(a * 24)}/วัน`;
+  if(unit === "%") return `${s}${fmt1(a * 24)}%/วัน`;
+  return `${s}${fmt1(a * 2400)} ซม./วัน`;
+}
+const UNIT_SHORT = {"ลบ.ม./วิ.":"ลบ.ม./วิ.", "%":"% ความจุ", "ม.รทก.":"ม.รทก.", "มม./ชม.":"มม./ชม."};
+function f72Html(f){
+  if(!f) return "";
+  const rows = f.inds.map(i => {
+    const cell = h => `<td class="c" data-s="${i.lv[h]}">${f72Val(i.proj[h], i.unit)}</td>`;
+    const comps = i.comps.map(c => `<li>${esc(c.text)}</li>`).join("");
+    return `<tr><td><b>${esc(i.label)}</b><div class="sub2">${esc(UNIT_SHORT[i.unit] || i.unit)} · เกณฑ์ ${i.th.map(t => f72Val(t, i.unit)).join(" / ")}${i.tidal ? " · ขึ้นลงตามน้ำทะเล" : ""}</div></td>
+      <td class="c" data-s="${i.lvNow}">${f72Val(i.now, i.unit)}${i.tidal && i.base !== null && i.now !== null && i.base !== i.now ? `<div class="sub2">${i.unit === "ลบ.ม./วิ." ? "เฉลี่ย" : "สูงสุด"} 24 ชม. ${f72Val(i.base, i.unit)}</div>` : ""}</td>
+      <td>${f72Rate(i.slope, i.unit)}</td>${i.proj["12"] !== undefined ? cell("12") : "<td>–</td>"}${cell("24")}${cell("48")}${cell("72")}
+      <td><span class="mini" data-s="${i.lv72}">${STATUS[i.lv72]}</span><div class="sub2">${esc(i.conf)}</div></td></tr>
+      <tr class="why"><td colspan="8">${i.assessWhy ? `<div>ค่าประเมินภายใน 12 ชม. <span class="mini" data-s="${i.lvAssess}">${STATUS[i.lvAssess]}</span> ${esc(i.assessWhy.replace(/^[^:]+:\s*/, ""))}</div>` : ""}${i.gap ? `<div><b>${esc(i.gap)}</b>${i.need ? ` · ${esc(i.need)}` : ""}</div>` : ""}<ul>${comps}</ul></td></tr>`;
+  }).join("");
+  const notes = (f.notes || []).map(n => `<div class="proxy">⚠ ${esc(n.text)}</div>`).join("");
+  return `<div class="lbl" style="margin-top:14px">คาดการณ์ 72 ชม. รายจุดวัด <small>ข้อมูลรายชั่วโมงย้อนหลัง 7 วัน คลังข้อมูลน้ำแห่งชาติ / กรมชลประทาน · ความเชื่อมั่น${esc(f.conf)}</small></div>
+    <div class="f72-wrap"><table class="f72"><thead><tr><th>จุดวัด</th><th>ตอนนี้</th><th>แนวโน้ม</th><th>+12 ชม.</th><th>+24 ชม.</th><th>+48 ชม.</th><th>+72 ชม.</th><th>สูงสุดใน 72 ชม.</th></tr></thead><tbody>${rows}</tbody></table></div>
+    ${notes}
+    <details class="method"><summary>หลักการคำนวณ</summary><p style="margin:6px 0 0;font-size:.84rem">${esc(f.method)}</p></details>`;
 }
 
 const shortAbbr = s => s.abbr.split("/")[0];
@@ -995,14 +1159,51 @@ function renderExec(){
       <button class="kpi kpi-up${worse.length ? " alert" : ""}" data-kpi="up" data-s="up">
         <svg class="bell" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/></svg>
         <div class="t">แย่ลงใน 72 ชม.</div><div class="n">${worse.length}</div><div class="who">${worse.map(x => esc(shortAbbr(x.s))).join(" ") || "–"}</div></button></div>
-    ${natStrip()}
     <div class="risk">
       <div class="risk-h"><span></span><span>พื้นที่ (หนัก → เบา)</span><span class="scale-h"><span>เขียว</span><span>เหลือง</span><span>ส้ม</span><span>แดง</span></span><span>72 ชม.</span></div>
       ${rows}
       <div class="risk-legend"><span><i class="dotnow"></i>ตอนนี้</span><span><i class="trinext"></i>คาดใน 72 ชม. (พยากรณ์ฝน + น้ำเหนือ)</span><span>กดแถวเพื่อดูสรุปและ Action</span></div>
-    </div>`;
+    </div>
+    ${chgStrip()}
+    ${natStrip()}`;
 }
 
+/* รอบรายงาน 3 ชม. ที่ระบบวิเคราะห์อัตโนมัติ (meta จาก backend lib/waterReport.ts) */
+const ROUND_STATUS = ["สีเขียว", "สีเหลือง", "สีส้ม", "สีแดง"];
+const roundAbbr = id => { const s = SITES.find(x => x.id === id); return s ? shortAbbr(s) : id; };
+/* แถบล่างภาพรวม: พื้นที่ที่เปลี่ยนสถานะรอบนี้ — กดเพื่อเปิดสรุปรอบ */
+function chgStrip(){
+  const ch = meta && meta.round && meta.changes || [];
+  if(!ch.length) return "";
+  const title = ch.map(c => `${roundAbbr(c.id)}: ${ROUND_STATUS[c.from] || "–"} → ${ROUND_STATUS[c.to]}`).join("\n");
+  return `<button class="rrow natstrip" data-round="1" title="${esc(title)}">
+    <span class="src" style="margin:0">รอบ ${esc(meta.round)}</span>
+    <span>เปลี่ยนสถานะ ${ch.length} พื้นที่: ${ch.map(c => `<b style="color:var(--s${Math.min(3, Math.max(0, c.to))})">${esc(roundAbbr(c.id))}${c.to > c.from ? "▲" : "▼"}</b>`).join(" ")}</span>
+    <span style="color:var(--accent);font-weight:600;white-space:nowrap">สรุปรอบ ›</span></button>`;
+}
+function openRound(){
+  if(!meta) return;
+  const rows = sortedSites().map(s => {
+    const d = data[s.id];
+    return d && d.statusNote ? `<li><b>${esc(shortAbbr(s))}</b> <span class="sub2">${esc(s.prov)}</span><div style="margin-top:2px">${esc(d.statusNote.replace(/^รอบ [^:]+:\s*/, ""))}</div></li>` : "";
+  }).join("");
+  openDlg(`สรุปรอบรายงาน ${esc(meta.round || fmtTime(meta.updatedAt))}`,
+    `วิเคราะห์อัตโนมัติทุก 3 ชม. · รอบก่อน ${esc(meta.prevRound || "–")} · รอบถัดไป ${esc(meta.nextRound || "–")}`,
+    `<p style="margin:0 0 12px">${esc(meta.note || "")}</p>
+     ${(meta.warnings || []).length ? `<div class="outl up" style="margin-bottom:12px">ประกาศกรมอุตุนิยมวิทยา: ${meta.warnings.map(w => `<b>${esc(w.title)}</b> ${esc(w.desc || "")}`).join("<br>")}</div>` : ""}
+     <ul class="news">${rows}</ul>
+     ${agencyTable()}`, true);
+}
+/* สถานะการดึงข้อมูลแต่ละหน่วยงานในรอบนี้ */
+function agencyTable(){
+  const list = meta && meta.agencies || [];
+  if(!list.length) return `<div class="tiny" style="margin-top:12px">แหล่งข้อมูล: ${esc((meta && meta.sources || []).join(" · "))}</div>`;
+  return `<div class="lbl" style="margin-top:16px">หน่วยงานที่ดึงข้อมูลมาวิเคราะห์ในรอบนี้ <small>${list.filter(a => a.ok).length}/${list.length} สำเร็จ</small></div>
+    <table style="width:100%;border-collapse:collapse;font-size:.84rem">${list.map(a => `<tr style="border-top:1px solid var(--line)">
+      <td style="padding:6px 8px;white-space:nowrap"><span class="mini" data-s="${a.ok ? 0 : 3}">${a.ok ? "✓ สำเร็จ" : "✕ ไม่สำเร็จ"}</span></td>
+      <td style="padding:6px 8px;font-weight:600">${esc(a.name)}</td>
+      <td style="padding:6px 8px;color:var(--muted)">${esc(a.what)}${a.note ? ` <span style="color:var(--s3)">(${esc(a.note)})</span>` : ""}</td></tr>`).join("")}</table>`;
+}
 function natStrip(){
   if(!onwr) return "";
   const st = natStats(), rb = onwr.rain.bands;
@@ -1329,7 +1530,7 @@ function renderCctv(){
       <h3><span class="mini" data-s="${st}">${STATUS[st]}</span>${esc(s.abbr)} · ${esc(s.prov)} <button class="btn" data-open="${s.id}" style="padding:2px 10px;font-size:.75rem">สรุป</button></h3>
       <div class="shots" data-site="${s.id}"><div class="tiny">กำลังค้นหากล้องใกล้ที่ตั้ง…</div></div>
       <div class="links">${links}</div></section>`;
-  }).join("") + `<div class="tiny">ภาพนิ่งล่าสุดจากกล้องสาธารณะในรัศมี 30 กม. (รวบรวมโดย cctv.maholan.net) รีเฟรชทุก 60 วินาที · กดภาพเพื่อขยาย</div>`;
+  }).join("") + `<div class="tiny">ภาพนิ่งล่าสุดจากกล้องสาธารณะในรัศมี 30 กม. (รวมจาก POPNIX Flood · cctv.maholan.net · คลังข้อมูลน้ำแห่งชาติ — กล้องริมน้ำขึ้นก่อน) รีเฟรชทุก 60 วินาที · กดภาพเพื่อขยาย</div>`;
   SITES.forEach(s => loadCams(s).then(cams => {
     const el = box.querySelector(`.shots[data-site="${s.id}"]`);
     if(el) el.innerHTML = cams.length ? cams.map(shotHtml).join("") : '<div class="tiny">ไม่พบกล้องที่ใช้งานได้ในรัศมี 30 กม. — ใช้ลิงก์ด้านล่าง</div>';
@@ -1652,7 +1853,7 @@ async function buildReport(){
   ctx.fillText("รายงานสถานการณ์น้ำ พื้นที่ ธปท.", pad, 58);
   ctx.font = `400 18px ${REP.font}`; ctx.fillStyle = "#b9c9d6";
   const t = meta && meta.updatedAt || Object.values(data).map(d => d.updatedAt).sort().pop();
-  ctx.fillText(`ศูนย์เฝ้าระวังน้ำ ธปท. · ข้อมูล ณ ${t ? fmtTime(t) : "–"}${onwr ? ` · ข้อมูลสด สทนช. ${fmtTime(onwr.fetchedAt)}` : ""}`, pad, 94);
+  ctx.fillText(`ศูนย์เฝ้าระวังน้ำ ธปท. · ${meta && meta.round ? `รอบรายงาน ${meta.round}` : `ข้อมูล ณ ${t ? fmtTime(t) : "–"}`}${onwr ? ` · ข้อมูลสด สทนช. ${fmtTime(onwr.fetchedAt)}` : ""}`, pad, 94);
   ctx.textAlign = "right"; ctx.font = `700 15px ${REP.font}`;
   ctx.strokeStyle = "#f2b705"; ctx.lineWidth = 1.5;
   ctx.beginPath(); ctx.roundRect(W - pad - 210, 40, 210, 34, 17); ctx.stroke();
@@ -1738,8 +1939,8 @@ async function buildReport(){
   /* ท้ายรายงาน */
   y += list.length * rowH + 30;
   ctx.font = `400 13.5px ${REP.font}`; ctx.fillStyle = REP.muted;
-  ctx.fillText("เกณฑ์สถานะ: สนญ. สพฐ. สภอ. สภน. สภต. ใช้เกณฑ์ ธปท. (9 ต.ค. 2569) · พื้นที่อื่นใช้การประเมินจากระดับน้ำ ฝน และน้ำเหนือ · คาดการณ์ 72 ชม. จากพยากรณ์ฝนและจุดเฝ้าระวังน้ำเหนือ", pad, y);
-  ctx.fillText("ที่มา: คลังข้อมูลน้ำแห่งชาติ (สทนช./สสน.) · กรมชลประทาน · MET Norway · ข้อมูลเบื้องต้นเพื่อการเฝ้าระวังภายใน ใช้ประกอบกับประกาศทางการ", pad, y + 22);
+  ctx.fillText("เกณฑ์สถานะ: ทุกพื้นที่ใช้เกณฑ์ ธปท. (9 ต.ค. 2569) · ศูนย์จัดการธนบัตร 5 แห่งใช้เกณฑ์ % ความจุลำน้ำแบบ สนภ. กับสถานีใกล้ที่ตั้ง · คาดการณ์ 72 ชม. จากข้อมูลรายชั่วโมงย้อนหลัง 7 วัน", pad, y);
+  ctx.fillText("ที่มา: คลังข้อมูลน้ำแห่งชาติ (สทนช./สสน.) · กรมชลประทาน · กรมอุตุนิยมวิทยา · กรมอุทกศาสตร์ · Open-Meteo · ข้อมูลเบื้องต้นเพื่อการเฝ้าระวังภายใน ใช้ประกอบกับประกาศทางการ", pad, y + 22);
   ctx.textAlign = "right"; ctx.fillText(`จัดทำ ${fmtTime(new Date().toISOString())}`, W - pad, y + 22); ctx.textAlign = "left";
   return cv;
 }
@@ -1790,6 +1991,12 @@ function showTab(t){
   window.scrollTo(0, 0);
 }
 
+/* statusNote ฉบับเต็มซ้ำกับการ์ดด้านล่าง — แสดงเฉพาะผลเทียบรอบก่อน (ข้อความเต็มอยู่ใน «สรุปรอบ») */
+function noteTail(d){
+  const n = d && d.statusNote; if(!n) return "";
+  const i = n.lastIndexOf(" — ");
+  return i < 0 ? "" : `<div class="note">${esc(n.slice(i + 3))}</div>`;
+}
 function renderSite(){
   const s = SITES.find(x => x.id === current); if(!s) return;
   const d = data[s.id];
@@ -1810,12 +2017,13 @@ function renderSite(){
       : `<div class="m">ไม่มีข้อมูลคาดการณ์</div>`;
     const water = (d.water||[]);
     const news = (d.news||[]);
+    const c = onwr ? "c6" : "c4";
     body = `<div class="grid">
-      <div class="cell c4"><div class="lbl">ฝนคาดการณ์ 3 วัน</div>${fcHtml}</div>
-      <div class="cell c4"><div class="lbl">ฝนสะสม 24 ชม. ใกล้ที่ตั้ง</div>${rainRows(d.rainNear, d.updatedAt)}
-        <div class="lbl" style="margin-top:16px">สูงสุดในจังหวัด <small>${d.rainCount?`จาก ${d.rainCount} สถานี`:""}</small></div>${rainRows(d.rainTop, d.updatedAt)}</div>
-      <div class="cell c4"><div class="lbl">ระดับน้ำในลำน้ำ <small>% ความจุ · เส้นดำ = ตลิ่ง</small></div>
-        <div class="gauges">${water.length ? water.map(w => gauge(w, d.updatedAt)).join("") : '<div class="m">ไม่มีสถานีวัดระดับน้ำ</div>'}</div></div>
+      <div class="cell ${c}"><div class="lbl">ฝนคาดการณ์ 3 วัน</div>${fcHtml}</div>
+      <div class="cell ${c}">${onwr ? "" : `<div class="lbl">ฝนสะสม 24 ชม. ใกล้ที่ตั้ง</div>${rainRows(d.rainNear, d.updatedAt)}`}
+        <div class="lbl"${onwr ? "" : ' style="margin-top:16px"'}>ฝน 24 ชม. สูงสุดในจังหวัด <small>${d.rainCount?`จาก ${d.rainCount} สถานี`:""}</small></div>${rainRows(d.rainTop, d.updatedAt)}</div>
+      ${onwr ? "" : `<div class="cell c4"><div class="lbl">ระดับน้ำในลำน้ำ <small>% ความจุ · เส้นดำ = ตลิ่ง</small></div>
+        <div class="gauges">${water.length ? water.map(w => gauge(w, d.updatedAt)).join("") : '<div class="m">ไม่มีสถานีวัดระดับน้ำ</div>'}</div></div>`}
       ${upstreamHtml(s, d)}
       <div class="cell c12"><div class="lbl">ข่าวน้ำในพื้นที่ <small>${news.length} รายการ</small></div>
         ${news.length ? `<ul class="news">${news.map(n => `<li><a href="${esc(n.url)}" target="_blank" rel="noopener">${esc(n.title)}</a>
@@ -1835,7 +2043,7 @@ function renderSite(){
       </div>
       <div><span class="pill" data-s="${st}">● ${STATUS[st]}</span></div>
     </div>
-    <div class="note">${d && d.statusNote ? esc(d.statusNote) : ""}</div>
+    ${noteTail(d)}
     ${analysisHtml(s)}
     ${botHtml(s, d)}
     ${liveSiteHtml(s)}
@@ -1898,11 +2106,7 @@ function upstreamHtml(s, d){
   const siteNode = w ? `<li class="node site-node" data-s="${sOf(s.id)}"><span class="pin" aria-hidden="true"></span>
       <div><div class="nm">ที่ตั้ง ${esc(s.abbr)} — ${esc(w.name)}</div><div class="sub2">${esc(w.river||"")} · สถานีใกล้ที่ตั้ง</div></div>
       <div>${gauge(w, ref)}</div></li>` : "";
-  const head = sum.s >= 0
-    ? `<span class="pill" data-s="${sum.s}">น้ำเหนือ: ${STATUS[sum.s]}</span>${sum.top?`<span class="sub2">จุดที่เข้าเกณฑ์ใกล้ที่ตั้งที่สุด: <b>${esc(sum.top.p.name)}</b> · ถึงที่ตั้งราว ${esc(sum.top.p.lead)}</span>`:`<span class="sub2">ไม่มีจุดใดเข้าเกณฑ์แจ้งเตือน</span>`}`
-    : `<span class="pill" data-s="-1">น้ำเหนือ: รอข้อมูล</span>`;
   return `<div class="cell c12"><div class="lbl">น้ำเหนือ · จุดเฝ้าระวังล่วงหน้า (Trigger points) <small>${esc(cfg.river)} · เรียงจากต้นน้ำลงมาหาที่ตั้ง</small></div>
-    <div class="up-head">${head}</div>
     ${d.upstreamNote?`<p class="up-note">${esc(d.upstreamNote)}</p>`:""}
     <ol class="chain">${nodes}${siteNode}</ol>
     <details class="method"><summary>วิธีประเมินและข้อจำกัด</summary><ul>
@@ -1916,6 +2120,10 @@ function upstreamHtml(s, d){
 function renderHeader(){
   const t = meta && meta.updatedAt || Object.values(data).map(d => d.updatedAt).sort().pop();
   $("#updated").textContent = t ? fmtTime(t) : "–";
+  $("#updatedWrap").hidden = Boolean(meta && meta.round);
+  const live = $("#live");
+  if(meta && meta.round){ live.dataset.round = "1"; live.style.cursor = "pointer"; live.title = "ดูสรุปรอบรายงาน"; }
+  else { delete live.dataset.round; live.style.cursor = ""; live.title = ""; }
 }
 
 function renderAll(){
@@ -1931,11 +2139,12 @@ function select(id, push=true){
 }
 
 document.addEventListener("click", e => {
-  const t = e.target.closest("[data-tab],[data-kpi],[data-nat],[data-st],[data-dam],[data-open],[data-goto],[data-cam],[data-flycam],[data-report],.dlg-x,.chip");
+  const t = e.target.closest("[data-tab],[data-kpi],[data-nat],[data-st],[data-dam],[data-open],[data-goto],[data-cam],[data-flycam],[data-report],[data-round],.dlg-x,.chip");
   if(!t) return;
   const dlg = $("#dlg");
   if(t.classList.contains("dlg-x")) return dlg.close();
   if(t.dataset.report) return reportAction(t.dataset.report);
+  if(t.dataset.round) return openRound();
   if(t.dataset.tab) return showTab(t.dataset.tab);
   if(t.dataset.kpi !== undefined) return openList(t.dataset.kpi);
   if(t.dataset.nat) return openNat(t.dataset.nat);
@@ -1973,10 +2182,16 @@ function applyData(j){
   for(const k of Object.keys(data)) delete data[k];
   Object.assign(data, j.sites || {});
   meta = j.meta || null;
+  manualData = j.manual || null;
   renderAll();
   const t = meta && meta.updatedAt;
   if(t && isStale(t)){ live.className = "live stale"; txt.textContent = "ข้อมูลเกิน 24 ชม. ยังไม่มีรอบอัปเดตใหม่"; }
-  else { live.className = "live on"; txt.textContent = "อัปเดตอัตโนมัติทุก 3 ชั่วโมง ตลอด 24 ชม."; }
+  else {
+    live.className = "live on";
+    txt.textContent = meta && meta.round
+      ? `รอบรายงาน ${meta.round} · ถัดไป ${String(meta.nextRound || "").split(" ")[0]} น. ›`
+      : "อัปเดตอัตโนมัติทุก 3 ชั่วโมง ตลอด 24 ชม.";
+  }
 }
 function showError(msg){
   const live = $("#live"), txt = $("#liveTxt");
@@ -1988,6 +2203,10 @@ window.addEventListener("message", e => {
   if(e.data.type === "water-data") applyData(e.data.payload || {});
   else if(e.data.type === "water-error") showError(e.data.message);
   else if(e.data.type === "water-onwr") applyOnwr(e.data.payload);
+  else if(e.data.type === "water-manual-result"){
+    manualMsg(e.data.ok ? "บันทึกแล้ว — สถานะคำนวณใหม่ตามค่าที่กรอก" : (e.data.message || "บันทึกไม่สำเร็จ"), e.data.ok);
+    document.querySelectorAll("form[data-manual-site] button, form[data-manual-site] input, form[data-manual-site] select").forEach(x => x.disabled = false);
+  }
   else if(e.data.type === "water-onwr-error"){ onwrErr = e.data.message || "ดึงข้อมูลคลังข้อมูลน้ำแห่งชาติไม่สำเร็จ"; renderNation(); renderSite(); }
 });
 </script>

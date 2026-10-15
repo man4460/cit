@@ -6,7 +6,7 @@ const TTL_MS = 10 * 60_000;
 const RAIN_RADIUS_KM = 40;
 
 /** พิกัดที่ตั้ง ธปท. — ใช้คัดสถานีฝนใกล้ที่ตั้ง (ต้องตรงกับ SITES ใน water-monitor/index.html) */
-const SITE_POINTS: Record<string, [number, number]> = {
+export const SITE_POINTS: Record<string, [number, number]> = {
   hq: [13.7676, 100.5034],
   ipd: [13.7784, 100.2227],
   cnx: [18.8217, 98.9812],
@@ -48,8 +48,11 @@ function compactLevels(rows: Json[]) {
   return rows
     .filter((w) => w?.station && num(w.station.tele_station_lat) !== null)
     .map((w) => ({
+      id: num(w.station.id),
       name: th(w.station.tele_station_name),
       code: w.station.tele_station_oldcode ?? "",
+      ground: num(w.station.ground_level),
+      minBank: num(w.station.min_bank),
       river: w.river_name ?? "",
       amphoe: th(w.geocode?.amphoe_name).replace(/^อ\./, ""),
       prov: th(w.geocode?.province_name),
@@ -70,6 +73,7 @@ function compactRain(rows: Json[]) {
   const all = rows
     .filter((r) => r?.station && num(r.station.tele_station_lat) !== null && num(r.rain_24h) !== null)
     .map((r) => ({
+      id: num(r.station.id),
       name: th(r.station.tele_station_name),
       amphoe: th(r.geocode?.amphoe_name).replace(/^อ\./, ""),
       prov: th(r.geocode?.province_name),
@@ -95,8 +99,14 @@ function compactRain(rows: Json[]) {
     else if (r.mm > 10) bands.over10++;
     else if (r.mm > 0) bands.any++;
   }
-  const top = [...all].sort((a, b) => b.mm - a.mm).slice(0, 20);
-  return { stations: all.length, bands, top, near };
+  const sorted = [...all].sort((a, b) => b.mm - a.mm);
+  const byProv: Record<string, { count: number; top: typeof all }> = {};
+  for (const r of sorted) {
+    const p = (byProv[r.prov] ??= { count: 0, top: [] });
+    p.count++;
+    if (p.top.length < 3) p.top.push(r);
+  }
+  return { stations: all.length, bands, top: sorted.slice(0, 20), near, byProv };
 }
 
 function compactDams(rows: Json[]) {
@@ -158,25 +168,89 @@ async function ridLowerChaoPhraya() {
   const days = Math.max(1, (cm.groupHeadersTop ?? []).length);
   const rows: Json[] = grid?.rows ?? [];
   const out = [];
+  const series: Record<string, RidPoint[]> = {};
+  const dayYmd = (i: number) => new Date(Date.parse(ymd) - (days - 1 - i) * 86_400_000).toISOString().slice(0, 10);
+  const stamp = (day: string, hour: number) => (hour >= 24 ? `${day} 23:59` : `${day} ${String(hour).padStart(2, "0")}:00`);
   for (const h of (cm.groupHeadersStationCode ?? []) as Json[]) {
     const col = String(h.startColumnName);
     const k = col.replace("wlvalues", "");
-    // คอลัมน์ของแต่ละสถานีเรียงตามวัน (ย้อนหลัง → วันนี้) — ใช้เฉพาะคอลัมน์วันนี้
-    if ((Number(k) - 1) % days !== days - 1) continue;
+    const code = String(h.titleText);
+    // คอลัมน์ของแต่ละสถานีเรียงตามวัน (ย้อนหลัง → วันนี้)
+    const dayIdx = (Number(k) - 1) % days;
+    const day = dayYmd(dayIdx);
+    const pts = (series[code] ??= []);
+    for (const r of rows) {
+      if (num(r[col]) === null) continue;
+      pts.push({ time: stamp(day, Math.round(num(r.hourlytime) ?? 0)), msl: num(r[col]), q: num(r["qvalues" + k]) });
+    }
+    if (dayIdx !== days - 1) continue;
     const last = rows.filter((r) => num(r[col]) !== null).pop();
     if (!last) continue;
-    const hour = Math.round(num(last.hourlytime) ?? 0);
     out.push({
-      code: String(h.titleText),
+      code,
       name: title(cm.groupHeadersStationDetail, col),
       amphoe: title(cm.groupHeadersStationAmpur, col).replace(/^เขต\s*/, ""),
       msl: num(last[col]),
       q: num(last["qvalues" + k]),
       qPct: num(last["QPercent" + k]),
-      time: hour >= 24 ? `${ymd} 23:59` : `${ymd} ${String(hour).padStart(2, "0")}:00`,
+      time: stamp(ymd, Math.round(num(last.hourlytime) ?? 0)),
     });
   }
-  return out;
+  for (const pts of Object.values(series)) pts.sort((a, b) => a.time.localeCompare(b.time));
+  ridSeries = series;
+  return out.map((r) => ({ ...r, peak24: peak24(series[r.code] ?? []), qMean24: qMean24(series[r.code] ?? []) }));
+}
+
+/** ปริมาณน้ำเฉลี่ย 24 ชม. — ค่ารายชั่วโมงช่วงน้ำขึ้นน้ำลงแกว่งมาก (สามโคก ±600 ลบ.ม./วิ. ในวันเดียว) */
+function qMean24(pts: RidPoint[]): { q: number; n: number; time: string } | null {
+  const last = pts.at(-1);
+  if (!last) return null;
+  const from = Date.parse(last.time.replace(" ", "T") + ":00+07:00") - 24 * 3600_000;
+  const qs = pts.filter((p) => p.q !== null && Date.parse(p.time.replace(" ", "T") + ":00+07:00") > from).map((p) => p.q as number);
+  return qs.length >= 12 ? { q: qs.reduce((a, b) => a + b, 0) / qs.length, n: qs.length, time: last.time } : null;
+}
+
+/** ระดับน้ำสูงสุดรอบ 24 ชม. — เกณฑ์ที่ใช้ "ระดับน้ำขึ้นสูงสุด" (จุดที่ขึ้นลงตามน้ำทะเล) */
+function peak24(pts: RidPoint[]): { msl: number; time: string } | null {
+  const last = pts.at(-1);
+  if (!last) return null;
+  const from = Date.parse(last.time.replace(" ", "T") + ":00+07:00") - 24 * 3600_000;
+  return pts.reduce<{ msl: number; time: string } | null>((m, p) => {
+    if (p.msl === null || Date.parse(p.time.replace(" ", "T") + ":00+07:00") <= from) return m;
+    return !m || p.msl > m.msl ? { msl: p.msl, time: p.time } : m;
+  }, null);
+}
+
+export type RidPoint = { time: string; msl: number | null; q: number | null };
+let ridSeries: Record<string, RidPoint[]> = {};
+/** ระดับน้ำ/ปริมาณน้ำรายชั่วโมงย้อนหลัง 3 วันของกรมชลประทาน (จากการดึงครั้งล่าสุด) */
+export const getRidSeries = () => ridSeries;
+
+/** ฝนรายชั่วโมงย้อนหลังราว 2 วันของสถานีโทรมาตร */
+export async function rainGraph(stationId: number) {
+  const j = await getJson(`/public/rain_24h_graph?station_id=${stationId}`);
+  const pts: Json[] = Array.isArray(j?.data) ? j.data : [];
+  return pts
+    .filter((p) => num(p.rainfall_value) !== null)
+    .map((p) => ({ time: String(p.rainfall_datetime), mm: num(p.rainfall_value) as number }));
+}
+
+/** ระดับน้ำรายชั่วโมงย้อนหลังของสถานีโทรมาตร (ข้อมูลเดียวกับกราฟใน nationalthaiwater.onwr.go.th) */
+export async function stationGraph(stationId: number, days: number) {
+  const end = new Date(Date.now() + 7 * 3600_000);
+  const start = new Date(end.getTime() - days * 86_400_000);
+  const ymd = (d: Date) => d.toISOString().slice(0, 10);
+  const j = await getJson(
+    `/public/waterlevel_graph?station_type=tele_waterlevel&station_id=${stationId}&start_date=${ymd(start)}&end_date=${ymd(end)}`,
+  );
+  const pts: Json[] = j?.data?.graph_data ?? [];
+  return {
+    minBank: num(j?.data?.min_bank),
+    ground: num(j?.data?.ground_level),
+    points: pts
+      .filter((p) => num(p.value) !== null)
+      .map((p) => ({ time: String(p.datetime), msl: num(p.value) as number, q: num(p.discharge) })),
+  };
 }
 
 async function build() {
@@ -211,14 +285,22 @@ function refresh(): Promise<void> {
   return inflight;
 }
 
+export type OnwrData = Awaited<ReturnType<typeof build>>;
+
+/** ข้อมูลสดล่าสุด (แคช 10 นาที — หมดอายุแล้วส่งของเดิมไปก่อนและดึงใหม่เบื้องหลัง) */
+export async function getOnwr(): Promise<OnwrData> {
+  if (!cache) await refresh();
+  else if (Date.now() - cache.at > TTL_MS) refresh().catch(() => undefined);
+  return cache!.body;
+}
+
 export const waterOnwrRouter = Router();
 
 waterOnwrRouter.get("/", async (_req, res) => {
   try {
-    if (!cache) await refresh();
-    else if (Date.now() - cache.at > TTL_MS) refresh().catch(() => undefined);
+    const body = await getOnwr();
     res.set("Cache-Control", "no-store");
-    res.json(cache!.body);
+    res.json(body);
   } catch (e) {
     res.status(502).json({ error: `ดึงข้อมูลคลังข้อมูลน้ำแห่งชาติไม่สำเร็จ: ${e instanceof Error ? e.message : String(e)}` });
   }

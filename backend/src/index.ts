@@ -65,6 +65,7 @@ import { waterSituationRouter } from "./routes/waterSituation.js";
 import { waterCctvRouter } from "./routes/waterCctv.js";
 import { waterOnwrRouter } from "./routes/waterOnwr.js";
 import { schedulePersonnelRetention } from "./lib/personnelRetention.js";
+import { startWaterReportScheduler } from "./lib/waterReport.js";
 import { seedDocumentMasterData } from "./lib/seedDocumentMasters.js";
 import { seedFireExtinguisherData } from "./lib/seedFireExtinguishers.js";
 import { seedWeaponData } from "./lib/seedWeapons.js";
@@ -230,4 +231,5 @@ void ensureBootstrapAdmin()
       console.log(`API listening on port ${port} — ${hint}`);
     });
     schedulePersonnelRetention();
+    startWaterReportScheduler();
   });

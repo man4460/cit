@@ -1,0 +1,644 @@
+import { promises as fs } from "fs";
+import path from "path";
+import { getOnwr, getRidSeries, SITE_POINTS, type OnwrData } from "../routes/waterOnwr.js";
+import { agencies, type AgencyData, type AgencyStatus } from "./waterAgencies.js";
+import { forecastLoader, forecastSite, type SiteForecast } from "./waterForecast.js";
+import { activeManual, MANUAL_KEYS, type ManualEntry, type ManualKey } from "./waterManual.js";
+
+/** ค่าที่เจ้าหน้าที่กรอก (จุดวัด ธปท. สนญ.) ของรอบที่กำลังสร้าง — ใช้เป็นหลักแทนสถานีแทน */
+let manualNow: Partial<Record<ManualKey, ManualEntry>> = {};
+/** รูปแบบ sites.hq.bot ที่หน้าเว็บใช้เป็นค่าหลักของจุดวัด ธปท. */
+export const manualBot = (active: Partial<Record<ManualKey, ManualEntry>>) => {
+  const out: Record<string, unknown> = {};
+  for (const [k, m] of Object.entries(active)) if (m) out[k] = { value: m.value, time: m.time, manual: true, by: m.by, note: m.note, at: m.at };
+  return Object.keys(out).length ? out : undefined;
+};
+const manualLabel = (m: ManualEntry) => `ค่าวัดจริงที่เจ้าหน้าที่กรอก ${m.time.slice(11, 16)} น. ${Number(m.time.slice(8, 10))}/${Number(m.time.slice(5, 7))}`;
+
+/**
+ * รอบรายงานสถานการณ์น้ำ ธปท. — ทุก 3 ชม. (00 03 06 … 21 น. เวลาไทย)
+ * ดึงข้อมูลทั้งหมด (ระดับน้ำ ฝน เขื่อน กรมชลประทาน พยากรณ์ฝน ข่าว) วิเคราะห์เทียบรอบก่อน แล้วบันทึกเป็นรายงานรอบนั้น
+ */
+const ROUND_MS = 3 * 3600_000;
+const TZ_MS = 7 * 3600_000;
+/** เผื่อให้หน่วยงานต้นทางส่งข้อมูลชั่วโมงนั้นเข้าระบบก่อนดึง */
+const ROUND_DELAY_MS = 5 * 60_000;
+const KEEP_ROUNDS = 16;
+/** ไฟล์ที่เก่ากว่านี้ถือว่าไม่มีรอบรายงาน — สร้างรอบใหม่ทันที */
+const FILE_MAX_AGE_MS = ROUND_MS + 30 * 60_000;
+
+export function dataFile(): string {
+  const env = process.env.WATER_DATA_FILE?.trim();
+  return env ? path.resolve(env) : path.join(process.cwd(), "data", "water-situation.json");
+}
+const roundsDir = () => path.join(path.dirname(dataFile()), "water-rounds");
+
+/** จังหวัด + สถานีใกล้ที่ตั้ง + จุดน้ำเหนือ (ชื่อตามคลังข้อมูลน้ำแห่งชาติ ต้องตรงกับ UPSTREAM ใน water-monitor/index.html) */
+const SITE_INFO: Record<string, { name: string; prov: string; gauges: string[]; upstream: string[] }> = {
+  hq: {
+    name: "สนญ.",
+    prov: "กรุงเทพมหานคร",
+    gauges: ["กรมชลประทานสามเสน", "สะพานกรุงเทพ", "คลองลำปลาทิว ลาดกระบัง", "คลองมหาสวัสดิ บางกรวย-สวนผัก"],
+    upstream: ["ค่ายจิรประวัติ", "ท้ายเขื่อนเจ้าพระยา", "บ้านบางแก้ว", "บ้านป้อม", "สะพานนวลฉวี"],
+  },
+  ipd: {
+    name: "สพฐ./ศกท.",
+    prov: "นครปฐม",
+    gauges: ["ที่ว่าการอ.นครชัยศรี", "สะพานนครชัยศรี", "วัดบางไผ่นารถ", "บางเลน"],
+    upstream: ["สะพานคง-ศุข ศรีสวัสดิ์", "สามชุก", "วัดท่าเจดีย์ (TTC06)", "วัดบางไผ่นารถ", "บางเลน"],
+  },
+  cnx: {
+    name: "สภน./ศชม.",
+    prov: "เชียงใหม่",
+    gauges: ["สะพานนวรัฐ", "บ้านสบสอย", "บ้านแม่แต", "บ้านสบแปะ"],
+    upstream: ["เชียงดาว", "แม่แตง", "บ้านแม่แตง", "บ้านแม่แต", "สะพานวงแหวนรอบ 3"],
+  },
+  kkn: {
+    name: "สภอ./ศขก.",
+    prov: "ขอนแก่น",
+    gauges: ["เมืองขอนแก่น", "บ้านกุดกว้าง", "บ้านท่านางเลื่อน", "ชนบท"],
+    upstream: ["บ้านท่าเม่า", "ลำน้ำพอง โรงเรียนลำน้ำพอง", "บ้านท่านางเลื่อน", "ชนบท"],
+  },
+  hdy: {
+    name: "สภต./ศหญ.",
+    prov: "สงขลา",
+    gauges: ["สะพานข้ามคลองอู่ตะเภา", "บ้านหาดใหญ่ใน", "บ้านม่วงก็อง", "สะเดา"],
+    upstream: ["สะเดา", "บ้านม่วงก็อง", "บ้านบางศาลา", "บ้านคลองหวะ"],
+  },
+  ryg: { name: "ศรย.", prov: "ระยอง", gauges: ["บ้านเขาโบสถ์", "บ้านเขาวังไทร", "บ้านค่าย"], upstream: ["หนองบัว", "บ้านค่าย"] },
+  phs: {
+    name: "ศพล.",
+    prov: "พิษณุโลก",
+    gauges: ["สะพานสุพรรณกัลยา", "ท้ายเขื่อนนเรศวร", "คลองผันน้ำยม-น่าน4", "เมืองพิษณุโลก"],
+    upstream: ["บ้านหาดสองแคว (N.60)", "พิชัย", "นครไทย", "อ.วัดโบสถ์ (N.22A)", "ท้ายเขื่อนนเรศวร"],
+  },
+  ubn: {
+    name: "ศอบ.",
+    prov: "อุบลราชธานี",
+    gauges: ["แม่น้ำมูล เมืองอุบลราชธานี (M.7)", "สะพานเสรีประชาธิปไตย", "แม่น้ำมูล วัดปากโดม", "แม่น้ำมูล บ้านคันไร่"],
+    upstream: ["บ้านสีถาน", "บ้านเขื่องใน", "เขื่องใน", "บ้านป่าก่อ"],
+  },
+  nrm: {
+    name: "ศนร.",
+    prov: "นครราชสีมา",
+    gauges: ["ตำบลในเมือง", "บ้านลาดบัวขาว", "บ้านท่ามะปรางค์", "สำนักเทคโนโลยีชีวภัณฑ์สัตว์"],
+    upstream: ["บ้านท่ามะปรางค์", "สะพานน้ำลำตะคอง", "บ้านลาดบัวขาว"],
+  },
+  urt: {
+    name: "ศสร.",
+    prov: "สุราษฎร์ธานี",
+    gauges: ["พุนพิน 3", "บ้านท่าข้าม", "บ้านย่านดินแดง", "บ้านเคียนซา"],
+    upstream: ["บ้านย่านดินแดง", "บ้านเคียนซา", "ท่าขนอม", "พุนพิน 2"],
+  },
+};
+
+type Forecast = { date: string; mm: number; maxHour: number };
+type News = { title: string; url: string; source: string; date: string };
+type Level = OnwrData["levels"][number];
+type Gauge = {
+  name: string;
+  amphoe: string;
+  river: string;
+  msl: number | null;
+  prev: number | null;
+  runPrev: number | null;
+  bank: number | null;
+  pct: number | null;
+  q: number | null;
+  level: number | null;
+  time: string | null;
+};
+type SiteDoc = { status: number; water: Gauge[]; upstream: Gauge[] } & Record<string, unknown>;
+type Report = { meta: Record<string, unknown>; sites: Record<string, SiteDoc> };
+
+const round1 = (n: number) => Math.round(n * 10) / 10;
+const fmt1 = (n: number) => round1(n).toLocaleString("th-TH", { minimumFractionDigits: 1, maximumFractionDigits: 1 });
+const bkkIso = (ms: number) => new Date(ms + TZ_MS).toISOString().slice(0, 19) + "+07:00";
+const TH_MONTH = ["ม.ค.", "ก.พ.", "มี.ค.", "เม.ย.", "พ.ค.", "มิ.ย.", "ก.ค.", "ส.ค.", "ก.ย.", "ต.ค.", "พ.ย.", "ธ.ค."];
+function roundLabel(ms: number) {
+  const d = new Date(ms + TZ_MS);
+  return `${String(d.getUTCHours()).padStart(2, "0")}:00 น. ${d.getUTCDate()} ${TH_MONTH[d.getUTCMonth()]}`;
+}
+/** ต้นรอบปัจจุบัน (เวลาไทย) */
+const roundStart = (ms = Date.now()) => Math.floor((ms + TZ_MS) / ROUND_MS) * ROUND_MS - TZ_MS;
+/** ระดับ % ความจุลำน้ำแบบคลังข้อมูลน้ำแห่งชาติ 1 น้อยวิกฤต … 5 ล้นตลิ่ง */
+const pctLevel = (p: number | null) => (p === null ? null : p > 100 ? 5 : p > 70 ? 4 : p > 30 ? 3 : p > 10 ? 2 : 1);
+/** สถานะพื้นที่จาก % ความจุลำน้ำ (เกณฑ์เฝ้าระวังทั่วไป 80 / 90 / 100) */
+const pctStatus = (p: number | null) => (p === null ? -1 : p >= 100 ? 3 : p >= 90 ? 2 : p >= 80 ? 1 : 0);
+/** ชื่อระดับ — ตรงกับ STATUS ในหน้าเว็บ */
+const STATUS_NAME = ["สีเขียว", "สีเหลือง", "สีส้ม", "สีแดง"];
+const rainClass = (mm: number) => (mm > 90 ? "หนักมาก" : mm > 35 ? "หนัก" : mm > 10 ? "ปานกลาง" : mm > 0 ? "เล็กน้อย" : "ไม่มีฝน");
+const cm = (m: number) => `${m >= 0 ? "+" : "−"}${Math.round(Math.abs(m) * 100)} ซม.`;
+
+/* ---------- แหล่งข้อมูลเพิ่มเติม ---------- */
+
+/** พยากรณ์ฝน 3 วันรายพื้นที่ (Open-Meteo — ไม่ต้องใช้คีย์) */
+async function forecasts(): Promise<Record<string, Forecast[]>> {
+  const ids = Object.keys(SITE_POINTS);
+  const q = new URLSearchParams({
+    latitude: ids.map((id) => SITE_POINTS[id][0]).join(","),
+    longitude: ids.map((id) => SITE_POINTS[id][1]).join(","),
+    daily: "precipitation_sum",
+    hourly: "precipitation",
+    timezone: "Asia/Bangkok",
+    forecast_days: "3",
+  });
+  const r = await fetch(`https://api.open-meteo.com/v1/forecast?${q}`, { signal: AbortSignal.timeout(20_000) });
+  if (!r.ok) throw new Error(`open-meteo ${r.status}`);
+  const j = (await r.json()) as Array<{
+    daily: { time: string[]; precipitation_sum: (number | null)[] };
+    hourly: { time: string[]; precipitation: (number | null)[] };
+  }>;
+  const out: Record<string, Forecast[]> = {};
+  ids.forEach((id, i) => {
+    const d = j[i];
+    out[id] = d.daily.time.map((date, k) => ({
+      date,
+      mm: round1(d.daily.precipitation_sum[k] ?? 0),
+      maxHour: round1(Math.max(0, ...d.hourly.time.flatMap((t, h) => (t.startsWith(date) ? [d.hourly.precipitation[h] ?? 0] : [])))),
+    }));
+  });
+  return out;
+}
+
+const decodeXml = (s: string) =>
+  s
+    .replace(/<!\[CDATA\[([\s\S]*?)\]\]>/g, "$1")
+    .replace(/&amp;/g, "&")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'");
+
+/** ข่าวน้ำท่วมในจังหวัด 2 วันล่าสุด (Google News RSS) */
+async function news(prov: string): Promise<News[]> {
+  const q = encodeURIComponent(`น้ำท่วม ${prov === "กรุงเทพมหานคร" ? "กรุงเทพ" : prov} when:2d`);
+  const r = await fetch(`https://news.google.com/rss/search?q=${q}&hl=th&gl=TH&ceid=TH:th`, {
+    signal: AbortSignal.timeout(15_000),
+  });
+  if (!r.ok) return [];
+  const xml = await r.text();
+  const out: News[] = [];
+  for (const m of xml.matchAll(/<item>([\s\S]*?)<\/item>/g)) {
+    const tag = (t: string) => decodeXml(m[1].match(new RegExp(`<${t}[^>]*>([\\s\\S]*?)</${t}>`))?.[1] ?? "").trim();
+    const source = tag("source");
+    if (!source || /facebook|youtube|tiktok|instagram|x\.com|twitter/i.test(source)) continue;
+    const pub = new Date(tag("pubDate"));
+    const d = new Date(pub.getTime() + TZ_MS);
+    out.push({
+      title: tag("title").replace(new RegExp(`\\s+-\\s+${source.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}$`), ""),
+      url: tag("link"),
+      source,
+      date: Number.isNaN(pub.getTime()) ? "" : `${d.getUTCDate()} ${TH_MONTH[d.getUTCMonth()]} ${(d.getUTCFullYear() + 543) % 100}`,
+    });
+    if (out.length >= 4) break;
+  }
+  return out;
+}
+
+/* ---------- เกณฑ์ ธปท. (ต้องตรงกับ BOT_TRIGGERS / LIVE_BOT ใน water-monitor/index.html) ---------- */
+
+type BotInd = { label: string; unit: string; th: [number, number, number]; gt?: boolean; manual?: ManualKey; read: (o: OnwrData) => number | null };
+const regional = (station: string): BotInd => ({
+  label: station,
+  unit: "%",
+  th: [30, 70, 100],
+  gt: true,
+  read: (o) => o.levels.find((l) => l.name === station)?.pct ?? null,
+});
+const byCode = (o: OnwrData, code: string) => o.levels.find((l) => l.code === code);
+const BOT_CRITERIA: Record<string, BotInd[]> = {
+  hq: [
+    {
+      label: "น้ำไหลผ่านสามโคก (เฉลี่ย 24 ชม.)",
+      unit: "ลบ.ม./วิ.",
+      th: [2500, 3000, 3500],
+      manual: "samkhok_q",
+      read: (o) => {
+        const m = o.rid.find((r) => r.code === "C.29B");
+        if (m?.qMean24) return m.qMean24.q;
+        if (m?.q != null) return m.q;
+        const a = byCode(o, "C.13")?.q;
+        return a == null ? null : a + (byCode(o, "S.26")?.q ?? 0);
+      },
+    },
+    {
+      label: "ฝน 1 ชม. เขตพระนคร",
+      unit: "มม./ชม.",
+      th: [50, 80, 120],
+      manual: "phranakhon_rain",
+      read: (o) => {
+        const h = (o.rain.near.hq ?? []).filter((r) => r.km <= 10 && r.h1 != null).map((r) => r.h1 as number);
+        return h.length ? Math.max(...h) : null;
+      },
+    },
+    {
+      label: "ระดับน้ำขึ้นสูงสุด 24 ชม. (C.12 แทน บก.ทร.)",
+      unit: "ม.รทก.",
+      th: [2.0, 2.2, 2.5],
+      manual: "navy_msl",
+      read: (o) => {
+        const p = o.rid.find((r) => r.code === "C.12")?.peak24;
+        if (p) return p.msl;
+        const c = [byCode(o, "C.12"), o.rid.find((r) => r.code === "C.12")].filter((x) => x?.msl != null);
+        return c.length ? (c.sort((a, b) => String(b!.time).localeCompare(String(a!.time)))[0]!.msl as number) : null;
+      },
+    },
+  ],
+  ipd: [
+    {
+      label: "ท่าจีน สะพานนครชัยศรี",
+      unit: "ม.รทก.",
+      th: [2.5, 2.7, 3.0],
+      read: (o) => o.levels.find((l) => l.name === "สะพานนครชัยศรี")?.msl ?? null,
+    },
+  ],
+  kkn: [regional("ลำน้ำพอง โรงเรียนลำน้ำพอง"), regional("บ้านกุดกว้าง")],
+  cnx: [regional("สะพานนวรัฐ"), regional("สะพานวงแหวนรอบ 3"), regional("บ้านแม่แต")],
+  hdy: [regional("บ้านม่วงก็อง"), regional("บ้านบางศาลา"), regional("บ้านคลองหวะ")],
+  /* ศูนย์จัดการธนบัตร — ธปท. ยังไม่กำหนดจุดวัด ใช้เกณฑ์ % ความจุลำน้ำแบบ สนภ. กับสถานีใกล้ที่ตั้ง (SITE_INFO.gauges) */
+  ...Object.fromEntries(["ryg", "phs", "ubn", "nrm", "urt"].map((id) => [id, SITE_INFO[id].gauges.map(regional)])),
+};
+
+function botStatus(id: string, o: OnwrData): { s: number; text: string } | null {
+  const list = BOT_CRITERIA[id];
+  if (!list) return null;
+  const ev = list.flatMap((ind) => {
+    const man = ind.manual ? manualNow[ind.manual] : undefined;
+    const v = man ? man.value : ind.read(o);
+    if (v === null) return [];
+    const ge = (a: number, b: number) => (ind.gt ? a > b : a >= b);
+    const s = ge(v, ind.th[2]) ? 3 : ge(v, ind.th[1]) ? 2 : ge(v, ind.th[0]) ? 1 : 0;
+    return [{ ind, v, s, man }];
+  });
+  if (!ev.length) return null;
+  const top = ev.sort((a, b) => b.s - a.s || b.v / b.ind.th[Math.min(b.s, 2)] - a.v / a.ind.th[Math.min(a.s, 2)])[0];
+  const v = top.ind.unit === "ลบ.ม./วิ." ? Math.round(top.v).toLocaleString("th-TH") : top.ind.unit === "%" ? fmt1(top.v) : top.v.toFixed(2);
+  const gap =
+    top.s >= 3
+      ? "เกินเกณฑ์สีแดง"
+      : `อีก ${top.ind.unit === "%" ? fmt1(top.ind.th[top.s] - top.v) + "%" : (top.ind.th[top.s] - top.v).toFixed(top.ind.unit === "ลบ.ม./วิ." ? 0 : 2) + " " + top.ind.unit} ถึง${STATUS_NAME[top.s + 1]}`;
+  const label = top.man ? `${MANUAL_KEYS[top.man.key].label} (${manualLabel(top.man)})` : top.ind.label;
+  const manNote = ev
+    .filter((e) => e.man && e !== top)
+    .map((e) => `${MANUAL_KEYS[e.man!.key].label} ${e.v.toLocaleString("th-TH")} ${e.ind.unit} (เจ้าหน้าที่กรอก · ${STATUS_NAME[e.s]})`);
+  return {
+    s: top.s,
+    text: `เกณฑ์ ธปท. ${STATUS_NAME[top.s]}: ${label} ${v}${top.ind.unit === "%" ? "%" : " " + top.ind.unit} (${gap})${manNote.length ? ` · ${manNote.join(" · ")}` : ""}`,
+  };
+}
+
+/* ---------- วิเคราะห์ ---------- */
+
+function gaugeOf(name: string, l: Level, prevRound: Gauge | undefined): Gauge {
+  return {
+    name,
+    amphoe: l.amphoe,
+    river: l.river,
+    msl: l.msl,
+    prev: l.prev,
+    runPrev: prevRound?.msl ?? null,
+    bank: l.bank,
+    pct: l.pct,
+    q: l.q,
+    level: pctLevel(l.pct),
+    time: l.time,
+  };
+}
+
+const deltaOf = (g: Gauge) => (g.msl !== null && g.runPrev !== null ? g.msl - g.runPrev : null);
+
+function gaugeText(g: Gauge) {
+  if (g.pct === null) return g.name;
+  const bank = g.bank === null ? "" : ` ${g.pct >= 100 ? "สูงกว่า" : "ต่ำกว่า"}ตลิ่ง ${fmt1(Math.abs(g.bank))} ม.`;
+  const d = deltaOf(g);
+  const move = d === null ? "" : Math.abs(d) < 0.02 ? " (ทรงตัว)" : ` (${cm(d)} จากรอบก่อน)`;
+  return `${g.name} ${fmt1(g.pct)}%${bank}${move}`;
+}
+
+function upstreamText(list: Gauge[]) {
+  const valid = list.filter((g) => g.pct !== null);
+  if (!valid.length) return "";
+  const high = valid.filter((g) => (g.pct as number) > 70).sort((a, b) => (b.pct as number) - (a.pct as number));
+  const rising = valid.filter((g) => (deltaOf(g) ?? 0) >= 0.05);
+  const falling = valid.filter((g) => (deltaOf(g) ?? 0) <= -0.05);
+  const trend = rising.length > falling.length ? "กำลังสูงขึ้น" : falling.length > rising.length ? "เริ่มลดลง" : "ทรงตัว";
+  const head = high.length
+    ? `น้ำเหนือ${trend}: ${high
+        .slice(0, 3)
+        .map((g) => `${g.name} ${fmt1(g.pct as number)}%${deltaOf(g) !== null && Math.abs(deltaOf(g)!) >= 0.02 ? ` (${cm(deltaOf(g)!)})` : ""}`)
+        .join(", ")}`
+    : `น้ำเหนือต่ำกว่า 70% ทุกจุด (${trend})`;
+  return rising.length ? `${head} · สูงขึ้น ${rising.length} จาก ${valid.length} จุด` : head;
+}
+
+function buildSite(
+  id: string,
+  onwr: OnwrData,
+  fc: Forecast[],
+  newsList: News[],
+  prev: SiteDoc | undefined,
+  updatedAt: string,
+  label: string,
+  ag: AgencyData,
+  f72: SiteForecast | null,
+): SiteDoc {
+  const info = SITE_INFO[id];
+  const byName = new Map(onwr.levels.map((l) => [l.name, l]));
+  const pick = (names: string[], prevList: Gauge[] = []) =>
+    names.flatMap((name) => {
+      const l = byName.get(name);
+      return l ? [gaugeOf(name, l, prevList.find((g) => g.name === name))] : [];
+    });
+  const water = pick(info.gauges, prev?.water);
+  const upstream = pick(info.upstream, prev?.upstream);
+
+  const near = onwr.rain.near[id] ?? [];
+  const rainNear = near
+    .filter((r) => r.km <= 20)
+    .sort((a, b) => b.mm - a.mm)
+    .slice(0, 3)
+    .map((r) => ({ name: r.name, amphoe: r.amphoe, mm: r.mm, time: r.time }));
+  const prov = onwr.rain.byProv[info.prov];
+  const rainTop = (prov?.top ?? []).map((r) => ({ name: r.name, amphoe: r.amphoe, mm: r.mm, time: r.time }));
+
+  const worst = water.reduce<Gauge | null>((m, w) => ((w.pct ?? -1) > (m?.pct ?? -1) ? w : m), null);
+  const bot = botStatus(id, onwr);
+  /* สีพื้นที่ = ค่าวัดจริงที่จุดทริกเกอร์ตามเกณฑ์ ธปท. — ค่าประเมินภายใน 12 ชม. เป็นคำเตือน ไม่เปลี่ยนสี */
+  const status = bot ? bot.s : pctStatus(worst?.pct ?? null);
+
+  const parts: string[] = [];
+  if (bot) parts.push(bot.text);
+  if (f72 && f72.lvAssess > status) parts.push(`เฝ้าระวัง: ค่าประเมินจุดทริกเกอร์ภายใน 12 ชม. ถึง${STATUS_NAME[f72.lvAssess]} — ${f72.assessText}`);
+  const ordered = [...water].sort((a, b) => (b.pct ?? -1) - (a.pct ?? -1));
+  for (const g of ordered.slice(0, 2)) if (g.pct !== null) parts.push(gaugeText(g));
+  const up = upstreamText(upstream);
+  if (up) parts.push(up);
+  const nearMax = rainNear[0];
+  if (nearMax && nearMax.mm >= 0.1) parts.push(`ฝน 24 ชม. ใกล้ที่ตั้งสูงสุด ${fmt1(nearMax.mm)} มม. ที่${nearMax.name} (${rainClass(nearMax.mm)})`);
+  else if (rainTop[0]) parts.push(`ฝน 24 ชม. ใน${info.prov} สูงสุด ${fmt1(rainTop[0].mm)} มม. ที่${rainTop[0].name}`);
+  if (fc.length) {
+    const peak = fc.reduce((m, f) => (f.mm > m.mm ? f : m));
+    parts.push(`คาดฝน 3 วัน ${fc.map((f) => fmt1(f.mm)).join(" / ")} มม.${peak.mm > 35 ? ` — ฝน${rainClass(peak.mm)}วันที่ ${Number(peak.date.slice(8))}` : ""}`);
+  }
+  const tmd = (ag.tmd[info.prov] ?? []).slice(0, 3);
+  if (tmd.length) {
+    const descs = [...new Set(tmd.map((d) => d.desc).filter(Boolean))];
+    parts.push(`กรมอุตุฯ: โอกาสฝน ${tmd.map((d) => `${d.rainPct ?? "–"}%`).join(" / ")}${descs.length ? ` (${descs.join(", ")})` : ""}`);
+  }
+  const tide = id === "hq" ? tideAnalysis(ag, onwr) : null;
+  if (tide) parts.push(tide.text);
+  if (f72) parts.push(`คาด 72 ชม.: ${f72.text}`);
+  const prevStatus = prev?.status ?? -1;
+  const change =
+    status < 0 ? "" : prevStatus < 0 || prevStatus === status ? `คงอยู่ที่${STATUS_NAME[status]}` : `${status > prevStatus ? "เพิ่มขึ้น" : "ลดลง"}จาก${STATUS_NAME[prevStatus]}เป็น${STATUS_NAME[status]}`;
+
+  return {
+    updatedAt,
+    status,
+    statusNote: `รอบ ${label}: ${parts.join(" · ")}${change ? ` — ${change}` : ""}`,
+    upstreamNote: up,
+    forecast: fc,
+    tmd,
+    ...(tide ? { tide: tide.data } : {}),
+    ...(f72 ? { fc72: f72 } : {}),
+    rainCount: prov?.count ?? 0,
+    rainNear,
+    rainTop,
+    water,
+    upstream,
+    dams: [],
+    news: newsList,
+  };
+}
+
+/**
+ * น้ำทะเลหนุนหน้า บก.ทร. — เทียบระดับน้ำทำนายของกรมอุทกศาสตร์ (น้ำขึ้น-ลงตามดาราศาสตร์)
+ * กับระดับจริงล่าสุดแถว สนญ. (C.12 สามเสน) ส่วนที่สูงกว่าคือน้ำเหนือ/ฝนที่เสริมเข้ามา
+ */
+function tideAnalysis(ag: AgencyData, onwr: OnwrData) {
+  const navy = ag.tide.find((t) => /กองบัญชาการกองทัพเรือ/.test(t.name));
+  if (!navy || navy.high === null) return null;
+  const c12 = [onwr.levels.find((l) => l.code === "C.12"), onwr.rid.find((r) => r.code === "C.12")]
+    .filter((x) => x?.msl != null)
+    .sort((a, b) => String(b!.time).localeCompare(String(a!.time)))[0];
+  const fort = ag.seaObs.find((o) => /ป้อมพระจุล/.test(o.name));
+  /* ส่วนเสริม = ระดับจริงสูงสุดช่วง ±2 ชม. รอบเวลาน้ำขึ้นสูงสุดทำนายวันนี้ − ระดับทำนาย */
+  const today = bkkIso(Date.now()).slice(0, 10);
+  const [hh, mm] = (navy.highTime ?? "").split(":").map(Number);
+  const atHigh = Number.isFinite(hh)
+    ? (getRidSeries()["C.12"] ?? []).filter((p) => {
+        if (p.msl === null || !p.time.startsWith(today)) return false;
+        const h = Number(p.time.slice(11, 13)) + Number(p.time.slice(14, 16)) / 60;
+        return Math.abs(h - (hh + (mm || 0) / 60)) <= 2;
+      })
+    : [];
+  const peak = atHigh.length ? atHigh.reduce((m, p) => ((p.msl as number) > (m.msl as number) ? p : m)) : null;
+  const man = manualNow.navy_msl;
+  const obs = man?.value ?? peak?.msl ?? c12?.msl ?? null;
+  const obsTime = man?.time ?? peak?.time ?? c12?.time ?? null;
+  const surplus = obs !== null ? obs - navy.high : null;
+  /** ประมาณระดับสูงสุดวันนี้ = น้ำขึ้นสูงสุดทำนาย + ส่วนเสริมที่เห็นตอนนี้ (ถ้ามี) */
+  const est = surplus !== null && surplus > 0 ? navy.high + surplus : navy.high;
+  const level = est >= 2.5 ? 3 : est >= 2.2 ? 2 : est >= 2.0 ? 1 : 0;
+  const text =
+    `กรมอุทกศาสตร์: น้ำขึ้นสูงสุดทำนายที่ บก.ทร. ${navy.high.toFixed(2)} ม.รทก. เวลา ${navy.highTime} น.` +
+    (obs !== null ? ` · ${man ? `ระดับจริง ณ บก.ทร. (${manualLabel(man)})` : `ระดับจริง C.12${peak ? ` ช่วงน้ำขึ้น (${peak.time.slice(11, 16)} น.)` : ""}`} ${obs.toFixed(2)} ม.${surplus !== null && surplus > 0.05 ? ` สูงกว่าน้ำทำนาย ${surplus.toFixed(2)} ม. (น้ำเหนือเสริม)` : ""}` : "") +
+    (fort?.value != null ? ` · ป้อมพระจุลฯ ${fort.value.toFixed(2)} ม.` : "") +
+    ` → คาดสูงสุดราว ${est.toFixed(2)} ม.รทก. (เกณฑ์ ธปท. ${STATUS_NAME[level]})`;
+  return {
+    text,
+    data: { navyHigh: navy.high, navyHighTime: navy.highTime, navyLow: navy.low, navyLowTime: navy.lowTime, observed: obs, observedTime: obsTime, observedBy: man ? "manual" : "C.12", surplus, estimate: est, level, fort: fort ?? null, stations: ag.tide.slice(0, 4) },
+  };
+}
+
+function nationNote(onwr: OnwrData, sites: Record<string, SiteDoc>, prev: Report | null, label: string, ag: AgencyData) {
+  const over = onwr.levels.filter((l) => (l.pct ?? 0) > 100).length;
+  const high = onwr.levels.filter((l) => (l.pct ?? 0) > 70 && (l.pct ?? 0) <= 100).length;
+  const damsFull = onwr.dams.filter((d) => (d.storage ?? 0) >= 100).map((d) => `${d.name} ${fmt1(d.storage as number)}%`);
+  const byStatus = [3, 2, 1].flatMap((s) => {
+    const ids = Object.keys(sites).filter((id) => sites[id].status === s);
+    return ids.length ? [`${STATUS_NAME[s]}: ${ids.map((id) => SITE_INFO[id].name).join(", ")}`] : [];
+  });
+  const changes = Object.keys(sites).flatMap((id) => {
+    const a = prev?.sites?.[id]?.status ?? -1;
+    const b = sites[id].status;
+    return a >= 0 && b >= 0 && a !== b ? [{ id, from: a, to: b }] : [];
+  });
+  const changeTxt = changes.length
+    ? `เปลี่ยนจากรอบก่อน: ${changes.map((c) => `${SITE_INFO[c.id].name} ${STATUS_NAME[c.from]}→${STATUS_NAME[c.to]}`).join(", ")}`
+    : prev
+      ? "สถานะทุกพื้นที่คงเดิมจากรอบก่อน"
+      : "";
+  const note = [
+    `รอบ ${label}`,
+    byStatus.length ? byStatus.join(" · ") : "ทุกพื้นที่อยู่ในเกณฑ์สีเขียว",
+    changeTxt,
+    `ทั่วประเทศ: ล้นตลิ่ง ${over} · น้ำมาก ${high} จาก ${onwr.levels.length} สถานี · ฝนหนักมาก (>90 มม.) ${onwr.rain.bands.over90} สถานี${damsFull.length ? ` · เขื่อนเกินความจุ ${damsFull.join(", ")}` : ""}`,
+    ag.warnings.length
+      ? `ประกาศกรมอุตุนิยมวิทยา: ${ag.warnings.map((w) => w.title).filter(Boolean).slice(0, 2).join(" / ")}`
+      : ag.status.some((s) => s.name === "กรมอุตุนิยมวิทยา" && s.ok)
+        ? "กรมอุตุนิยมวิทยา: ไม่มีประกาศเตือนภัย"
+        : "",
+  ]
+    .filter(Boolean)
+    .join(" · ");
+  return { note, changes };
+}
+
+async function buildReport(at: number, prev: Report | null): Promise<Report> {
+  const [onwr, fc, newsBySite, ag] = await Promise.all([
+    getOnwr(),
+    forecasts().catch((): Record<string, Forecast[]> => {
+      const out: Record<string, Forecast[]> = {};
+      for (const [id, s] of Object.entries(prev?.sites ?? {})) out[id] = (s.forecast as Forecast[]) ?? [];
+      return out;
+    }),
+    Promise.all(
+      Object.entries(SITE_INFO).map(async ([id, info]) => [id, await news(info.prov).catch(() => (prev?.sites?.[id]?.news as News[]) ?? [])] as const),
+    ).then(Object.fromEntries) as Promise<Record<string, News[]>>,
+    agencies(),
+  ]);
+  manualNow = await activeManual().catch(() => ({}));
+  const updatedAt = bkkIso(at);
+  const label = roundLabel(at);
+  const load = forecastLoader();
+  const hqTide = tideAnalysis(ag, onwr)?.data;
+  const f72 = Object.fromEntries(
+    await Promise.all(
+      Object.entries(SITE_INFO).map(async ([id, info]) => {
+        const ctx = {
+          fc: fc[id] ?? [],
+          tmd: ag.tmd[info.prov] ?? [],
+          tide: id === "hq" && hqTide ? hqTide : null,
+          site: SITE_POINTS[id],
+          rainSta: onwr.rain.near[id] ?? [],
+          manual: id === "hq" ? manualNow : {},
+        };
+        return [id, await forecastSite(id, info.gauges, onwr, ctx, load).catch(() => null)] as const;
+      }),
+    ),
+  ) as Record<string, SiteForecast | null>;
+  const sites: Record<string, SiteDoc> = {};
+  for (const id of Object.keys(SITE_INFO))
+    sites[id] = buildSite(id, onwr, fc[id] ?? [], newsBySite[id] ?? [], prev?.sites?.[id], updatedAt, label, ag, f72[id]);
+  const bot = manualBot(manualNow);
+  if (bot) sites.hq.bot = bot;
+  const { note, changes } = nationNote(onwr, sites, prev, label, ag);
+  const stamp = bkkIso(Date.now()).slice(0, 16).replace("T", " ");
+  const newsCount = Object.values(newsBySite).reduce((a, n) => a + n.length, 0);
+  const agencyStatus: AgencyStatus[] = [
+    { name: "คลังข้อมูลน้ำแห่งชาติ (สทนช./สสน.)", what: `ระดับน้ำ ${onwr.levels.length} สถานี · ฝน ${onwr.rain.stations} สถานี · เขื่อน ${onwr.dams.length} แห่ง`, ok: onwr.levels.length > 0, at: stamp },
+    { name: "กรมชลประทาน", what: `ระดับน้ำ/ปริมาณน้ำรายชั่วโมง เจ้าพระยาตอนล่าง ${onwr.rid.length} สถานี (สามโคก C.29B, สามเสน C.12)`, ok: onwr.rid.length > 0, at: stamp },
+    ...ag.status,
+    { name: "Open-Meteo", what: "ปริมาณฝนคาดการณ์ 3 วัน ณ พิกัดที่ตั้ง", ok: Object.values(fc).some((f) => f.length > 0), at: stamp },
+    { name: "Google News", what: `ข่าวน้ำท่วมรายจังหวัด ${newsCount} ข่าว`, ok: newsCount > 0, at: stamp },
+  ];
+  return {
+    meta: {
+      updatedAt,
+      generated: "round",
+      round: label,
+      nextRound: roundLabel(at + ROUND_MS),
+      builtAt: bkkIso(Date.now()),
+      prevRound: prev?.meta?.round ?? null,
+      changes,
+      note,
+      warnings: ag.warnings,
+      agencies: agencyStatus,
+      sources: [...new Set(agencyStatus.filter((s) => s.ok).map((s) => s.name))],
+    },
+    sites,
+  };
+}
+
+/* ---------- เก็บไฟล์ + ตั้งเวลา ---------- */
+
+async function readReport(): Promise<Report | null> {
+  try {
+    const text = (await fs.readFile(dataFile(), "utf8")).replace(/^\uFEFF/, "");
+    const j = JSON.parse(text) as Report;
+    return j?.sites ? j : null;
+  } catch {
+    return null;
+  }
+}
+
+const reportTime = (r: Report | null) => Date.parse(String(r?.meta?.updatedAt ?? ""));
+
+async function saveReport(r: Report) {
+  const file = dataFile();
+  await fs.mkdir(path.dirname(file), { recursive: true });
+  const body = JSON.stringify(r);
+  await fs.writeFile(file + ".tmp", body, "utf8");
+  await fs.rename(file + ".tmp", file);
+  const dir = roundsDir();
+  await fs.mkdir(dir, { recursive: true });
+  const stamp = String(r.meta.updatedAt).slice(0, 13).replace(/[-T:]/g, "");
+  await fs.writeFile(path.join(dir, `${stamp}.json`), body, "utf8");
+  const old = (await fs.readdir(dir)).filter((f) => /^\d{10}\.json$/.test(f)).sort().slice(0, -KEEP_ROUNDS);
+  await Promise.all(old.map((f) => fs.unlink(path.join(dir, f)).catch(() => undefined)));
+}
+
+let running: Promise<Report> | null = null;
+
+/** สร้างรายงานรอบปัจจุบัน (ถ้ายังไม่มี) แล้วบันทึก */
+export function runRound(): Promise<Report> {
+  running ??= (async () => {
+    const at = roundStart();
+    const prev = await readReport();
+    if (prev && reportTime(prev) >= at) return prev;
+    const rep = await buildReport(at, prev);
+    await saveReport(rep);
+    console.log(`[water-report] รอบ ${rep.meta.round} บันทึกแล้ว — ${rep.meta.note}`);
+    return rep;
+  })().finally(() => {
+    running = null;
+  });
+  return running;
+}
+
+/** คำนวณรอบปัจจุบันใหม่ (เช่น หลังเจ้าหน้าที่กรอกค่าวัดจริง) — เทียบการเปลี่ยนสถานะกับรอบก่อนหน้า ไม่ใช่กับตัวเอง */
+export async function rebuildRound(): Promise<Report> {
+  if (running) await running.catch(() => undefined);
+  running = (async () => {
+    const at = roundStart();
+    const cur = await readReport();
+    let prev = cur && reportTime(cur) < at ? cur : null;
+    if (!prev) {
+      const stamp = bkkIso(at).slice(0, 13).replace(/[-T:]/g, "");
+      const dir = roundsDir();
+      const older = (await fs.readdir(dir).catch(() => [] as string[])).filter((f) => /^\d{10}\.json$/.test(f) && f.slice(0, 10) < stamp).sort();
+      if (older.length) prev = JSON.parse((await fs.readFile(path.join(dir, older.at(-1)!), "utf8")).replace(/^\uFEFF/, "")) as Report;
+    }
+    const rep = await buildReport(at, prev);
+    await saveReport(rep);
+    console.log(`[water-report] คำนวณรอบ ${rep.meta.round} ใหม่ — ${rep.meta.note}`);
+    return rep;
+  })().finally(() => {
+    running = null;
+  });
+  return running;
+}
+
+/** รายงานล่าสุด — ถ้าไฟล์ไม่มีหรือเก่าเกินรอบ จะสร้างรอบใหม่ทันที */
+export async function latestReport(): Promise<Report> {
+  const cur = await readReport();
+  if (cur && Date.now() - reportTime(cur) < FILE_MAX_AGE_MS) return cur;
+  return runRound();
+}
+
+let timer: NodeJS.Timeout | null = null;
+
+export function startWaterReportScheduler() {
+  if (timer || process.env.WATER_REPORT_SCHEDULER === "off") return;
+  const tick = () => {
+    runRound().catch((e) => {
+      console.error("[water-report] สร้างรอบรายงานไม่สำเร็จ จะลองใหม่ใน 10 นาที:", e instanceof Error ? e.message : e);
+      setTimeout(() => void runRound().catch(() => undefined), 10 * 60_000).unref();
+    });
+    const next = roundStart() + ROUND_MS + ROUND_DELAY_MS;
+    timer = setTimeout(tick, Math.max(60_000, next - Date.now()));
+  };
+  tick();
+}
