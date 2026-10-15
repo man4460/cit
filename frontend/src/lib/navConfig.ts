@@ -33,6 +33,7 @@ export const navGroups: NavGroup[] = [
           { to: "/budget/overview/2570", label: "ปี 2570", end: true },
         ],
       },
+      { to: "/water-situation", label: "สถานการณ์น้ำ", end: true },
       { to: "/executive-report", label: "รายงานผู้บริหาร", end: true },
     ],
   },

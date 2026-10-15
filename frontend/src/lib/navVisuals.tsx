@@ -155,6 +155,12 @@ export const NavIcons = {
       <path strokeLinecap="round" strokeLinejoin="round" d="M12 3c2 3 5 4.5 5 8a5 5 0 11-10 0c0-2 1-3.5 2-4.5C10 8 11 9 12 3z" />
     </Svg>
   ),
+  water: (p: IconProps) => (
+    <Svg {...p}>
+      <path strokeLinecap="round" strokeLinejoin="round" d="M12 3s-6 6.5-6 11a6 6 0 0012 0c0-4.5-6-11-6-11z" />
+      <path strokeLinecap="round" strokeLinejoin="round" d="M9 15a3 3 0 003 3" />
+    </Svg>
+  ),
   folder: (p: IconProps) => (
     <Svg {...p}>
       <path strokeLinecap="round" strokeLinejoin="round" d="M3 7a2 2 0 012-2h4l2 2h8a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V7z" />
@@ -292,6 +298,7 @@ const ITEM_VISUALS: ({ match: RegExp } & ItemVisual)[] = [
   { match: /^\/missions/, icon: "mission", tone: "text-violet-600", chip: "bg-violet-500/12 text-violet-600 ring-violet-500/25" },
   { match: /^\/routes/, icon: "route", tone: "text-fuchsia-600", chip: "bg-fuchsia-500/12 text-fuchsia-600 ring-fuchsia-500/25" },
   { match: /^\/activities/, icon: "calendar", tone: "text-pink-600", chip: "bg-pink-500/12 text-pink-600 ring-pink-500/25" },
+  { match: /^\/water-situation/, icon: "water", tone: "text-sky-600", chip: "bg-sky-500/12 text-sky-600 ring-sky-500/25" },
   { match: /^\/executive-report/, icon: "chart", tone: "text-amber-600", chip: "bg-amber-500/12 text-amber-600 ring-amber-500/25" },
   { match: /^\/reports/, icon: "chart", tone: "text-indigo-600", chip: "bg-indigo-500/12 text-indigo-600 ring-indigo-500/25" },
   { match: /weekly-inspection/, icon: "car", tone: "text-sky-600", chip: "bg-sky-500/12 text-sky-600 ring-sky-500/25" },

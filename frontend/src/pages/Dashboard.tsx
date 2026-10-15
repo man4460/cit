@@ -102,22 +102,22 @@ function AreaSummaryPanel({
             >
               <span className="w-3.5 shrink-0 text-right font-bold tabular-nums text-slate-400">{i + 1}</span>
               <span className={`w-9 shrink-0 font-black ${i === 0 ? "text-[#4d47b6]" : "text-[#1e1b4b]"}`}>{r.code}</span>
-              <div className="h-2 min-w-[2rem] flex-1 overflow-hidden rounded-full bg-slate-100">
+              <div className="h-2 min-w-0 flex-1 basis-0 overflow-hidden rounded-full bg-slate-100">
                 <div
                   className={`h-full rounded-full ${i === 0 ? "bg-[#4d47b6]" : "bg-[#4d47b6]/50"}`}
                   style={{ width: `${max > 0 ? (r.cargo / max) * 100 : 0}%` }}
                 />
               </div>
               <span
-                className={`shrink-0 text-right font-bold tabular-nums ${i === 0 ? "text-[#4d47b6]" : "text-[#2e2a58]"}`}
-                title={`${pct(r.cargo)} ของยอดรวม`}
+                className={`min-w-0 shrink truncate text-right font-bold tabular-nums ${i === 0 ? "text-[#4d47b6]" : "text-[#2e2a58]"}`}
+                title={`${r.cargo.toLocaleString("th-TH", { maximumFractionDigits: 2 })} บาท · ${pct(r.cargo)} ของยอดรวม`}
               >
                 {r.cargo.toLocaleString("th-TH", { maximumFractionDigits: 2 })}
               </span>
               <span className="w-10 shrink-0 text-right tabular-nums text-slate-500 lg:hidden 2xl:inline print:inline">
                 {pct(r.cargo)}
               </span>
-              <span className="w-11 shrink-0 text-right font-semibold tabular-nums text-amber-600">
+              <span className="min-w-[2.25rem] shrink-0 whitespace-nowrap text-right font-semibold tabular-nums text-amber-600">
                 {r.containers.toLocaleString("th-TH")} ตู้
               </span>
             </li>

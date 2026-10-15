@@ -52,6 +52,7 @@ import { ApprovalLinkPage } from "./pages/ApprovalLinkPage";
 import { OsOutsourcingPage } from "./pages/os-outsourcing/OsOutsourcingPage";
 import { OsOutsourcingDashboard } from "./pages/os-outsourcing/OsOutsourcingDashboard";
 import { ExecutiveReportPage } from "./pages/ExecutiveReportPage";
+import { WaterSituationPage } from "./pages/WaterSituationPage";
 import { MissionEvaluationDetailPage } from "./pages/MissionEvaluationDetailPage";
 import { MissionEvaluationFormPage } from "./pages/MissionEvaluationFormPage";
 
@@ -105,6 +106,7 @@ export default function App() {
               <Route path="os-outsourcing" element={<OsOutsourcingPage />} />
               <Route path="os-outsourcing/dashboard" element={<OsOutsourcingDashboard />} />
               <Route path="executive-report" element={<ExecutiveReportPage />} />
+              <Route path="water-situation" element={<WaterSituationPage />} />
               <Route path="investigation" element={<InvestigationDashboardPage />} />
               <Route path="investigation/cases" element={<InvestigationCasesPage />} />
               <Route path="investigation/cases/:caseId" element={<InvestigationCaseDetailPage />} />

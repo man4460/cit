@@ -61,6 +61,9 @@ import { personnelSelfRouter } from "./routes/personnelSelf.js";
 import { missionEvaluationPublicRouter } from "./routes/missionEvaluationPublic.js";
 import { missionEvaluationsRouter } from "./routes/missionEvaluations.js";
 import { missionIncidentsRouter } from "./routes/missionIncidents.js";
+import { waterSituationRouter } from "./routes/waterSituation.js";
+import { waterCctvRouter } from "./routes/waterCctv.js";
+import { waterOnwrRouter } from "./routes/waterOnwr.js";
 import { schedulePersonnelRetention } from "./lib/personnelRetention.js";
 import { seedDocumentMasterData } from "./lib/seedDocumentMasters.js";
 import { seedFireExtinguisherData } from "./lib/seedFireExtinguishers.js";
@@ -101,6 +104,8 @@ app.use("/api/investigation-approval", investigationApprovalRouter);
 app.use("/api/personnel-self", personnelSelfRouter);
 /** แบบประเมินภารกิจผ่าน QR — ไม่ต้องล็อกอิน (ตรวจด้วยโทเคน + ชื่อในทริป + เลขบัตร 4 หลักท้าย) */
 app.use("/api/mission-evaluation-public", missionEvaluationPublicRouter);
+/** ภาพกล้อง CCTV สาธารณะสำหรับหน้าสถานการณ์น้ำ — ใช้ใน <img> ซึ่งส่งโทเคนไม่ได้ */
+app.use("/api/water-cctv", waterCctvRouter);
 
 const secured = express.Router();
 secured.use(authMiddleware);
@@ -146,6 +151,8 @@ secured.use("/admin/users", adminUsersRouter);
 secured.use("/audit-logs", auditLogsRouter);
 secured.use("/admin-notes", requireAdmin, adminNotesRouter);
 secured.use("/security-incidents", securityIncidentsRouter);
+secured.use("/water-situation", waterSituationRouter);
+secured.use("/water-onwr", waterOnwrRouter);
   secured.use("/budget", budgetRouter);
   secured.use("/investigation", investigationRouter);
   secured.use("/os-outsourcing", osOutsourcingRouter);
