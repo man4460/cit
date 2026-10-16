@@ -118,12 +118,14 @@ function compactRain(rows: Json[]) {
     p.count++;
     if (p.top.length < 3) p.top.push(r);
   }
-  /** ดัชนีเต็มสำหรับตาราง EWI — near ตัดเหลือ 30 สถานี ทำให้สะเดา/พุนพินหลุดได้ */
+  /** ดัชนีเฉพาะสถานีที่ตาราง EWI อ้างอิง (ไม่ส่งทั้งประเทศ — payload เคยใหญ่ ~3 MB จนโหลดไม่ครบ) */
+  const EWI_RAIN_CODES = new Set(["SLA003", "NPCT", "TPI002"]);
+  const EWI_RAIN_NAMES = new Set(["สะเดา", "อบต.พิจิตร", "พุนพิน 1", "พุนพิน 2"]);
   const byCode: Record<string, (typeof all)[number]> = {};
   const byName: Record<string, (typeof all)[number]> = {};
   for (const r of all) {
-    if (r.code && !byCode[r.code]) byCode[r.code] = r;
-    if (r.name && !byName[r.name]) byName[r.name] = r;
+    if (r.code && EWI_RAIN_CODES.has(r.code) && !byCode[r.code]) byCode[r.code] = r;
+    if (r.name && EWI_RAIN_NAMES.has(r.name) && !byName[r.name]) byName[r.name] = r;
   }
   return { stations: all.length, bands, top: sorted.slice(0, 20), near, byProv, byCode, byName };
 }
