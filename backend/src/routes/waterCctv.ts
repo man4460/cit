@@ -222,12 +222,20 @@ const AGENCY_WATER =
 function impactScore(c: Cam, dKm: number, focusWords: string[]): number {
   const text = `${c.name} ${c.place} ${c.source}`;
   let s = 0;
-  /* ใกล้ที่ตั้ง = ผลกระทบโดยตรง (0 กม. ≈ 120 · 100 กม. ≈ 0) */
+  /* ใกล้จุดยึด = กระทบมาก (0 กม. ≈ 120 · 100 กม. ≈ 0) */
   s += Math.max(0, 120 - dKm * 1.2);
   /* ลำน้ำหลักของพื้นที่ — คำแรกใน focus สำคัญกว่าคำถัดไป */
+  let hitFocus = false;
   focusWords.forEach((w, i) => {
-    if (w && text.includes(w)) s += Math.max(8, 50 - i * 10);
+    if (w && text.includes(w)) {
+      hitFocus = true;
+      s += Math.max(8, 50 - i * 10);
+    }
   });
+  /* ถ้าโฟกัสแม่น้ำหลัก แล้วกล้องเป็นแค่คลองเล็ก (ไม่ตรงคำโฟกัส) — ลดคะแนน */
+  if (focusWords.length && !hitFocus && /คลอง/.test(text) && !/เจ้าพระยา|ท่าจีน|มูล|น่าน|ปิง|ชี|ตาปี|พุมดวง|อู่ตะเภา|ลำตะคอง/.test(text)) {
+    s -= 55;
+  }
   if (AGENCY_WATER.test(text) || c.via === "คลังข้อมูลน้ำแห่งชาติ") s += 18;
   if (c.fresh) s += 6;
   return s;

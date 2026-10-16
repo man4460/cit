@@ -25,7 +25,7 @@
   color-scheme:dark}
 *{box-sizing:border-box}
 body{background:var(--bg);color:var(--ink);font-family:var(--f-body);font-size:15px;line-height:1.55;margin:0}
-.wrap{max-width:1180px;margin:0 auto;padding-inline:16px;padding-block:20px 48px}
+.wrap{max-width:none;width:100%;margin:0;padding-inline:12px;padding-block:12px 32px;box-sizing:border-box}
 a{color:var(--accent)}
 a:focus-visible,button:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
 .num{font-family:var(--f-data);font-variant-numeric:tabular-nums}
@@ -383,7 +383,15 @@ tbody tr:hover{background:var(--soft)}
 .chart .grp:hover .hit{fill:var(--soft)}
 
 /* map */
+.map-wrap{position:relative;width:100%}
 #map{height:calc(100vh - 190px);min-height:420px;border-radius:12px;border:1px solid var(--line);z-index:0}
+.map-wrap:fullscreen,.map-wrap:-webkit-full-screen{width:100%;height:100%;background:var(--bg);padding:0}
+.map-wrap:fullscreen #map,.map-wrap:-webkit-full-screen #map{height:100%;min-height:100%;border-radius:0;border:0}
+.map-fs{appearance:none;width:34px;height:34px;border:2px solid rgba(0,0,0,.2);border-radius:6px;background:var(--panel);color:var(--ink);cursor:pointer;display:grid;place-items:center;box-shadow:0 1px 4px rgba(0,0,0,.2);padding:0}
+.map-fs:hover{background:var(--soft)}
+.map-fs svg{width:18px;height:18px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+.map-wrap:fullscreen .map-fs .ico-expand,.map-wrap:-webkit-full-screen .map-fs .ico-expand{display:none}
+.map-wrap:not(:fullscreen):not(:-webkit-full-screen) .map-fs .ico-compress{display:none}
 .mlabel{background:var(--panel);border:1px solid var(--line);border-radius:6px;font:600 12px var(--f-body);color:var(--ink);padding:1px 6px;box-shadow:none}
 .mlabel::before{display:none}
 .mico{background:none;border:0}
@@ -413,8 +421,10 @@ tbody tr:hover{background:var(--soft)}
 .shot img{width:100%;height:100%;object-fit:cover;display:block}
 .shot .cap{position:absolute;left:0;right:0;bottom:0;padding:18px 8px 6px;background:linear-gradient(transparent,rgba(0,0,0,.8));font-size:.74rem;text-align:left;line-height:1.3}
 .shot .cap b{display:block;font-size:.8rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.shot .badge{position:absolute;top:6px;left:6px;font-size:.66rem;font-weight:700;padding:1px 6px;border-radius:4px;background:rgba(0,0,0,.6)}
+.shot .badge{position:absolute;top:6px;left:6px;right:6px;font-size:.66rem;font-weight:700;padding:2px 6px;border-radius:4px;background:rgba(0,0,0,.65);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:calc(100% - 12px)}
 .shot .badge.w{background:var(--accent)}
+.shot .badge.loc{background:color-mix(in srgb,var(--accent) 85%,#000)}
+.shot .badge.up{background:color-mix(in srgb,var(--water) 80%,#0b2a43)}
 .shot.err::after{content:"ภาพไม่พร้อม";position:absolute;inset:0;display:grid;place-items:center;font-size:.8rem;color:#9fb0bb}
 .links{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}
 .links a{font-size:.78rem;text-decoration:none;border:1px solid var(--line);border-radius:999px;padding:3px 10px;background:var(--panel)}
@@ -788,7 +798,10 @@ body.detail-mode .wrap{padding-top:12px}
   </nav>
 
   <section class="tab" id="tab-overview"><div id="exec"></div></section>
-  <section class="tab" id="tab-map" hidden><div id="map"></div><div class="tiny">ความหมายสัญลักษณ์ดูที่มุมขวาล่างของแผนที่ · วงประรอบที่ตั้ง = คาดว่าแย่ลงใน 72 ชม. · ซูมเข้าเพื่อแสดงกล้องทั้งหมดในบริเวณ · คลิกจุดว่างบนแผนที่ = ดูกล้องใกล้จุดนั้น · สถานีและเขื่อนเป็นข้อมูลสด สทนช.</div></section>
+  <section class="tab" id="tab-map" hidden>
+    <div class="map-wrap" id="mapWrap"><div id="map"></div></div>
+    <div class="tiny">ความหมายสัญลักษณ์ดูที่มุมขวาล่างของแผนที่ · วงประรอบที่ตั้ง = คาดว่าแย่ลงใน 72 ชม. · ซูมเข้าเพื่อแสดงกล้องทั้งหมดในบริเวณ · คลิกจุดว่างบนแผนที่ = ดูกล้องใกล้จุดนั้น · สถานีและเขื่อนเป็นข้อมูลสด สทนช. · ปุ่มมุมซ้ายบน = ขยายเต็มจอ</div>
+  </section>
   <section class="tab" id="tab-level" hidden><div id="levels"></div></section>
   <section class="tab" id="tab-rain" hidden><div class="chart" id="rain"></div></section>
   <section class="tab" id="tab-nation" hidden><div id="nation"><div class="empty">กำลังดึงข้อมูลจากคลังข้อมูลน้ำแห่งชาติ…</div></div></section>
@@ -3322,6 +3335,21 @@ function openNearCams(lat, lng){
     el.innerHTML = cams.length ? cams.map(shotHtml).join("") : '<div class="tiny">ไม่พบกล้องที่ใช้งานได้ในรัศมี 10 กม. ลองคลิกใกล้ถนนสายหลักหรือตัวเมือง</div>';
   });
 }
+function mapIsFullscreen(){
+  const wrap = $("#mapWrap");
+  const fs = document.fullscreenElement || document.webkitFullscreenElement;
+  return Boolean(wrap && fs === wrap);
+}
+function toggleMapFullscreen(){
+  const wrap = $("#mapWrap"); if(!wrap) return;
+  if(mapIsFullscreen()){
+    const exit = document.exitFullscreen || document.webkitExitFullscreen;
+    if(exit) void exit.call(document);
+  } else {
+    const req = wrap.requestFullscreen || wrap.webkitRequestFullscreen;
+    if(req) void req.call(wrap);
+  }
+}
 function initMap(){
   if(!window.L){ $("#map").innerHTML = '<div class="empty">โหลดแผนที่ไม่สำเร็จ</div>'; return; }
   if(!map){
@@ -3332,6 +3360,31 @@ function initMap(){
     focusLayer = L.layerGroup().addTo(map);
     siteLayer = L.layerGroup().addTo(map);
     L.control.layers(null, {"จุดที่ ธปท. เฝ้าระวัง": focusLayer, "สถานีน้ำมาก/ล้นตลิ่ง และเขื่อน (สด)": liveLayer, "กล้อง CCTV": camLayer}, {collapsed: false, position: "topright"}).addTo(map);
+    const Fs = L.Control.extend({
+      onAdd(){
+        const btn = L.DomUtil.create("button", "map-fs");
+        btn.type = "button";
+        btn.title = "ขยายเต็มจอ";
+        btn.setAttribute("aria-label", "ขยายเต็มจอ");
+        btn.innerHTML = `<svg class="ico-expand" viewBox="0 0 24 24" aria-hidden="true"><path d="M8 3H3v5M16 3h5v5M8 21H3v-5M16 21h5v-5"/></svg>
+          <svg class="ico-compress" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 8h5V3M16 3v5h5M3 16h5v5M16 21v-5h5"/></svg>`;
+        L.DomEvent.disableClickPropagation(btn);
+        L.DomEvent.on(btn, "click", e => { L.DomEvent.stop(e); toggleMapFullscreen(); });
+        return btn;
+      },
+    });
+    new Fs({position: "topleft"}).addTo(map);
+    const onFs = () => {
+      const btn = document.querySelector(".map-fs");
+      if(btn){
+        const on = mapIsFullscreen();
+        btn.title = on ? "ออกจากเต็มจอ" : "ขยายเต็มจอ";
+        btn.setAttribute("aria-label", btn.title);
+      }
+      setTimeout(() => map && map.invalidateSize(), 80);
+    };
+    document.addEventListener("fullscreenchange", onFs);
+    document.addEventListener("webkitfullscreenchange", onFs);
     const hint = L.control({position: "bottomleft"});
     hint.onAdd = () => (camHint = L.DomUtil.create("div", "camhint"));
     hint.addTo(map);
@@ -3393,42 +3446,106 @@ function drawMap(){
 /* ---------- กล้อง CCTV (ภาพนิ่งล่าสุด รีเฟรชทุก 60 วินาที) ---------- */
 let API = "";
 const camCache = {}, camById = {};
-/** คำลำน้ำหลักต่อพื้นที่ (เรียงผลกระทบมาก → น้อย) — ใช้จัดอันดับในแถว 4 กล้อง */
+/** คำลำน้ำหลักต่อพื้นที่ — ไม่ใส่ «คลอง» ล้วน เพื่อเลี่ยงกล้องคลองเล็กในเมือง */
 const CAM_FOCUS = {
-  hq: "เจ้าพระยา,คลอง",
+  hq: "เจ้าพระยา,สามเสน,เทเวศร์,นวลฉวี",
   ipd: "ท่าจีน,นครชัยศรี",
-  cnx: "ปิง,แม่แตง",
-  kkn: "พอง,ชี",
-  hdy: "อู่ตะเภา,คลอง",
-  ryg: "ระยอง,คลอง",
-  phs: "น่าน,แควน้อย,พิษณุโลก",
-  ubn: "มูล,โขง,สิรินธร,อุบล,โขงเจียม",
-  nrm: "ลำตะคอง,ลำพระเพลิง,นครราชสีมา,โคราช",
-  urt: "ตาปี,พุมดวง",
+  cnx: "ปิง,แม่แตง,นวรัฐ",
+  kkn: "พอง,ชี,อุบลรัตน์",
+  hdy: "อู่ตะเภา,หาดใหญ่,ม่วงก็อง",
+  ryg: "ระยอง,ทับมา,ปลาไหล",
+  phs: "น่าน,แควน้อย,พิษณุโลก,นเรศวร",
+  ubn: "มูล,ชี,อุบล,โขงเจียม",
+  nrm: "ลำตะคอง,ลำพระเพลิง,นครราชสีมา",
+  urt: "ตาปี,พุมดวง,รัชชประภา",
 };
 const CAM_NEED = 4;
-/** ขยายรัศมีทีละขั้นจนกว่าจะครบ 4 กล้องลำน้ำ */
-const CAM_EXPAND_KM = [20, 30, 40, 50, 60, 75, 90, 100];
+const CAM_EXPAND_KM = [8, 15, 25, 40, 60, 80, 100];
+const camNameClean = n => String(n || "").replace(/^สถานี/, "").replace(/\s*\(% ความจุอ่าง\)$/, "").replace(/\s*\(.*\)$/, "").trim();
+const camSame = (a, b) => { a = camNameClean(a); b = camNameClean(b); return Boolean(a && b && (a === b || a.includes(b) || b.includes(a))); };
+/** พิกัดจุดวัด — จากสด สทนช. / จุดฝัง / พิกัดที่ตั้ง */
+function camPointAt(name, code, botKey){
+  const l = (code && liveByCode(code)) || (name && liveStation(name)) || null;
+  if(l && l.lat != null && l.lon != null) return [l.lat, l.lon];
+  const d = name && liveDam(name);
+  if(d && d.lat != null && d.lon != null) return [d.lat, d.lon];
+  if(botKey && BOT_POINT_AT[botKey]) return BOT_POINT_AT[botKey];
+  return null;
+}
 /**
- * หลักการเลือก CCTV ต่อพื้นที่:
- *  1) เฉพาะกล้องลำน้ำ/เขื่อน/ระบายน้ำ (ไม่เอาทางหลวง)
- *  2) ขยายรัศมีจากที่ตั้งออกไปเรื่อยๆ จนครบ 4 ตัวในแถว
- *  3) เรียงผลกระทบต่อที่ตั้งมาก → น้อย (ใกล้ + ลำน้ำหลัก + หน่วยงานน้ำ)
+ * จุดยึดกล้อง 4 จุดต่อพื้นที่ = จุดกระทบที่ตั้ง 1 + น้ำเหนือ 3 (ชุดเดียวกับหน้ารายละเอียด)
+ * แต่ละจุดดึงกล้องลำน้ำที่ใกล้ที่สุด → ไม่ใช้คลองเล็กใกล้ที่ตั้งโดยไม่เกี่ยวกับจุดวัด
  */
+function camAnchors(siteId){
+  const s = SITES.find(x => x.id === siteId); if(!s) return [];
+  const focus = CAM_FOCUS[siteId] || "";
+  const out = [];
+  const be = botEval(siteId);
+  let local = null;
+  if(be){
+    const locals = partitionImpact(be.ev, e => e.ind).locals.filter(x => !isRainInd(x.ind));
+    for(const x of locals){
+      const ind = x.ind, src = ind.src || {};
+      const at = camPointAt(src.station || stationNameFromLabel(ind.label), src.code, src.bot);
+      if(at){ local = {role: "local", label: shortGaugeName(ind.label, false) || stationNameFromLabel(ind.label), lat: at[0], lon: at[1], focus}; break; }
+    }
+  }
+  if(!local) local = {role: "local", label: `${shortAbbr(s)} ที่ตั้ง`, lat: s.lat, lon: s.lon, focus};
+  out.push(local);
+  const cfg = UPSTREAM[siteId];
+  for(const r of detailUpstreamRows(siteId, {want: 3})){
+    const p = cfg && cfg.pts.find(pt => camSame(pt.name, r.title) || camSame(r.title, pt.name));
+    let at = null;
+    if(p && p.type === "dam") at = camPointAt(p.name, p.code, null);
+    if(!at && p) at = camPointAt(p.name, p.code, null);
+    if(!at) at = camPointAt(r.title, null, null);
+    if(!at && be){
+      const hit = be.ev.find(e => camSame(e.ind.label, r.title));
+      if(hit) at = camPointAt(hit.ind.src && hit.ind.src.station, hit.ind.src && hit.ind.src.code, hit.ind.src && hit.ind.src.bot);
+    }
+    if(!at) continue;
+    out.push({role: "up", upNo: r.upNo, label: r.title.replace(/\s*\(% ความจุอ่าง\)$/, ""), lat: at[0], lon: at[1], lead: r.lead, focus});
+  }
+  /* ถ้าน้ำเหนือพิกัดไม่ครบ — เติมจาก UPSTREAM ตามลำดับใกล้→ไกล */
+  if(out.length < CAM_NEED && cfg){
+    const nearFirst = [...cfg.pts].filter(p => p.type !== "dam" || true).sort((a, b) => (a.h ?? 999) - (b.h ?? 999));
+    for(const p of nearFirst){
+      if(out.length >= CAM_NEED) break;
+      if(out.some(a => camSame(a.label, p.name))) continue;
+      const at = camPointAt(p.name, p.code, null);
+      if(!at) continue;
+      out.push({role: "up", upNo: out.filter(a => a.role === "up").length + 1, label: p.name, lat: at[0], lon: at[1], lead: p.lead, focus});
+    }
+  }
+  return out.slice(0, CAM_NEED);
+}
 function loadCams(s){
   return camCache[s.id] ??= (async () => {
-    const focus = encodeURIComponent(CAM_FOCUS[s.id] || s.area || "");
-    const fetchNear = (km) =>
-      fetch(`${API}/api/water-cctv/near?lat=${s.lat}&lon=${s.lon}&n=${CAM_NEED}&km=${km}&water=1&focus=${focus}`)
+    const fetchNear = (lat, lon, focus, km, n = 3) =>
+      fetch(`${API}/api/water-cctv/near?lat=${lat}&lon=${lon}&n=${n}&km=${km}&water=1&focus=${encodeURIComponent(focus || "")}`)
         .then(r => r.ok ? r.json() : {cameras: []})
         .then(j => j.cameras || []);
     try {
-      let cams = [];
-      for(const km of CAM_EXPAND_KM){
-        cams = await fetchNear(km);
-        if(cams.length >= CAM_NEED) break;
+      const anchors = camAnchors(s.id);
+      const seen = new Set();
+      const cams = [];
+      for(const a of anchors){
+        let pick = null;
+        for(const km of CAM_EXPAND_KM){
+          const list = await fetchNear(a.lat, a.lon, a.focus, km, 4);
+          pick = list.find(c => !seen.has(c.id));
+          if(pick) break;
+        }
+        if(!pick) continue;
+        seen.add(pick.id);
+        cams.push({
+          ...pick,
+          role: a.role,
+          roleLabel: a.role === "local" ? "จุดที่ตั้ง" : `น้ำเหนือ${a.upNo || cams.filter(x => x.role === "up").length + 1}`,
+          pointLabel: a.label,
+          pointLead: a.lead || "",
+        });
       }
-      cams = cams.slice(0, CAM_NEED);
       cams.forEach(c => { camById[c.id] = c; });
       return cams;
     } catch {
@@ -3439,23 +3556,26 @@ function loadCams(s){
 }
 const snapUrl = id => `${API}/api/water-cctv/snap/${encodeURIComponent(id)}?t=${Math.floor(Date.now() / 60000)}`;
 function shotHtml(c){
+  const role = c.roleLabel || (c.water ? "ลำน้ำ" : "จราจร");
+  const sub = [c.pointLabel, c.km != null ? `${fmt1(c.km)} กม.` : ""].filter(Boolean).join(" · ");
   return `<button class="shot" data-cam="${esc(c.id)}"><img data-snap="${esc(c.id)}" src="${snapUrl(c.id)}" alt="${esc(c.name)}" loading="lazy" onerror="this.parentNode.classList.add('err')">
-    <span class="badge${c.water ? " w" : ""}">${c.water ? "ลำน้ำ" : "จราจร"}${c.km != null ? ` · ${fmt1(c.km)} กม.` : ""}</span>
+    <span class="badge${c.role === "local" ? " loc" : c.role === "up" ? " up" : (c.water ? " w" : "")}">${esc(role)}${sub ? ` · ${esc(sub)}` : ""}</span>
     <span class="cap"><b>${esc(c.name)}</b>${esc(c.source)}</span></button>`;
 }
 function renderCctv(){
+  for(const k of Object.keys(camCache)) delete camCache[k];
   const box = $("#cctv");
   box.innerHTML = sortedSites().map(s => {
     const st = sOf(s.id);
     const links = [...s.cams, ...COMMON_CAMS].map(c => `<a href="${c[2]}" target="_blank" rel="noopener" title="${esc(c[1])}">${esc(c[0])} ↗</a>`).join("");
     return `<section class="camsec" id="cam-${s.id}">
       <h3><span class="mini" data-s="${st}">${STATUS[st]}</span>${esc(s.abbr)} · ${esc(s.prov)} <button class="btn" data-open="${s.id}" style="padding:2px 10px;font-size:.75rem">สรุป</button></h3>
-      <div class="shots" data-site="${s.id}"><div class="tiny">กำลังค้นหากล้องใกล้ที่ตั้ง…</div></div>
+      <div class="shots" data-site="${s.id}"><div class="tiny">กำลังค้นหากล้องที่จุดกระทบและน้ำเหนือ…</div></div>
       <div class="links">${links}</div></section>`;
-  }).join("") + `<div class="tiny">หลักการ: กล้องลำน้ำใกล้ที่ตั้ง → ขยายรัศมีจนครบ 4 ตัวในแถว · เรียงผลกระทบต่อที่ตั้งมาก→น้อย (ใกล้ + ลำน้ำหลักของพื้นที่) · ไม่รวมทางหลวง · รีเฟรชทุก 60 วินาที</div>`;
+  }).join("") + `<div class="tiny">หลักการ: 4 กล้องต่อพื้นที่ = จุดกระทบที่ตั้ง 1 + น้ำเหนือ 3 (ชุดเดียวกับหน้ารายละเอียด) · กล้องลำน้ำใกล้จุดวัดนั้น · ไม่เน้นคลองเล็กในเมือง · รีเฟรชทุก 60 วินาที</div>`;
   SITES.forEach(s => loadCams(s).then(cams => {
     const el = box.querySelector(`.shots[data-site="${s.id}"]`);
-    if(el) el.innerHTML = cams.length ? cams.map(shotHtml).join("") : '<div class="tiny">ไม่พบกล้องลำน้ำในรัศมี — ใช้ลิงก์กรมทรัพยากรน้ำ / เขื่อนด้านล่าง</div>';
+    if(el) el.innerHTML = cams.length ? cams.map(shotHtml).join("") : '<div class="tiny">ไม่พบกล้องลำน้ำใกล้จุดวัด — ใช้ลิงก์กรมทรัพยากรน้ำ / เขื่อนด้านล่าง</div>';
   }));
 }
 /* withNear = แสดงกล้องอื่นในรัศมี 5 กม. ใต้ภาพหลัก (เปิดจากแผนที่) */
@@ -3691,7 +3811,9 @@ function applyOnwr(j){
 /* ---------- รายงานผู้บังคับบัญชา (ภาพ PNG สำหรับคัดลอกไปวางใน LINE / อีเมล / สไลด์) ---------- */
 const REP = {W: 1600, pad: 48, font: '"IBM Plex Sans Thai", "Leelawadee UI", Tahoma, sans-serif',
   navy: "#0b2a43", ink: "#14212b", muted: "#5b6a75", line: "#d9e0e4", soft: "#f3f5f6",
-  s: ["#2e8b57", "#c99a06", "#d9650b", "#c62828"], bg: ["#e3f3ea", "#fbf3d0", "#fde6d2", "#fbe0e0"]};
+  s: ["#2e8b57", "#c99a06", "#d9650b", "#c62828"], bg: ["#e3f3ea", "#fbf3d0", "#fde6d2", "#fbe0e0"],
+  /* เครดิตท้ายรายงานผู้บังคับบัญชา */
+  ver: "1.2.0", verLabel: "ต.ค. 2569", system: "allforone", by: "พ.ต.ต.เร๊าะมัน หะนิแร"};
 const repSeg = typeof Intl !== "undefined" && Intl.Segmenter ? new Intl.Segmenter("th", {granularity: "word"}) : null;
 function repWords(t){ return repSeg ? [...repSeg.segment(t)].map(x => x.segment) : [...t]; }
 function repWrap(ctx, text, w){
@@ -3918,7 +4040,7 @@ async function buildReport(){
   const headH = 64 + heads.reduce((a, h) => a + h.lines.length * 28 + 10, 0);
   const perRow = 5, gap = 16, cardH = 556, rows = Math.ceil(list.length / perRow);
   const gridH = rows * cardH + (rows - 1) * gap;
-  const H = 128 + 26 + 118 + 26 + headH + 26 + gridH + 56 + 74;
+  const H = 128 + 26 + 118 + 26 + headH + 26 + gridH + 56 + 96;
   const cv = document.createElement("canvas");
   cv.width = W * scale; cv.height = H * scale;
   const ctx = cv.getContext("2d");
@@ -3986,7 +4108,10 @@ async function buildReport(){
   ctx.fillText("ไม้วัดระดับ: พื้นทึบสีตามธงค่าปัจจุบัน · น้ำทึบถึงระดับวัด · ลูกศร = ค่าปัจจุบัน · ขีดข้าง = เกณฑ์ ธปท.", pad, y - 22);
   ctx.fillText("เกณฑ์สถานะ: ทุกพื้นที่ใช้เกณฑ์ ธปท. (9 ต.ค. 2569) · ศูนย์จัดการธนบัตร 5 แห่งใช้เกณฑ์ % น้ำท่า (Q/Qmax) แบบ EWI สนภ. กับสถานีใกล้ที่ตั้ง · ≈ = ประมาณ % น้ำท่าจากระดับน้ำ (Manning) เฉพาะสถานีที่ไม่มีอัตราการไหล · คาดการณ์ 72 ชม. จากข้อมูลรายชั่วโมงย้อนหลัง 7 วัน", pad, y);
   ctx.fillText("ที่มา: คลังข้อมูลน้ำแห่งชาติ (สทนช./สสน.) · กรมชลประทาน · กรมอุตุนิยมวิทยา · กรมอุทกศาสตร์ · Open-Meteo · ข้อมูลเบื้องต้นเพื่อการเฝ้าระวังภายใน ใช้ประกอบกับประกาศทางการ", pad, y + 22);
-  ctx.textAlign = "right"; ctx.fillText(`จัดทำ ${fmtTime(new Date().toISOString())}`, W - pad, y + 22); ctx.textAlign = "left";
+  ctx.font = `600 13px ${REP.font}`; ctx.fillStyle = REP.navy;
+  ctx.fillText(`ระบบ ${REP.system} · ${REP.by} · เวอร์ชัน ${REP.ver} (${REP.verLabel})`, pad, y + 48);
+  ctx.textAlign = "right"; ctx.font = `400 13px ${REP.font}`; ctx.fillStyle = REP.muted;
+  ctx.fillText(`สร้างภาพ ${fmtTime(new Date().toISOString())}`, W - pad, y + 48); ctx.textAlign = "left";
   return cv;
 }
 let repCanvas = null;
@@ -3995,7 +4120,7 @@ async function openReport(){
   repCanvas = await buildReport();
   const url = repCanvas.toDataURL("image/png");
   const canCopy = !!(navigator.clipboard && window.ClipboardItem);
-  openDlg("รายงานผู้บังคับบัญชา", "ภาพสรุปสถานการณ์ทุกพื้นที่ · วางใน LINE / อีเมล / สไลด์ได้ทันที", `
+  openDlg("รายงานผู้บังคับบัญชา", `ภาพสรุปสถานการณ์ทุกพื้นที่ · ระบบ ${REP.system} · ${REP.by} · เวอร์ชัน ${REP.ver}`, `
     <img class="rep-prev" src="${url}" alt="ภาพรายงานสถานการณ์น้ำ">
     <div class="btns">
       ${canCopy ? `<button class="btn pri" data-report="copy">คัดลอกรูป</button>` : ""}
