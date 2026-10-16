@@ -6,6 +6,13 @@ export type PermissionMap = Record<string, PermissionLevel>;
 
 /** ต้องตรงกับ frontend/src/lib/permissions.ts (key เดียวกัน) */
 export const PERMISSION_MODULES: { key: string; apiPrefixes: string[] }[] = [
+  /** สรุปภาพรวม — ส่วนใหญ่ควบคุมเมนู/หน้า; API เขียนยังผูกโมดูลหลักของแต่ละระบบ */
+  { key: "overview_home", apiPrefixes: [] },
+  { key: "overview_incidents", apiPrefixes: [] },
+  { key: "overview_os", apiPrefixes: [] },
+  { key: "overview_budget", apiPrefixes: [] },
+  { key: "water", apiPrefixes: ["/water-situation", "/water-onwr"] },
+  { key: "executive", apiPrefixes: [] },
   {
     key: "missions",
     apiPrefixes: [

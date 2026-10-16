@@ -556,6 +556,8 @@ tbody tr:hover{background:var(--soft)}
 .detail-head .sub{color:var(--muted);font-size:.88rem;margin-top:2px}
 .ostory{margin-top:12px;border:1px solid var(--line);border-radius:14px;background:var(--panel);overflow:hidden}
 .ostory-h{display:flex;flex-wrap:wrap;gap:10px 14px;align-items:center;justify-content:space-between;padding:12px 16px;background:transparent;border-bottom:1px solid var(--line)}
+.ostory-h .head-right{flex:none;margin-left:auto;display:flex;align-items:center;gap:8px}
+.ostory-h .path.head-path{margin-top:0}
 /* ไม่ใช้พื้นไฮไลต์ฟ้าของ .lead กลาง — หัวข้อความเห็นเป็นข้อความปกติ */
 .ostory-h .lead{display:flex;gap:10px;align-items:center;min-width:0;background:transparent;padding:0;margin:0;border-radius:0;font-size:inherit;font-weight:inherit;color:inherit}
 .ostory-h .lead .bell{width:34px;height:34px;border-radius:10px;display:grid;place-items:center;background:transparent;color:var(--ink);flex:none;border:0}
@@ -584,11 +586,48 @@ tbody tr:hover{background:var(--soft)}
 .oscales.gauge-pane .gauge-meta{font-size:.72rem;color:var(--muted);text-align:center;margin-top:6px}
 .detail-cards{display:flex;flex-direction:column;gap:12px;margin-top:4px}
 .detail-cards-row{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:12px;align-items:stretch}
+.detail-cards-row.trend-row{grid-template-columns:1fr}
 .detail-cards-row > .ostory{margin-top:0;min-width:0;height:100%}
 .detail-cards-row .ostory-body.with-gauge{grid-template-columns:1fr;align-items:start}
 .detail-cards-row .ostory-side{border-left:0;border-top:1px solid var(--line);padding:10px 14px 14px}
 .detail-cards-row .oscales.gauge-pane{padding-bottom:8px}
-@media (max-width:720px){.detail-cards-row{grid-template-columns:1fr}}
+/* การ์ดรวม แนวโน้ม + ฝน */
+.ostory.trend-combo .trend-combo-body{display:grid;grid-template-columns:minmax(0,1.4fr) minmax(200px,.85fr);gap:0;align-items:stretch}
+.ostory.trend-combo .trend-metrics{display:grid;grid-template-columns:1fr 1fr;gap:0;min-width:0;border-right:1px solid var(--line)}
+.ostory.trend-combo .trend-metric{display:flex;flex-direction:column;align-items:center;justify-content:flex-start;padding:12px 14px 16px;min-width:0}
+.ostory.trend-combo .trend-metric + .trend-metric{border-left:1px solid var(--line)}
+.ostory.trend-combo .trend-metric .tm-label{display:flex;align-items:center;gap:6px;font-size:.78rem;font-weight:700;color:var(--muted);margin-bottom:8px;align-self:stretch}
+.ostory.trend-combo .trend-metric .tm-label .role-badge{margin-right:0}
+.ostory.trend-combo .trend-metric .tm-title{font-size:.82rem;font-weight:600;text-align:center;line-height:1.3;margin-bottom:6px;max-width:14rem}
+.ostory.trend-combo .trend-metric .tm-meta{font-size:.7rem;color:var(--muted);text-align:center;margin-top:6px;line-height:1.35}
+.ostory.trend-combo .trend-metric.rain-pane{align-items:stretch}
+.ostory.trend-combo .trend-metric.rain-pane .gauge-box{margin:0 auto}
+.ostory.trend-combo .trend-combo-body > .ostory-side{border-left:0;border-top:0;padding:12px 16px 14px;justify-content:flex-start}
+/* ไอคอนธงบนไม้บรรทัด — ชี้แล้วโชว์เกณฑ์ย่ออย่างเดียว */
+.gauge-flag.has-tip{cursor:help;position:absolute}
+.gauge-flag.has-tip > .otip.otip-crit{
+  left:0;right:auto;transform:none;bottom:auto;top:calc(100% + 6px);
+  min-width:0;padding:6px 8px;z-index:60;white-space:nowrap;text-align:left;
+}
+.gauge-flag.has-tip > .otip.otip-crit::after{bottom:auto;top:-4px;left:12px;transform:rotate(45deg)}
+.gauge-flag.has-tip:hover > .otip.otip-crit,
+.gauge-flag.has-tip:focus-within > .otip.otip-crit{opacity:1;visibility:visible}
+.gauge-flag.has-tip .otip-crit .cr{display:flex;align-items:center;gap:6px;padding:2px 0;font-size:.72rem;font-weight:600;font-family:var(--f-data);color:var(--ink);line-height:1.25}
+.gauge-flag.has-tip .otip-crit .cr .mini{font-size:.6rem;padding:1px 5px;min-width:2.6rem;justify-content:center}
+.ostory-side .oscale.compact{padding:2px 0 0;width:100%}
+.ostory-side .oscale.compact .oscale-h{margin-bottom:2px}
+.ostory-side .oscale.compact .oscale-h .ttl{font-size:.74rem}
+.ostory-side .oscale.compact .osbar{height:10px}
+@media (max-width:900px){
+  .ostory.trend-combo .trend-combo-body{grid-template-columns:1fr}
+  .ostory.trend-combo .trend-metrics{border-right:0;border-bottom:1px solid var(--line)}
+  .ostory.trend-combo .trend-combo-body > .ostory-side{border-top:1px solid var(--line)}
+}
+@media (max-width:720px){
+  .detail-cards-row,.detail-cards-row.trend-row{grid-template-columns:1fr}
+  .ostory.trend-combo .trend-metrics{grid-template-columns:1fr}
+  .ostory.trend-combo .trend-metric + .trend-metric{border-left:0;border-top:1px solid var(--line)}
+}
 .ostory .role-badge{display:inline-flex;align-items:center;gap:4px;font-size:.72rem;font-weight:700;padding:2px 8px;border-radius:999px;margin-right:6px;vertical-align:middle}
 .ostory .role-badge.loc{background:#e8f5e9;color:#2e7d32}
 .ostory .role-badge.up{background:#eef2f7;color:#455a64}
@@ -889,12 +928,22 @@ const botStatusLabel = s => (s < 0 || STATUS[s] == null ? "รอข้อมู
 /* เกณฑ์ ธปท.: เขียว=น้ำน้อย/ปกติ · เหลือง=น้ำปกติ/ปกติ · ส้ม=น้ำมาก/เฝ้าระวัง · แดง=น้ำล้น/วิกฤต */
 /* % = ปริมาณน้ำท่า (Q/Qmax ความจุลำน้ำ) ตามรายงาน EWI — ไม่ใช่ % ความจุจากระดับน้ำ */
 const BOT_REGIONAL_BANDS = ["≤ 30% น้ำท่า · น้ำน้อย · ปกติ", "> 30–70% น้ำท่า · น้ำปกติ · ปกติ", "> 70–100% น้ำท่า · น้ำมาก · เฝ้าระวัง", "> 100% น้ำท่า · น้ำล้น · วิกฤต"];
-/* เกณฑ์ฝนรายชั่วโมง — ใช้เฉพาะ สนญ. (กรณีน้ำขังในพื้นที่) ไม่ใช้ทริกเกอร์พื้นที่อื่น */
+/* เกณฑ์ฝนรายชั่วโมง — ทริกเกอร์สีพื้นที่เฉพาะ สนญ. · พื้นที่อื่นแสดงในหน้ารายละเอียดเท่านั้น */
 const BOT_RAIN_TH = [50, 80, 120];
 const BOT_RAIN_BANDS = ["< 50 ไม่มีน้ำท่วมขัง · ปกติ","≥ 50 เริ่มมีน้ำสะสมที่สนามหญ้า · ปกติ","≥ 80 น้ำสะสมที่สนามหญ้า > 30 ซม. · เฝ้าระวัง","≥ 120 ต่อเนื่อง > 60 นาที · วิกฤต"];
 const rainBotKey = id => id === "hq" ? "phranakhon_rain" : id + "_rain";
+/** ฝนในเขตพื้นที่ตั้ง — คัดสถานีตาม amphoe/areaMatch ก่อน แล้วค่อยรัศมี */
 const RAIN_SITE_SPEC = {
-  hq: { label: "ปริมาณน้ำฝนที่ตกในเขตพระนคร", where: "เขตพระนคร · วัดเป็นรายชั่วโมง · กรณีน้ำขังในพื้นที่", amphoe: null, radiusKm: 10 },
+  hq:  { label: "ปริมาณน้ำฝนที่ตกในเขตพระนคร", short: "เขตพระนคร", where: "เขตพระนคร · วัดเป็นรายชั่วโมง · กรณีน้ำขังในพื้นที่", amphoe: null, areaMatch: "พระนคร", radiusKm: 10 },
+  ipd: { label: "ปริมาณน้ำฝนที่ตกในอ.นครชัยศรี", short: "อ.นครชัยศรี", where: "อ.นครชัยศรี · วัดเป็นรายชั่วโมง", amphoe: "นครชัยศรี", radiusKm: 15 },
+  cnx: { label: "ปริมาณน้ำฝนที่ตกในอ.เมืองเชียงใหม่", short: "อ.เมืองเชียงใหม่", where: "อ.เมืองเชียงใหม่ · วัดเป็นรายชั่วโมง", amphoe: "เมืองเชียงใหม่", radiusKm: 15 },
+  kkn: { label: "ปริมาณน้ำฝนที่ตกในอ.เมืองขอนแก่น", short: "อ.เมืองขอนแก่น", where: "อ.เมืองขอนแก่น · วัดเป็นรายชั่วโมง", amphoe: "เมืองขอนแก่น", radiusKm: 15 },
+  hdy: { label: "ปริมาณน้ำฝนที่ตกในอ.หาดใหญ่", short: "อ.หาดใหญ่", where: "อ.หาดใหญ่ · วัดเป็นรายชั่วโมง", amphoe: "หาดใหญ่", radiusKm: 15 },
+  ryg: { label: "ปริมาณน้ำฝนที่ตกในอ.เมืองระยอง", short: "อ.เมืองระยอง", where: "อ.เมืองระยอง · วัดเป็นรายชั่วโมง", amphoe: "เมืองระยอง", radiusKm: 15 },
+  phs: { label: "ปริมาณน้ำฝนที่ตกในอ.เมืองพิษณุโลก", short: "อ.เมืองพิษณุโลก", where: "อ.เมืองพิษณุโลก · วัดเป็นรายชั่วโมง", amphoe: "เมืองพิษณุโลก", radiusKm: 15 },
+  ubn: { label: "ปริมาณน้ำฝนที่ตกในอ.เมืองอุบลราชธานี", short: "อ.เมืองอุบลราชธานี", where: "อ.เมืองอุบลราชธานี · วัดเป็นรายชั่วโมง", amphoe: "เมืองอุบลราชธานี", radiusKm: 15 },
+  nrm: { label: "ปริมาณน้ำฝนที่ตกในอ.เมืองนครราชสีมา", short: "อ.เมืองนครราชสีมา", where: "อ.เมืองนครราชสีมา · วัดเป็นรายชั่วโมง", amphoe: "เมืองนครราชสีมา", radiusKm: 15 },
+  urt: { label: "ปริมาณน้ำฝนที่ตกในอ.เมืองสุราษฎร์ธานี", short: "อ.เมืองสุราษฎร์ธานี", where: "อ.เมืองสุราษฎร์ธานี · วัดเป็นรายชั่วโมง", amphoe: "เมืองสุราษฎร์ธานี", radiusKm: 15 },
 };
 const rainPoint = id => {
   const spec = RAIN_SITE_SPEC[id];
@@ -1002,6 +1051,12 @@ const BOT_TRIGGERS = {
     regionalPoint("บ้านเคียนซา", "อ.เคียนซา · น้ำเหนือตาปี", "X.217", {impact:"upstream", leadH:30, lead:"1–1.5 วัน"}),
     regionalPoint("บ้านท่าข้าม", "อ.พุนพิน · ใกล้ที่ตั้ง ศสร.", "X.5C", {impact:"local", leadH:9, lead:"6–12 ชม."})]},
 };
+/* ฝนในเขตพื้นที่ตั้งทุกที่ — สนญ. ใช้ทริกเกอร์สี (local) · ที่อื่นแสดงอย่างเดียว (upstream) */
+for(const [id, cfg] of Object.entries(BOT_TRIGGERS)){
+  if((cfg.ind || []).some(i => i.rainHint)) continue;
+  const rp = rainPoint(id);
+  if(rp) cfg.ind.push(Object.assign(rp, {impact: "upstream"}));
+}
 
 /** จุดวัด/ฝนตามรูปแบบรายงาน EWI (ตาราง Q · ม.รทก. · % น้ำท่า + ฝนสะสม) */
 const SITE_EWI = {
@@ -1499,26 +1554,48 @@ const LIVE_BOT = {
     return a ? {value: num(a.msl), time: a.time, live: true, note: "ค่าแทนจากสถานี C.12 กรมชลประทานสามเสน (เจ้าพระยา ห่าง สนญ. ~2 กม.)"} : null;
   },
 };
-/* ฝนรายชั่วโมง — เฉพาะ สนญ. (ทริกเกอร์น้ำขังในพื้นที่) */
-LIVE_BOT.phranakhon_rain = () => {
-  const spec = RAIN_SITE_SPEC.hq;
-  const radius = spec.radiusKm;
-  const list = (onwr && onwr.rain && onwr.rain.near && onwr.rain.near.hq || [])
-    .filter(x => x.km <= radius && num(x.h1) !== null);
+/** ฝน 1 ชม. ในเขตพื้นที่ตั้ง — คัด amphoe/areaMatch ก่อน แล้วค่อยรัศมี (เหมือน สนญ.) */
+function liveSiteRain(id){
+  const spec = RAIN_SITE_SPEC[id];
+  if(!spec) return null;
+  const radius = spec.radiusKm || 15;
+  const near = (onwr && onwr.rain && onwr.rain.near && onwr.rain.near[id]) || [];
+  const withH1 = near.filter(x => x.km <= radius && num(x.h1) !== null);
+  const place = spec.short || spec.amphoe || spec.areaMatch || "";
+  const matchPlace = x => {
+    const needle = spec.amphoe || spec.areaMatch;
+    if(!needle) return true;
+    return (x.amphoe || "").includes(needle)
+      || (x.area || "").includes(needle)
+      || (x.name || "").includes(needle);
+  };
+  let list = withH1;
+  let noteExtra = "";
+  if(spec.amphoe || spec.areaMatch){
+    const matched = withH1.filter(matchPlace);
+    if(matched.length) list = matched;
+    else noteExtra = place ? ` — ไม่มีสถานีใน${place} ใช้รัศมี ${radius} กม.` : "";
+  }
   if(!list.length){
-    const r = liveRain("hq", radius);
+    const r = liveRain(id, radius);
     if(!r || !r.h1) return null;
     return {
       value: num(r.h1.h1), time: r.h1.time, live: true,
-      note: `ฝน 1 ชม. ล่าสุด สูงสุดจาก ${r.n} สถานีรัศมี ${radius} กม. (${r.h1.name} ${fmt1(r.h1.km)} กม.) — ไม่มีสถานีในเขตพระนคร`,
+      note: `ฝน 1 ชม. ล่าสุด สูงสุดจาก ${r.n} สถานีรัศมี ${radius} กม. (${r.h1.name} ${fmt1(r.h1.km)} กม.)${noteExtra}`,
     };
   }
   const top = list.reduce((m, x) => (!m || x.h1 > m.h1 ? x : m), null);
+  const scope = (spec.amphoe || spec.areaMatch) && !noteExtra ? `ใน${place}` : `รัศมี ${radius} กม.`;
   return {
     value: num(top.h1), time: top.time, live: true,
-    note: `ฝน 1 ชม. ล่าสุด สูงสุดจาก ${list.length} สถานีรัศมี ${radius} กม. (${top.name} ${fmt1(top.km)} กม.) — ไม่มีสถานีในเขตพระนคร`,
+    note: `ฝน 1 ชม. ล่าสุด สูงสุดจาก ${list.length} สถานี${scope} (${top.name} ${fmt1(top.km)} กม.)${noteExtra}`,
   };
-};
+}
+LIVE_BOT.phranakhon_rain = () => liveSiteRain("hq");
+for(const id of Object.keys(RAIN_SITE_SPEC)){
+  if(id === "hq") continue;
+  LIVE_BOT[id + "_rain"] = () => liveSiteRain(id);
+}
 
 const $ = s => document.querySelector(s);
 const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
@@ -2360,8 +2437,8 @@ function impactScaleHtml(item, opts){
 }
 
 /** แถบความเห็น — สเกลแนวนอน (น้ำ+ฝน) ซ้าย · วิเคราะห์/ความเห็น ขวา */
-/** การ์ดรายละเอียด: ภาพไม้บรรทัดซ้าย · ความเห็น/รายละเอียดขวา */
-function detailGaugeCard({role, roleLabel, icon, title, headline, value, unit, th, gt, status, time, meta, sideTitle, sideHtml, warnLv}){
+/** การ์ดรายละเอียด: ภาพไม้บรรทัดซ้าย · ความเห็น/รายละเอียดขวา · headRight = สีพื้นที่/แนวโน้มบนหัว */
+function detailGaugeCard({role, roleLabel, icon, title, headline, value, unit, th, gt, status, time, meta, sideTitle, sideHtml, warnLv, headRight}){
   const st = status >= 0 ? status : -1;
   const headLv = warnLv != null && warnLv >= 0 ? warnLv : st;
   const unitShort = unit === "ลบ.ม./วินาที" || unit === "ลบ.ม./วิ." ? ""
@@ -2375,13 +2452,13 @@ function detailGaugeCard({role, roleLabel, icon, title, headline, value, unit, t
   const uLab = unit === "ลบ.ม./วินาที" || unit === "ลบ.ม./วิ." ? "ลบ.ม./วิ." : (unit || "");
   const roleCls = role === "up" ? "up" : (role === "rain" ? "rain" : "loc");
   const roleIco = role === "up" ? ICO.flow : (role === "rain" ? ICO.rain : ICO.pin);
-  /* ไม่ใส่ป้ายสีบนหัวการ์ด — สีอยู่ที่ไม้บรรทัด / เส้นทางแนวโน้มด้านขวา */
   return `<div class="ostory" data-s="${headLv}">
     <div class="ostory-h">
       <div class="lead">
         <span class="bell">${icon || (role === "rain" ? ICO.rain : ICO.water)}</span>
         <div><b><span class="role-badge ${roleCls}">${roleIco}${esc(roleLabel || "")}</span>${esc(headline || title || "")}</b></div>
       </div>
+      ${headRight ? `<div class="head-right">${headRight}</div>` : ""}
     </div>
     <div class="ostory-body with-gauge">
       <div class="oscales gauge-pane">
@@ -2517,7 +2594,43 @@ function detailUpstreamRows(siteId, opts){
 }
 const METRIC_LABEL = {runoff: "% น้ำท่า (Q/Qmax)", runoffEst: "≈ % น้ำท่า (ประมาณจากระดับน้ำ)", cap: "% ความจุลำน้ำ (ระดับเทียบตลิ่ง)", dam: "% ความจุอ่าง"};
 const METRIC_SHORT = {runoff: "น้ำท่า", runoffEst: "น้ำท่า", cap: "ความจุ", dam: "อ่าง"};
-/** การ์ดรายละเอียด: (1) จุดที่ตั้ง+ความเห็น (2) น้ำเหนือ1–3 (3) ฝนสะสม · สนญ. +ฝน/ชม. */
+/** ข้อความเกณฑ์ย่อสำหรับ tooltip ไอคอนธง */
+function shortCriteriaLabels(th, unit, gt){
+  const t = th || [30, 70, 100];
+  const u = /มม/.test(String(unit || "")) ? " มม." : (unit === "%" || unit === "ม." || unit === "ม.รทก." ? (unit === "ม.รทก." ? " ม." : ` ${unit}`) : (unit ? ` ${unit}` : ""));
+  const ge = gt ? ">" : "≥";
+  const lt = gt ? "≤" : "<";
+  const f = v => (Number.isInteger(v) ? String(v) : fmt1(v));
+  return [`${lt}${f(t[0])}${u}`, `${ge}${f(t[0])}${u}`, `${ge}${f(t[1])}${u}`, `${ge}${f(t[2])}${u}`];
+}
+/** แผงเมตริกในกร์ดแนวโน้มรวม (น้ำหรือฝน) — ฝน: เกณฑ์ย่อที่ไอคอนธง */
+function trendMetricPane({role, roleLabel, title, value, unit, th, gt, status, time, meta}){
+  const st = status >= 0 ? status : -1;
+  const unitShort = unit === "ลบ.ม./วินาที" || unit === "ลบ.ม./วิ." ? ""
+    : (unit === "ม.รทก." ? "ม." : (/มม/.test(String(unit || "")) ? "มม." : (unit === "%" ? "%" : (unit || ""))));
+  const bands = th || [30, 70, 100];
+  const max = Math.max(bands[2] * 1.25, (typeof value === "number" ? value : 0) * 1.1, unit === "%" ? 120 : bands[2], /มม/.test(String(unit||"")) ? 40 : 0);
+  const rainCrit = role === "rain";
+  const gauge = flagGauge({
+    value: typeof value === "number" ? value : null, th: bands, max, unit: unitShort, gt: Boolean(gt), status: st,
+    bandLabels: rainCrit ? shortCriteriaLabels(bands, "มม.", false) : null,
+  });
+  const valTxt = typeof value !== "number"
+    ? `<span style="color:var(--muted)">รอข้อมูล</span>`
+    : (unitShort === "" ? fmtInt(value) : (/มม|%/.test(unitShort) || unit === "%" ? fmt1(value) : (Math.round(value * 100) / 100).toFixed(2)));
+  const uLab = unit === "ลบ.ม./วินาที" || unit === "ลบ.ม./วิ." ? "ลบ.ม./วิ." : (unit || "");
+  const roleCls = role === "rain" ? "rain" : "loc";
+  const roleIco = role === "rain" ? ICO.rain : ICO.pin;
+  return `<div class="trend-metric${role === "rain" ? " rain-pane" : ""}" data-s="${st}">
+    <div class="tm-label"><span class="role-badge ${roleCls}">${roleIco}${esc(roleLabel || "")}</span></div>
+    <div class="tm-title">${esc(title || "")}</div>
+    ${gauge}
+    <div class="metric-val" style="text-align:center;margin-top:4px">${valTxt}${typeof value === "number" && uLab ? `<small>${esc(uLab)}</small>` : ""}</div>
+    ${time || meta ? `<div class="tm-meta">${time ? esc(fmtTime(time)) : ""}${time && meta ? " · " : ""}${meta ? esc(String(meta)) : ""}</div>` : ""}
+  </div>`;
+}
+
+/** การ์ดรายละเอียด: (1) แนวโน้ม+ฝนรวมใบเดียว (2) น้ำเหนือ1–3 + ฝนสะสม */
 function detailStoryCards(site, o, st){
   const be = botEval(site.id);
   const locals = be ? partitionImpact(be.ev, e => e.ind).locals.filter(x => !isRainInd(x.ind)) : [];
@@ -2533,52 +2646,87 @@ function detailStoryCards(site, o, st){
   const when = /ภายใน\s*(\d+)\s*ชม/.exec(headline);
   const whenLabel = when ? `ภายใน ${when[1]} ชม.` : "ภายใน 72 ชม.";
   const nextLv = Math.max(st, Number(o.proj) || 0, o.f72 && Number.isFinite(o.f72.lvAssess) ? o.f72.lvAssess : st);
-  /* จุดเดียวที่บอกสีตอนนี้→คาด — ไม่ซ้ำป้ายสีที่หัวหน้า/หัวการ์ด */
-  const path = nextLv !== st
-    ? `<div class="path" aria-label="แนวโน้มสถานะ" style="margin-top:8px">
+  /* สีพื้นที่ — หัวการ์ดขวา แถวเดียวกับชื่อแนวโน้ม */
+  const pathHead = nextLv !== st
+    ? `<div class="path head-path" aria-label="แนวโน้มสถานะ">
         <div class="node"><small>ตอนนี้</small><span class="pill" data-s="${st}">${STATUS[st]}</span></div>
         <span class="arrow" title="${esc(whenLabel)}">${ICO.arrowR}</span>
         <div class="node"><small>${esc(whenLabel)}</small><span class="pill" data-s="${nextLv}">${STATUS[nextLv]}</span></div>
       </div>`
-    : `<div class="path" aria-label="สถานะพื้นที่" style="margin-top:8px">
+    : `<div class="path head-path" aria-label="สถานะพื้นที่">
         <div class="node"><small>สีพื้นที่</small><span class="pill" data-s="${st}">${STATUS[st]}</span></div>
       </div>`;
-  const sideLocal = `${uniq.length
+  const sideLocal = uniq.length
     ? uniq.slice(0, 4).map(t => `<div>${esc(t.slice(0, 220))}</div>`).join("")
-    : `<div>ยังไม่มีประเด็นเพิ่ม — ติดตามรอบถัดไป</div>`}${path}`;
+    : `<div>ยังไม่มีประเด็นเพิ่ม — ติดตามรอบถัดไป</div>`;
 
-  /* หัวการ์ดไม่ใส่ชื่อสี — สีอยู่ที่เส้นทางด้านขวาเท่านั้น */
   const cardHead = nextLv !== st
     ? (when ? `คาดการณ์ภายใน ${when[1]} ชม.` : "คาดการณ์ภายใน 72 ชม.")
     : (o.trend === "down" ? "แนวโน้มคลี่คลาย" : "แนวโน้ม 72 ชม.");
 
-  let cards = "";
+  /* แผงน้ำที่ตั้ง */
+  let waterPane = "";
   if(localEv){
     const ind = localEv.ind, e = localEv.item, v = e.r ? e.r.value : null;
-    cards += detailGaugeCard({
+    waterPane = trendMetricPane({
       role: "loc", roleLabel: "ที่ตั้ง",
-      icon: ICO.water, title: ind.label.replace(/^สถานี/, ""),
-      headline: cardHead,
+      title: ind.label.replace(/^สถานี/, ""),
       value: v, unit: ind.unit, th: ind.th, gt: ind.gt, status: e.s,
       time: e.r && e.r.time, meta: e.r && e.r.live ? "สด สทนช." : "เกณฑ์ ธปท.",
-      sideTitle: "วิเคราะห์ / ความเห็น", sideHtml: sideLocal, warnLv,
     });
   } else if(water){
-    cards += detailGaugeCard({
+    waterPane = trendMetricPane({
       role: "loc", roleLabel: "ที่ตั้ง",
-      icon: ICO.water, title: water.label,
-      headline: cardHead,
+      title: water.label,
       value: water.cur, unit: water.unit, th: water.th, gt: true, status: water.status,
       meta: water.where || "",
-      sideTitle: "วิเคราะห์ / ความเห็น", sideHtml: sideLocal, warnLv,
     });
   } else {
-    cards += `<div class="ostory"><div class="ostory-h"><div class="lead"><span class="bell">${ICO.alert}</span><div><b>${esc(cardHead)}</b></div></div></div>
-      <div class="ostory-body"><div class="oscales"><div class="tiny">รอข้อมูลจุดที่ตั้ง</div></div>
-      <aside class="ostory-side"><h4>วิเคราะห์ / ความเห็น</h4><div class="cm">${sideLocal}</div></aside></div></div>`;
+    waterPane = `<div class="trend-metric"><div class="tm-label"><span class="role-badge loc">${ICO.pin}ที่ตั้ง</span></div>
+      <div class="tm-title">รอข้อมูลจุดที่ตั้ง</div><div class="tiny" style="margin-top:12px;color:var(--muted)">ยังไม่มีค่าวัด</div></div>`;
   }
 
-  /* น้ำเหนือ + ฝนสะสม (+ ฝน/ชม. สนญ.) รวมแถวเดียวกัน */
+  /* แผงฝนในเขตพื้นที่ตั้ง — เกณฑ์ ธปท. อยู่ที่ไอคอนธงบนไม้บรรทัด (ชี้เพื่อดู) */
+  const rainH = be && be.ev.find(e => isRainInd(e.ind) && e.ind.rainHint);
+  const spec = RAIN_SITE_SPEC[site.id];
+  let rainPane = "";
+  if(rainH){
+    const ind = rainH.ind, v = rainH.r ? rainH.r.value : null;
+    rainPane = trendMetricPane({
+      role: "rain", roleLabel: "ฝน/ชม.",
+      title: (ind.label || "").replace(/^ปริมาณน้ำฝนที่ตกใน/, "ฝน "),
+      value: v, unit: ind.unit, th: ind.th, gt: ind.gt, status: rainH.s,
+      time: rainH.r && rainH.r.time,
+      meta: site.id === "hq" ? "ทริกเกอร์น้ำขัง" : (spec && spec.short ? spec.short : "เขตพื้นที่ตั้ง"),
+    });
+  } else if(spec){
+    rainPane = trendMetricPane({
+      role: "rain", roleLabel: "ฝน/ชม.",
+      title: `ฝน ${spec.short}`,
+      value: null, unit: "มม./ชม.", th: BOT_RAIN_TH, status: -1,
+      meta: "รอข้อมูล",
+    });
+  }
+
+  const headLv = warnLv >= 0 ? warnLv : st;
+  const trend = `<div class="ostory trend-combo" data-s="${headLv}">
+    <div class="ostory-h">
+      <div class="lead">
+        <span class="bell">${ICO.water}</span>
+        <div><b>${esc(cardHead)}</b></div>
+      </div>
+      <div class="head-right">${pathHead}</div>
+    </div>
+    <div class="trend-combo-body">
+      <div class="trend-metrics">${waterPane}${rainPane}</div>
+      <aside class="ostory-side">
+        <h4>วิเคราะห์ / ความเห็น</h4>
+        <div class="cm">${sideLocal}</div>
+      </aside>
+    </div>
+  </div>`;
+
+  /* น้ำเหนือ + ฝนสะสม 3 วัน รวมแถวเดียวกัน */
   let row = "";
   for(const u of detailUpstreamRows(site.id)){
     row += detailGaugeCard({
@@ -2610,24 +2758,8 @@ function detailStoryCards(site, o, st){
     sideTitle: "รายวัน", sideHtml: rainSide, warnLv: rStatus,
   });
 
-  if(site.id === "hq" && be){
-    const rainH = be.ev.find(e => isRainInd(e.ind) && e.ind.rainHint);
-    if(rainH){
-      const ind = rainH.ind, v = rainH.r ? rainH.r.value : null;
-      row += detailGaugeCard({
-        role: "rain", roleLabel: "ฝน/ชม.",
-        icon: ICO.rain, title: ind.label.replace(/^ปริมาณน้ำฝนที่ตกใน/, "ฝน "),
-        headline: "เขตพระนคร · สนญ.",
-        value: v, unit: ind.unit, th: ind.th, gt: ind.gt, status: rainH.s,
-        time: rainH.r && rainH.r.time, meta: "ทริกเกอร์น้ำขังในพื้นที่",
-        sideTitle: "เกณฑ์ ธปท.",
-        sideHtml: (ind.bands || []).map((t, i) => `<div><span class="mini" data-s="${i}">${STATUS[i]}</span> ${esc(t)}</div>`).join("")
-          || `<div>เกณฑ์ ${ind.th.join(" / ")} มม./ชม.</div>`,
-        warnLv: rainH.s,
-      });
-    }
-  }
-
+  let cards = "";
+  if(trend) cards += `<div class="detail-cards-row trend-row">${trend}</div>`;
   if(row) cards += `<div class="detail-cards-row">${row}</div>`;
   return `<div class="detail-cards">${cards}</div>`;
 }
@@ -2641,7 +2773,7 @@ function outlookStory(site, o, st){
  * opts.peak = ค่าสูงสุดบนสเกลเดียวกัน (ใช้ในแถบความเห็น)
  * opts.compact = ย่อสำหรับไทม์ไลน์รายรอบ 3 ชม.
  */
-function flagGauge({value, peak, th, max, unit, gt, status, compact, showBands}){
+function flagGauge({value, peak, th, max, unit, gt, status, compact, showBands, bandLabels}){
   const compactMode = Boolean(compact);
   const eps = unit === "%" || unit === "มม." || unit === "มม./ชม." ? 0.3 : 0.02;
   const hasPeak = typeof peak === "number" && Number.isFinite(peak) && (typeof value !== "number" || Math.abs(peak - value) > eps);
@@ -2701,8 +2833,17 @@ function flagGauge({value, peak, th, max, unit, gt, status, compact, showBands})
     ${waves}
   </svg>`;
 
+  const critRows = (bandLabels || []).map((t, i) =>
+    `<div class="cr"><span class="mini" data-s="${i}">${STATUS[i].replace(/^สี/, "")}</span><span>${esc(t)}</span></div>`
+  ).join("");
+  const critTip = critRows
+    ? `<div class="otip otip-crit" role="tooltip">${critRows}</div>`
+    : "";
+  const flagCls = critTip ? "gauge-flag has-tip" : "gauge-flag";
+  const flagTitle = critTip ? "เกณฑ์ ธปท." : stTitle;
+
   return `<div class="gauge-box${compactMode ? " compact" : ""}${dual ? " dual" : ""}" role="img" aria-label="${stTitle} · ปัจจุบัน ${label}${hasPeak ? " · สูงสุด " + peakLabel : ""}">
-    <span class="gauge-flag" data-s="${st}" title="${esc(stTitle)}">${ICO.flag}</span>
+    <span class="${flagCls}" data-s="${st}" tabindex="${critTip ? "0" : "-1"}" title="${esc(flagTitle)}" aria-label="${esc(flagTitle)}">${ICO.flag}${critTip}</span>
     ${svg}
     ${hasPeak ? `<div class="gauge-readout peak" style="top:${peakPct.toFixed(1)}%;color:var(--muted)"><i class="gl" aria-hidden="true"></i><span><span class="gn">${esc(peakLabel)}</span><span class="gtag">สูงสุด</span></span></div>` : ""}
     <div class="gauge-readout" style="top:${topPct.toFixed(1)}%;color:${stColor}">

@@ -18,7 +18,13 @@ export const PERMISSION_LEVEL_HINT: Record<PermissionLevel, string> = {
 
 /** key ต้องตรงกับ backend/src/lib/permissions.ts */
 export const PERMISSION_MODULES: { key: string; label: string; group: string; routePrefixes: string[]; exact?: string[] }[] = [
-  { key: "missions", label: "ภารกิจ เส้นทาง และรายงาน", group: "การปฏิบัติการ", routePrefixes: ["/missions", "/routes", "/reports"], exact: ["/"] },
+  { key: "overview_home", label: "ขนส่งธนบัตร", group: "สรุปภาพรวม", routePrefixes: [], exact: ["/"] },
+  { key: "overview_incidents", label: "เหตุการณ์ไม่ปกติ", group: "สรุปภาพรวม", routePrefixes: [], exact: ["/security-incidents/dashboard"] },
+  { key: "overview_os", label: "งานจ้าง OS", group: "สรุปภาพรวม", routePrefixes: [], exact: ["/os-outsourcing/dashboard"] },
+  { key: "overview_budget", label: "งบประมาณ", group: "สรุปภาพรวม", routePrefixes: ["/budget/overview"] },
+  { key: "water", label: "สถานการณ์น้ำ", group: "สรุปภาพรวม", routePrefixes: ["/water-situation"] },
+  { key: "executive", label: "รายงานผู้บริหาร", group: "สรุปภาพรวม", routePrefixes: ["/executive-report"] },
+  { key: "missions", label: "ภารกิจ เส้นทาง และรายงาน", group: "การปฏิบัติการ", routePrefixes: ["/missions", "/routes", "/reports"] },
   { key: "activities", label: "กิจกรรม", group: "การปฏิบัติการ", routePrefixes: ["/activities", "/tasks"] },
   { key: "incidents", label: "เหตุการณ์ไม่ปกติ", group: "การปฏิบัติการ", routePrefixes: ["/security-incidents"] },
   { key: "os", label: "งานจ้าง OS", group: "การปฏิบัติการ", routePrefixes: ["/os-outsourcing"] },
