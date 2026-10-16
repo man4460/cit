@@ -708,6 +708,16 @@ model RouteMaster {
 
   missions Mission[]
   places   RoutePlace[]
+  geometry RouteGeometry?
+}
+
+/// แนวเส้นทางบนแผนที่ — แยกตารางเพราะข้อมูลใหญ่ ไม่ให้ติดไปกับ include route
+model RouteGeometry {
+  routeId   String      @id
+  route     RouteMaster @relation(fields: [routeId], references: [id], onDelete: Cascade)
+  /// [[lat, lng], ...]
+  points    Json
+  updatedAt DateTime    @updatedAt
 }
 
 /// จุดบริการระหว่างเส้นทาง — ปั๊มน้ำมัน / ร้านซ่อม / ปะยาง / อื่นๆ
@@ -738,8 +748,25 @@ model RoutePlace {
   createdAt    DateTime    @default(now())
   updatedAt    DateTime    @updatedAt
 
+  photos RoutePlacePhoto[]
+
   @@index([routeId])
   @@index([routeId, externalId])
+}
+
+/// รูปถ่ายจุดบริการ (เจ้าหน้าที่อัปโหลด) เช่น ทางเข้า ที่จอดรถใหญ่
+model RoutePlacePhoto {
+  id             String     @id @default(uuid())
+  placeId        String
+  place          RoutePlace @relation(fields: [placeId], references: [id], onDelete: Cascade)
+  /// พาธสัมพัทธ์ใต้โฟลเดอร์อัปโหลด
+  storedFilename String
+  originalName   String?
+  mimeType       String?
+  uploadedById   String?
+  createdAt      DateTime   @default(now())
+
+  @@index([placeId])
 }
 
 /// รหัสพื้นที่ / ศูนย์จัดการธนบัตร เช่น ศสร = สุราษฎร์ธานี — ใช้แปลงรหัสในเส้นทาง คำนวณระยะทาง และไฟล์ประกัน
