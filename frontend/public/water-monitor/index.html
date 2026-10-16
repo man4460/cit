@@ -4007,27 +4007,39 @@ function repHeadlines(list){
   }
   return out;
 }
-/* จุดวัดของพื้นที่สำหรับการ์ดรายงาน — main = จุดน้ำเสี่ยงสุด (ไม่ใช่ฝน) */
+/* จุดวัดของพื้นที่สำหรับการ์ดรายงาน — main = จุดกระทบที่ตั้ง (local) ตรงหน้าแรก ไม่ใช่น้ำเหนือ */
 function repPoints(id){
   const b = botEval(id);
   const ev = b ? b.ev.filter(x => x.r) : [];
   const risk = c => c.r.value / (c.ind.th[Math.min(Math.max(c.s, 0), 2)] || 1);
-  let items = [...ev].sort((a, c) => (c.s - a.s) || (risk(c) - risk(a))).map(e => {
+  const toItem = e => {
     const rain = isRainInd(e.ind);
     return {name: shortGaugeName(e.ind.label, rain), value: e.r.value, unit: e.ind.unit, th: e.ind.th,
       gt: Boolean(e.ind.gt), s: e.s, int: e.ind.int, time: e.r.time, rain, metric: e.ind.runoff ? "runoff" : null};
-  });
+  };
+  /* เลือกจุดหลักแบบเดียวกับ overviewFocusImpacts: local + ชนิดสเกลหน้าแรก (ม.รทก./% น้ำท่า) */
+  const kind = overviewScaleKind(id);
+  const locals = ev.filter(e => isLocalInd(e.ind) && !isRainInd(e.ind));
+  const preferred = kind === "msl" ? locals.filter(e => isMslInd(e.ind))
+    : kind === "pct" ? locals.filter(e => isPctInd(e.ind))
+    : locals;
+  const pool = preferred.length ? preferred : locals;
+  const localPick = [...pool].sort((a, c) =>
+    Number(isQtyInd(a.ind)) - Number(isQtyInd(c.ind)) || (c.s - a.s) || (risk(c) - risk(a))
+  )[0];
+  let main = localPick ? toItem(localPick) : null;
+  let items = ev.map(toItem);
   if(!items.length) items = siteGauges(id).filter(g => g.value !== null).map(g => ({
     name: g.short || g.name, value: g.value, unit: g.unit, th: g.th, gt: g.gt, s: g.s, int: g.int, time: g.time, rain: g.rain,
     metric: g.unit === "%" ? "cap" : null}));
-  const main = items.find(x => !x.rain) || items[0] || null;
+  if(!main) main = items.find(x => !x.rain) || items[0] || null;
   /* น้ำเหนือ 1–3 · ตัดจุดหลักของการ์ดออกก่อน แล้วเติมจาก UPSTREAM ให้ครบ */
   const ups = detailUpstreamRows(id, {exclude: main ? [main.name] : [], want: 3})
     .filter(u => typeof u.value === "number")
     .map(u => ({name: u.title.replace(/\s*\(% ความจุอ่าง\)$/, ""), value: u.value, unit: u.unit, th: u.th, gt: u.gt, s: u.status, upNo: u.upNo,
       metric: u.metric, lead: String(u.lead || "").split(" · ")[0]}));
   if(ups.length) return {main, others: ups, upstream: true};
-  return {main, others: items.filter(x => x !== main).slice(0, 3), upstream: false};
+  return {main, others: items.filter(x => x !== main && !x.rain).slice(0, 3), upstream: false};
 }
 const repVal = (v, g) => g.int ? fmtInt(v) : g.unit === "%" ? fmt1(v) : /มม/.test(String(g.unit || "")) ? fmt1(v) : (Math.round(v * 100) / 100).toFixed(2);
 const repUnit = u => u === "ลบ.ม./วินาที" ? "ลบ.ม./วิ." : (u || "");
@@ -4080,7 +4092,10 @@ function repGauge(ctx, x, y, h, g){
 }
 function repCard(ctx, cx, cy, cw, ch, s, o){
   const lv = o.s;
-  ctx.fillStyle = "#fff"; ctx.strokeStyle = REP.line; ctx.lineWidth = 1;
+  /* การ์ดทุกสีแบบเดียวกัน: พื้นขาว ขอบเทา · แถบสีเฉพาะด้านบน */
+  ctx.fillStyle = "#fff";
+  ctx.strokeStyle = REP.line;
+  ctx.lineWidth = 1;
   ctx.beginPath(); ctx.roundRect(cx, cy, cw, ch, 14); ctx.fill(); ctx.stroke();
   ctx.fillStyle = lv >= 0 ? REP.s[lv] : REP.muted;
   ctx.beginPath(); ctx.roundRect(cx, cy, cw, 7, [14, 14, 0, 0]); ctx.fill();
@@ -4173,14 +4188,28 @@ function repCard(ctx, cx, cy, cw, ch, s, o){
 }
 async function buildReport(){
   try{ await Promise.all([document.fonts.load(`400 16px ${REP.font}`), document.fonts.load(`700 16px ${REP.font}`)]); }catch(e){}
-  const list = sortedSites().map(s => ({s, o: outlook(s.id)}));
+  const raw = sortedSites().map(s => ({s, o: outlook(s.id), st: sOf(s.id)}));
+  /* โฟกัสแดง/ส้ม/เหลืองก่อน · สีเขียว/รอข้อมูลอยู่ล่าง */
+  const byRisk = (a, b) => (b.st - a.st) || (a.s.no - b.s.no);
+  const focusList = raw.filter(x => x.st >= 1).sort(byRisk);
+  const calmList = raw.filter(x => x.st < 1).sort((a, b) => a.s.no - b.s.no);
+  const list = [...focusList, ...calmList];
   const {W, pad} = REP, inner = W - pad * 2, scale = 2;
   const meas = document.createElement("canvas").getContext("2d");
   meas.font = `500 18px ${REP.font}`;
   const heads = repHeadlines(list).map(([lv, t]) => ({lv, lines: repWrap(meas, t, inner - 70)}));
   const headH = 64 + heads.reduce((a, h) => a + h.lines.length * 28 + 10, 0);
-  const perRow = 5, gap = 16, cardH = 556, rows = Math.ceil(list.length / perRow);
-  const gridH = rows * cardH + (rows - 1) * gap;
+  const gap = 16, secGap = 28, secLabelH = 36;
+  const focusPer = Math.min(4, Math.max(1, focusList.length));
+  const calmPer = 5;
+  const focusCardH = 556, calmCardH = 556;
+  const focusRows = focusList.length ? Math.ceil(focusList.length / focusPer) : 0;
+  const calmRows = calmList.length ? Math.ceil(calmList.length / calmPer) : 0;
+  const focusGridH = focusRows ? focusRows * focusCardH + (focusRows - 1) * gap : 0;
+  const calmGridH = calmRows ? calmRows * calmCardH + (calmRows - 1) * gap : 0;
+  const focusBlock = focusList.length ? secLabelH + focusGridH : 0;
+  const calmBlock = calmList.length ? (focusList.length ? secGap : 0) + secLabelH + calmGridH : 0;
+  const gridH = focusBlock + calmBlock;
   const H = 128 + 26 + 118 + 26 + headH + 26 + gridH + 56 + 96;
   const cv = document.createElement("canvas");
   cv.width = W * scale; cv.height = H * scale;
@@ -4236,15 +4265,37 @@ async function buildReport(){
     hy += h.lines.length * 28 + 10;
   }
 
-  /* การ์ดรายพื้นที่ พร้อมไม้วัดระดับน้ำ */
+  /* การ์ดรายพื้นที่ — โฟกัสสีแดง/ส้ม/เหลือง · ล่างสีเขียวปกติ */
   y += headH + 26;
-  const cw = (inner - (perRow - 1) * gap) / perRow;
-  list.forEach((x, i) => {
-    repCard(ctx, pad + (i % perRow) * (cw + gap), y + Math.floor(i / perRow) * (cardH + gap), cw, cardH, x.s, x.o);
-  });
+  const drawSec = (title, items, perRow, cardH, focusTitle) => {
+    if(!items.length) return;
+    ctx.font = `700 16px ${REP.font}`;
+    ctx.fillStyle = focusTitle ? REP.navy : REP.muted;
+    ctx.fillText(title, pad, y + 22);
+    y += secLabelH;
+    const cw = (inner - (perRow - 1) * gap) / perRow;
+    items.forEach((x, i) => {
+      const col = i % perRow, row = Math.floor(i / perRow);
+      repCard(ctx, pad + col * (cw + gap), y + row * (cardH + gap), cw, cardH, x.s, x.o);
+    });
+    y += Math.ceil(items.length / perRow) * cardH + (Math.ceil(items.length / perRow) - 1) * gap;
+  };
+  drawSec(
+    focusList.length
+      ? `โฟกัสเฝ้าระวัง · สีแดง / ส้ม / เหลือง (${focusList.length})`
+      : "",
+    focusList, focusPer, focusCardH, true
+  );
+  if(focusList.length && calmList.length) y += secGap;
+  drawSec(
+    calmList.length
+      ? `ปกติ · สีเขียว${calmList.some(x => x.st < 0) ? " / รอข้อมูล" : ""} (${calmList.length})`
+      : "",
+    calmList, calmPer, calmCardH, false
+  );
 
   /* ท้ายรายงาน */
-  y += gridH + 56;
+  y += 56;
   ctx.font = `400 13.5px ${REP.font}`; ctx.fillStyle = REP.muted;
   ctx.fillText("ไม้วัดระดับ: พื้นทึบสีตามธงค่าปัจจุบัน · น้ำทึบถึงระดับวัด · ลูกศร = ค่าปัจจุบัน · ขีดข้าง = เกณฑ์ ธปท.", pad, y - 22);
   ctx.fillText("เกณฑ์สถานะ: ทุกพื้นที่ใช้เกณฑ์ ธปท. (9 ต.ค. 2569) · ศูนย์จัดการธนบัตร 5 แห่งใช้เกณฑ์ % น้ำท่า (Q/Qmax) แบบ EWI สนภ. กับสถานีใกล้ที่ตั้ง · ≈ = ประมาณ % น้ำท่าจากระดับน้ำ (Manning) เฉพาะสถานีที่ไม่มีอัตราการไหล · คาดการณ์ 72 ชม. จากข้อมูลรายชั่วโมงย้อนหลัง 7 วัน", pad, y);
