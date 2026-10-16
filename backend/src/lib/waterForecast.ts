@@ -128,8 +128,23 @@ const UP: Record<string, Up[]> = {
   phs: [up("บ้านหาดสองแคว (N.60)", 42), up("พิชัย", 24), up("นครไทย", 30), up("อ.วัดโบสถ์ (N.22A)", 10), up("ท้ายเขื่อนนเรศวร", 9)],
   ubn: [up("บ้านสีถาน", 60), up("บ้านเขื่องใน", 30), up("เขื่องใน", 24), up("บ้านป่าก่อ", 24)],
   nrm: [up("บ้านลาดบัวขาว", 18)],
-  urt: [up("บ้านย่านดินแดง", 60), up("บ้านเคียนซา", 30), up("ท่าขนอม", 24), up("พุนพิน 2", 9)],
+  urt: [up("ท่าขนอม", 24), up("บ้านย่านดินแดง", 60), up("บ้านเคียนซา", 30), up("บ้านท่าข้าม", 9)],
 };
+
+/** เกณฑ์ฝนรายชั่วโมง — ชุดเดียวกับ สนญ. (50 / 80 / 120 มม./ชม.) ใช้ทุกพื้นที่ */
+const RAIN_TH: [number, number, number] = [50, 80, 120];
+const rainHourInd = (id: string, label = "ฝน 1 ชม. ใกล้ที่ตั้ง", manualKey?: string): Ind => ({
+  label,
+  unit: "มม./ชม.",
+  field: "q",
+  th: RAIN_TH,
+  src: {},
+  up: [],
+  rain: "none",
+  forecastRain: true,
+  manualKey: manualKey ?? (id === "hq" ? "phranakhon_rain" : `${id}_rain`),
+  manualLabel: `${label} (เจ้าหน้าที่กรอก)`,
+});
 
 /** จุดวัดตามเกณฑ์ ธปท. (ตรงกับ BOT_TRIGGERS ในหน้าเว็บ) */
 const IND: Record<string, Ind[]> = {
@@ -153,7 +168,7 @@ const IND: Record<string, Ind[]> = {
       up: [up("ค่ายจิรประวัติ (C.2)", 66, "C.2"), up("ท้ายเขื่อนเจ้าพระยา (C.13)", 42, "C.13"), up("บ้านบางแก้ว (C.7A)", 30, "C.7A")],
       rain: "none",
     },
-    { label: "ฝน 1 ชม. เขตพระนคร", unit: "มม./ชม.", field: "q", th: [50, 80, 120], src: {}, up: [], rain: "none", forecastRain: true, manualKey: "phranakhon_rain", manualLabel: "ฝน 1 ชม. เขตพระนคร (เจ้าหน้าที่กรอก)" },
+    rainHourInd("hq", "ฝน 1 ชม. เขตพระนคร", "phranakhon_rain"),
     {
       label: "ระดับน้ำขึ้นสูงสุด ณ บก.ทร. (C.12)",
       unit: "ม.รทก.",
@@ -168,13 +183,16 @@ const IND: Record<string, Ind[]> = {
       proxy: "C.12 สามเสนสูงสุด 24 ชม.",
     },
   ],
-  ipd: [{ label: "ท่าจีน สะพานนครชัยศรี", unit: "ม.รทก.", field: "msl", th: [2.5, 2.7, 3.0], src: { name: "สะพานนครชัยศรี" }, up: UP.ipd, rain: "msl" }],
+  ipd: [
+    { label: "ท่าจีน ที่ว่าการอ.นครชัยศรี (T.1)", unit: "ม.รทก.", field: "msl", th: [1.8, 2.0, 2.5], src: { name: "ที่ว่าการอ.นครชัยศรี" }, up: UP.ipd, rain: "msl" },
+  ],
   kkn: [pctInd("ลำน้ำพอง โรงเรียนลำน้ำพอง", REG, true, UP.kkn), pctInd("บ้านกุดกว้าง", REG, true, UP.kkn)],
   cnx: [pctInd("สะพานนวรัฐ", REG, true, UP.cnx), pctInd("สะพานวงแหวนรอบ 3", REG, true, UP.cnx), pctInd("บ้านแม่แต", REG, true, UP.cnx)],
   hdy: [pctInd("บ้านม่วงก็อง", REG, true, UP.hdy), pctInd("บ้านบางศาลา", REG, true, UP.hdy), pctInd("บ้านคลองหวะ", REG, true, UP.hdy)],
+  urt: [pctInd("ท่าขนอม", REG, true, UP.urt), pctInd("บ้านย่านดินแดง", REG, true, UP.urt), pctInd("บ้านเคียนซา", REG, true, UP.urt), pctInd("บ้านท่าข้าม", REG, true, UP.urt)],
 };
 
-/** พื้นที่ที่ ธปท. ยังไม่กำหนดจุดวัด ใช้เกณฑ์ % ความจุลำน้ำแบบ สนภ. (30/70/100) กับสถานีใกล้ที่ตั้ง */
+/** พื้นที่ที่ ธปท. ยังไม่กำหนดจุดวัด — ใช้เกณฑ์ % ปริมาณน้ำท่า (30/70/100) · ฝนรายชั่วโมงเฉพาะ สนญ. */
 const indFor = (id: string, gauges: string[]) => IND[id] ?? gauges.map((g) => pctInd(g, REG, true, UP[id] ?? []));
 
 /** เขื่อนที่ส่งผลต่อพื้นที่ — ใช้เตือนเมื่ออ่างเต็มและน้ำไหลเข้ามากกว่าระบาย */
@@ -227,10 +245,15 @@ async function series(src: Src, field: Field, onwr: OnwrData, load: Loader): Pro
   if (!g || !g.points.length) return null;
   const ground = g.ground ?? st.ground;
   const bank = g.minBank ?? st.minBank;
+  const qmax = st.qmax;
   const pts = g.points.flatMap((p) => {
     let v: number | null = p.msl;
     if (field === "q") v = p.q;
-    if (field === "pct") v = ground !== null && bank !== null && bank > ground ? ((p.msl - ground) / (bank - ground)) * 100 : null;
+    if (field === "pct") {
+      /* % ปริมาณน้ำท่า (Q/Qmax) ตามรายงาน EWI เท่านั้น — ไม่ใช้ % ความจุระดับน้ำ */
+      if (qmax != null && qmax > 0 && p.q != null) v = Math.round((p.q / qmax) * 1000) / 10;
+      else v = null;
+    }
     return v === null ? [] : [{ t: parseT(p.time), v }];
   });
   return pts.length ? pts.sort((a, b) => a.t - b.t) : null;

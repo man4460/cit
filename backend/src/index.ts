@@ -66,6 +66,7 @@ import { waterCctvRouter } from "./routes/waterCctv.js";
 import { waterOnwrRouter } from "./routes/waterOnwr.js";
 import { schedulePersonnelRetention } from "./lib/personnelRetention.js";
 import { startWaterReportScheduler } from "./lib/waterReport.js";
+import { startHistorySeed } from "./lib/waterHistorySeed.js";
 import { seedDocumentMasterData } from "./lib/seedDocumentMasters.js";
 import { seedFireExtinguisherData } from "./lib/seedFireExtinguishers.js";
 import { seedWeaponData } from "./lib/seedWeapons.js";
@@ -225,7 +226,9 @@ void ensureBootstrapAdmin()
   .then(() => seedInvestigationCategories())
   .then(() => seedOsAreaGroups())
   .then(() => seedActivityCategories())
-  .then(() => {
+  .then(async () => {
+    /* ขึ้น server ครั้งแรก: WATER_HISTORY_SEED=await ให้ดึงประวัติ 7 วันเข้า MySQL ก่อนรับ request */
+    await Promise.resolve(startHistorySeed());
     app.listen(port, host, () => {
       const hint = host === "0.0.0.0" ? "ทุก interface (LAN ใช้ http://<IP-เครื่องนี้>:" + port + ")" : host;
       console.log(`API listening on port ${port} — ${hint}`);

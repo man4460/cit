@@ -54,7 +54,9 @@
     "seed:vehicle2711-maint": "tsx scripts/seed-vehicle-2711-maintenance.ts",
     "migrate:permit-expiry": "tsx scripts/migrate-permit-expiry-from-notes.ts",
     "bootstrap:sync-username": "tsx scripts/sync-admin-username.ts",
-    "seed:library-scom-route": "tsx scripts/seed-library-scom-route.ts"
+    "seed:library-scom-route": "tsx scripts/seed-library-scom-route.ts",
+    "seed:water-history": "tsx scripts/seed-water-history.ts",
+    "check:water-rounds": "tsx scripts/check-water-rounds.ts"
   },
   "dependencies": {
     "@prisma/client": "^6.5.0",

@@ -1,4 +1,5 @@
 import { Router } from "express";
+import { enrichLevelsRunoff } from "../lib/waterRunoff.js";
 
 /** ข้อมูลสดจากคลังข้อมูลน้ำแห่งชาติ (nationalthaiwater.onwr.go.th ใช้ API ชุดเดียวกันนี้) */
 const SOURCE = "https://api-v3.thaiwater.net/api/v1/thaiwater30";
@@ -47,26 +48,36 @@ async function getJson(path: string): Promise<Json> {
 function compactLevels(rows: Json[]) {
   return rows
     .filter((w) => w?.station && num(w.station.tele_station_lat) !== null)
-    .map((w) => ({
-      id: num(w.station.id),
-      name: th(w.station.tele_station_name),
-      code: w.station.tele_station_oldcode ?? "",
-      ground: num(w.station.ground_level),
-      minBank: num(w.station.min_bank),
-      river: w.river_name ?? "",
-      amphoe: th(w.geocode?.amphoe_name).replace(/^อ\./, ""),
-      prov: th(w.geocode?.province_name),
-      area: th(w.geocode?.area_name),
-      agency: th(w.agency?.agency_shortname),
-      lat: num(w.station.tele_station_lat),
-      lon: num(w.station.tele_station_long),
-      msl: num(w.waterlevel_msl),
-      prev: num(w.waterlevel_msl_previous),
-      pct: num(w.storage_percent),
-      q: num(w.discharge),
-      bank: num(w.diff_wl_bank),
-      time: w.waterlevel_datetime ?? null,
-    }));
+    .map((w) => {
+      const q = num(w.discharge);
+      const qmax = num(w.station.qmax);
+      /** % ปริมาณน้ำท่า = Q ปัจจุบัน / ความจุลำน้ำ (qmax) — วิธีคิดตามรายงาน EWI */
+      const qPct =
+        q != null && qmax != null && qmax > 0 ? Math.round((q / qmax) * 1000) / 10 : null;
+      return {
+        id: num(w.station.id),
+        name: th(w.station.tele_station_name),
+        code: w.station.tele_station_oldcode ?? "",
+        ground: num(w.station.ground_level),
+        minBank: num(w.station.min_bank),
+        river: w.river_name ?? "",
+        amphoe: th(w.geocode?.amphoe_name).replace(/^อ\./, ""),
+        prov: th(w.geocode?.province_name),
+        area: th(w.geocode?.area_name),
+        agency: th(w.agency?.agency_shortname),
+        lat: num(w.station.tele_station_lat),
+        lon: num(w.station.tele_station_long),
+        msl: num(w.waterlevel_msl),
+        prev: num(w.waterlevel_msl_previous),
+        /** % ความจุจากระดับน้ำ (ท้องน้ำ–ตลิ่ง) — ใช้แผนที่ภาพรวม */
+        pct: num(w.storage_percent),
+        q,
+        qmax,
+        qPct,
+        bank: num(w.diff_wl_bank),
+        time: w.waterlevel_datetime ?? null,
+      };
+    });
 }
 
 function compactRain(rows: Json[]) {
@@ -75,6 +86,7 @@ function compactRain(rows: Json[]) {
     .map((r) => ({
       id: num(r.station.id),
       name: th(r.station.tele_station_name),
+      code: r.station.tele_station_oldcode ?? "",
       amphoe: th(r.geocode?.amphoe_name).replace(/^อ\./, ""),
       prov: th(r.geocode?.province_name),
       area: th(r.geocode?.area_name),
@@ -106,7 +118,14 @@ function compactRain(rows: Json[]) {
     p.count++;
     if (p.top.length < 3) p.top.push(r);
   }
-  return { stations: all.length, bands, top: sorted.slice(0, 20), near, byProv };
+  /** ดัชนีเต็มสำหรับตาราง EWI — near ตัดเหลือ 30 สถานี ทำให้สะเดา/พุนพินหลุดได้ */
+  const byCode: Record<string, (typeof all)[number]> = {};
+  const byName: Record<string, (typeof all)[number]> = {};
+  for (const r of all) {
+    if (r.code && !byCode[r.code]) byCode[r.code] = r;
+    if (r.name && !byName[r.name]) byName[r.name] = r;
+  }
+  return { stations: all.length, bands, top: sorted.slice(0, 20), near, byProv, byCode, byName };
 }
 
 function compactDams(rows: Json[]) {
@@ -259,7 +278,9 @@ async function build() {
     getJson("/public/thailand"),
     ridLowerChaoPhraya().catch(() => []),
   ]);
-  const levels = compactLevels(wl?.waterlevel_data?.data ?? nation?.waterlevel?.data?.data ?? []);
+  const rawLevels = compactLevels(wl?.waterlevel_data?.data ?? nation?.waterlevel?.data?.data ?? []);
+  /** เติม qPct = Q/Qmax เท่านั้น + proxy เมื่อไม่มีปริมาณน้ำท่า — ไม่ใช้ % ความจุระดับน้ำ */
+  const levels = enrichLevelsRunoff(rawLevels);
   return {
     source: "คลังข้อมูลน้ำแห่งชาติ (สทนช. / สสน.)",
     sourceUrl: "https://nationalthaiwater.onwr.go.th/",

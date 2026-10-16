@@ -18,9 +18,12 @@ const FRESH_S = 3 * 3600;
 const MAX_AGE_S = 48 * 3600;
 /** กล้องห่างกันไม่เกินนี้ถือว่าเป็นจุดเดียวกัน */
 const SAME_SPOT_KM = 0.03;
-/** กล้องที่เห็นลำน้ำ/จุดน้ำท่วม — ให้มาก่อนกล้องจราจร */
+/** กล้องที่เห็นลำน้ำ/จุดน้ำท่วม — ให้มาก่อนกล้องจราจร (ไม่นับแค่ชื่อ “สะพาน” เพราะมักเป็นทางหลวง) */
 const WATER_CAM =
-  /แม่น้ำ|คลอง|น้ำ|เขื่อน|ประตูระบาย|ปตร|สะพาน|อ่าว|ชายฝั่ง|River|Canal|Bridge|DWR|flood|climate|ทรัพยากรน้ำ|การระบายน้ำ|EGAT|กฟผ/i;
+  /แม่น้ำ|คลอง|เขื่อน|ประตูระบาย|ปตร|อ่าว|ชายฝั่ง|River|Canal|DWR|flood|climate|ทรัพยากรน้ำ|การระบายน้ำ|EGAT|กฟผ|น้ำน่าน|น้ำยม|น้ำแคว|ท่าจีน|เจ้าพระยา|ปิง|วัง|โขง|มูล|ชี|ตาปี|ลำตะคอง|ลำพระเพลิง|ลำน้ำ|ลำคัน|สะพานข้ามลำ|ปภ\.|ป้องกันและบรรเทา/i;
+/** แหล่ง/ชื่อที่เป็นทางหลวงหรือจราจร — ไม่จัดเป็นกล้องลำน้ำ เว้นแต่ชื่อชัดว่าเป็นแม่น้ำ/คลอง */
+const HIGHWAY_CAM =
+  /กรมทางหลวง|ทางหลวงชนบท|กล้องจราจร|จราจร|DOH|DRR|iTIC|มอเตอร์เวย์|ทางหลวงหมายเลข|ถนน|แยก|อินทร์|ทางแยก/i;
 
 /** แหล่งของ POPNIX (ตาม assets/js/cctv.js ของเว็บ) — ไม่รวม สำนักการระบายน้ำ กทม. ที่ไม่มีภาพใหม่ */
 const POPNIX_FEEDS = [
@@ -53,7 +56,12 @@ type Cam = {
 };
 
 const safeId = (s: string) => s.replace(/[^\w.-]/g, "_").slice(0, 70);
-const isWater = (...parts: (string | undefined)[]) => WATER_CAM.test(parts.filter(Boolean).join(" "));
+const isWater = (...parts: (string | undefined)[]) => {
+  const t = parts.filter(Boolean).join(" ");
+  if (!t) return false;
+  if (HIGHWAY_CAM.test(t) && !WATER_CAM.test(t)) return false;
+  return WATER_CAM.test(t);
+};
 const nowS = () => Date.now() / 1000;
 
 async function getJson<T>(url: string, ms = 20_000): Promise<T> {
@@ -108,7 +116,13 @@ async function fromPopnix(): Promise<Cam[]> {
           fresh: now - (c.img as number) < FRESH_S,
           at: c.img as number,
           snap: `${POPNIX}${f.path}${encodeURIComponent(String(c.id))}.jpg?t=${c.img}`,
-          water: isWater(c.name, c.detail, org) || f.key === "dwr" || f.key === "dds" || f.key === "nbi",
+          /* doh/drr/จราจร = ไม่นับลำน้ำอัตโนมัติ · dwr/dds = หน่วยงานน้ำ นับเป็นลำน้ำทั้งหมด */
+          water:
+            f.key === "dwr" || f.key === "dds" || f.key === "nbi"
+              ? true
+              : f.key === "doh" || f.key === "drr" || f.key === "bma" || f.key === "itic"
+                ? isWater(c.name, c.detail)
+                : isWater(c.name, c.detail, org),
         };
       }),
   );
@@ -199,6 +213,25 @@ async function cameras(): Promise<Cam[]> {
   }
 }
 
+/**
+ * คะแนนผลกระทบต่อที่ตั้ง ธปท. (สูง → แสดงก่อน)
+ * หลัก: ใกล้ที่ตั้งมาก = กระทบมาก · ลำน้ำหลักของพื้นที่ · หน่วยงานน้ำ · ภาพสด
+ */
+const AGENCY_WATER =
+  /กรมทรัพยากรน้ำ|การระบายน้ำ|กฟผ|EGAT|DWR|คลังข้อมูลน้ำ|สสน|ชลประทาน|เทศบาล.*climate|Hatyai City Climate|ปภ\.|ป้องกันและบรรเทา/i;
+function impactScore(c: Cam, dKm: number, focusWords: string[]): number {
+  const text = `${c.name} ${c.place} ${c.source}`;
+  let s = 0;
+  /* ใกล้ที่ตั้ง = ผลกระทบโดยตรง (0 กม. ≈ 120 · 100 กม. ≈ 0) */
+  s += Math.max(0, 120 - dKm * 1.2);
+  /* ลำน้ำหลักของพื้นที่ — คำแรกใน focus สำคัญกว่าคำถัดไป */
+  focusWords.forEach((w, i) => {
+    if (w && text.includes(w)) s += Math.max(8, 50 - i * 10);
+  });
+  if (AGENCY_WATER.test(text) || c.via === "คลังข้อมูลน้ำแห่งชาติ") s += 18;
+  if (c.fresh) s += 6;
+  return s;
+}
 const rank = (a: Cam, b: Cam) => Number(b.fresh) - Number(a.fresh) || Number(b.water) - Number(a.water);
 const out = (c: Cam) => ({
   id: c.id,
@@ -220,10 +253,19 @@ waterCctvRouter.get("/near", async (req, res, next) => {
     if (!Number.isFinite(lat) || !Number.isFinite(lon)) return res.status(400).json({ error: "lat/lon ไม่ถูกต้อง" });
     const n = Math.min(12, Math.max(1, Number(req.query.n) || 6));
     const radius = Math.min(100, Math.max(1, Number(req.query.km) || 30));
+    const waterOnly = req.query.water === "1" || req.query.water === "true";
+    const focusWords = String(req.query.focus ?? "")
+      .split(/[,|]/)
+      .map((w) => w.trim())
+      .filter(Boolean);
     const near = (await cameras())
       .map((c) => ({ c, d: km(lat, lon, c.lat, c.lng) }))
-      .filter((x) => x.d <= radius)
-      .sort((a, b) => rank(a.c, b.c) || a.d - b.d)
+      .filter((x) => x.d <= radius && (!waterOnly || x.c.water))
+      .sort((a, b) => {
+        const fa = impactScore(a.c, a.d, focusWords);
+        const fb = impactScore(b.c, b.d, focusWords);
+        return fb - fa || a.d - b.d || rank(a.c, b.c);
+      })
       .slice(0, n)
       .map(({ c, d }) => ({ ...out(c), km: Math.round(d * 10) / 10 }));
     res.set("Cache-Control", "no-store");

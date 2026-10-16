@@ -708,16 +708,6 @@ model RouteMaster {
 
   missions Mission[]
   places   RoutePlace[]
-  geometry RouteGeometry?
-}
-
-/// แนวเส้นทางบนแผนที่ — แยกตารางเพราะข้อมูลใหญ่ ไม่ให้ติดไปกับ include route
-model RouteGeometry {
-  routeId   String      @id
-  route     RouteMaster @relation(fields: [routeId], references: [id], onDelete: Cascade)
-  /// [[lat, lng], ...]
-  points    Json
-  updatedAt DateTime    @updatedAt
 }
 
 /// จุดบริการระหว่างเส้นทาง — ปั๊มน้ำมัน / ร้านซ่อม / ปะยาง / อื่นๆ
@@ -748,25 +738,8 @@ model RoutePlace {
   createdAt    DateTime    @default(now())
   updatedAt    DateTime    @updatedAt
 
-  photos RoutePlacePhoto[]
-
   @@index([routeId])
   @@index([routeId, externalId])
-}
-
-/// รูปถ่ายจุดบริการ (เจ้าหน้าที่อัปโหลด) เช่น ทางเข้า ที่จอดรถใหญ่
-model RoutePlacePhoto {
-  id             String     @id @default(uuid())
-  placeId        String
-  place          RoutePlace @relation(fields: [placeId], references: [id], onDelete: Cascade)
-  /// พาธสัมพัทธ์ใต้โฟลเดอร์อัปโหลด
-  storedFilename String
-  originalName   String?
-  mimeType       String?
-  uploadedById   String?
-  createdAt      DateTime   @default(now())
-
-  @@index([placeId])
 }
 
 /// รหัสพื้นที่ / ศูนย์จัดการธนบัตร เช่น ศสร = สุราษฎร์ธานี — ใช้แปลงรหัสในเส้นทาง คำนวณระยะทาง และไฟล์ประกัน
@@ -1965,4 +1938,29 @@ model OsContractDocument {
 
   @@unique([contractId, libraryDocumentId])
   @@index([libraryDocumentId])
+}
+
+/// รอบรายงานสถานการณ์น้ำ ธปท. (ทุก 3 ชม.) — เก็บใน MySQL
+model WaterRound {
+  id         String   @id @default(uuid())
+  /// เวลาเริ่มรอบ (UTC) — unique ต่อรอบ
+  roundAt    DateTime @unique
+  /// ป้ายรอบ เช่น "12:00 น. 16 ต.ค."
+  roundLabel String   @db.VarChar(64)
+  /// meta.updatedAt ของรายงาน
+  reportedAt DateTime
+  builtAt    DateTime?
+  note       String?  @db.Text
+  /// seed ประวัติ / รอบจริง
+  isSeed     Boolean  @default(false)
+  /// meta ทั้งก้อน (changes, warnings, agencies, …)
+  metaJson   Json
+  /// sites ทั้งก้อนตามพื้นที่
+  sitesJson  Json
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@index([reportedAt])
+  @@index([roundAt])
+  @@map("water_rounds")
 }

@@ -1,16 +1,25 @@
-import { promises as fs } from "fs";
 import path from "path";
 import { getOnwr, getRidSeries, SITE_POINTS, type OnwrData } from "../routes/waterOnwr.js";
 import { agencies, type AgencyData, type AgencyStatus } from "./waterAgencies.js";
 import { forecastLoader, forecastSite, type SiteForecast } from "./waterForecast.js";
 import { activeManual, MANUAL_KEYS, type ManualEntry, type ManualKey } from "./waterManual.js";
+import {
+  dbImportJsonIfEmpty,
+  dbPruneRounds,
+  dbReadLatest,
+  dbReadPrevious,
+  dbSaveReport,
+  parseReportTime,
+} from "./waterRoundsStore.js";
+import { findLevelForRunoff, runoffPctOf as runoffPctStrictOf } from "./waterRunoff.js";
 
 /** ค่าที่เจ้าหน้าที่กรอก (จุดวัด ธปท. สนญ.) ของรอบที่กำลังสร้าง — ใช้เป็นหลักแทนสถานีแทน */
 let manualNow: Partial<Record<ManualKey, ManualEntry>> = {};
 /** รูปแบบ sites.hq.bot ที่หน้าเว็บใช้เป็นค่าหลักของจุดวัด ธปท. */
 export const manualBot = (active: Partial<Record<ManualKey, ManualEntry>>) => {
   const out: Record<string, unknown> = {};
-  for (const [k, m] of Object.entries(active)) if (m) out[k] = { value: m.value, time: m.time, manual: true, by: m.by, note: m.note, at: m.at };
+  for (const [k, m] of Object.entries(active))
+    if (m) out[k] = { value: m.value, time: m.time, manual: true, by: m.by, note: m.note, at: m.at, photoUrl: m.photoUrl ?? null };
   return Object.keys(out).length ? out : undefined;
 };
 const manualLabel = (m: ManualEntry) => `ค่าวัดจริงที่เจ้าหน้าที่กรอก ${m.time.slice(11, 16)} น. ${Number(m.time.slice(8, 10))}/${Number(m.time.slice(5, 7))}`;
@@ -23,7 +32,8 @@ const ROUND_MS = 3 * 3600_000;
 const TZ_MS = 7 * 3600_000;
 /** เผื่อให้หน่วยงานต้นทางส่งข้อมูลชั่วโมงนั้นเข้าระบบก่อนดึง */
 const ROUND_DELAY_MS = 5 * 60_000;
-const KEEP_ROUNDS = 16;
+/** เก็บย้อนหลัง 7 วัน (รอบละ 3 ชม. = 8 รอบ/วัน × 7) */
+const KEEP_ROUNDS = 56;
 /** ไฟล์ที่เก่ากว่านี้ถือว่าไม่มีรอบรายงาน — สร้างรอบใหม่ทันที */
 const FILE_MAX_AGE_MS = ROUND_MS + 30 * 60_000;
 
@@ -31,8 +41,6 @@ export function dataFile(): string {
   const env = process.env.WATER_DATA_FILE?.trim();
   return env ? path.resolve(env) : path.join(process.cwd(), "data", "water-situation.json");
 }
-const roundsDir = () => path.join(path.dirname(dataFile()), "water-rounds");
-
 /** จังหวัด + สถานีใกล้ที่ตั้ง + จุดน้ำเหนือ (ชื่อตามคลังข้อมูลน้ำแห่งชาติ ต้องตรงกับ UPSTREAM ใน water-monitor/index.html) */
 const SITE_INFO: Record<string, { name: string; prov: string; gauges: string[]; upstream: string[] }> = {
   hq: {
@@ -56,43 +64,60 @@ const SITE_INFO: Record<string, { name: string; prov: string; gauges: string[]; 
   kkn: {
     name: "สภอ./ศขก.",
     prov: "ขอนแก่น",
-    gauges: ["เมืองขอนแก่น", "บ้านกุดกว้าง", "บ้านท่านางเลื่อน", "ชนบท"],
+    gauges: ["เมืองขอนแก่น", "บ้านกุดกว้าง"],
     upstream: ["บ้านท่าเม่า", "ลำน้ำพอง โรงเรียนลำน้ำพอง", "บ้านท่านางเลื่อน", "ชนบท"],
   },
   hdy: {
     name: "สภต./ศหญ.",
     prov: "สงขลา",
-    gauges: ["สะพานข้ามคลองอู่ตะเภา", "บ้านหาดใหญ่ใน", "บ้านม่วงก็อง", "สะเดา"],
-    upstream: ["สะเดา", "บ้านม่วงก็อง", "บ้านบางศาลา", "บ้านคลองหวะ"],
+    gauges: ["สะพานข้ามคลองอู่ตะเภา", "บ้านหาดใหญ่ใน", "บ้านบางศาลา", "บ้านคลองหวะ"],
+    upstream: ["สะเดา", "บ้านม่วงก็อง"],
   },
-  ryg: { name: "ศรย.", prov: "ระยอง", gauges: ["บ้านเขาโบสถ์", "บ้านเขาวังไทร", "บ้านค่าย"], upstream: ["หนองบัว", "บ้านค่าย"] },
+  ryg: {
+    name: "ศรย.",
+    prov: "ระยอง",
+    gauges: ["บ้านเขาโบสถ์"],
+    upstream: ["หนองบัว", "บ้านค่าย", "บ้านเขาวังไทร"],
+  },
   phs: {
     name: "ศพล.",
     prov: "พิษณุโลก",
-    gauges: ["สะพานสุพรรณกัลยา", "ท้ายเขื่อนนเรศวร", "คลองผันน้ำยม-น่าน4", "เมืองพิษณุโลก"],
+    gauges: ["สะพานสุพรรณกัลยา", "คลองผันน้ำยม-น่าน4", "เมืองพิษณุโลก"],
     upstream: ["บ้านหาดสองแคว (N.60)", "พิชัย", "นครไทย", "อ.วัดโบสถ์ (N.22A)", "ท้ายเขื่อนนเรศวร"],
   },
   ubn: {
     name: "ศอบ.",
     prov: "อุบลราชธานี",
-    gauges: ["แม่น้ำมูล เมืองอุบลราชธานี (M.7)", "สะพานเสรีประชาธิปไตย", "แม่น้ำมูล วัดปากโดม", "แม่น้ำมูล บ้านคันไร่"],
-    upstream: ["บ้านสีถาน", "บ้านเขื่องใน", "เขื่องใน", "บ้านป่าก่อ"],
+    gauges: ["แม่น้ำมูล เมืองอุบลราชธานี (M.7)", "สะพานเสรีประชาธิปไตย"],
+    upstream: ["บ้านสีถาน", "บ้านเขื่องใน", "เขื่องใน", "บ้านป่าก่อ", "แม่น้ำมูล วัดปากโดม", "แม่น้ำมูล บ้านคันไร่"],
   },
   nrm: {
     name: "ศนร.",
     prov: "นครราชสีมา",
-    gauges: ["ตำบลในเมือง", "บ้านลาดบัวขาว", "บ้านท่ามะปรางค์", "สำนักเทคโนโลยีชีวภัณฑ์สัตว์"],
+    gauges: ["ตำบลในเมือง", "สำนักเทคโนโลยีชีวภัณฑ์สัตว์"],
     upstream: ["บ้านท่ามะปรางค์", "สะพานน้ำลำตะคอง", "บ้านลาดบัวขาว"],
   },
   urt: {
     name: "ศสร.",
     prov: "สุราษฎร์ธานี",
-    gauges: ["พุนพิน 3", "บ้านท่าข้าม", "บ้านย่านดินแดง", "บ้านเคียนซา"],
-    upstream: ["บ้านย่านดินแดง", "บ้านเคียนซา", "ท่าขนอม", "พุนพิน 2"],
+    /* จุดที่ตั้ง = ท่าข้าม · แสดงสถานี EWI ครบในรายการน้ำ · สีพื้นที่ยังใช้เฉพาะจุด local ผ่าน botStatus */
+    gauges: ["บ้านท่าข้าม", "บ้านเคียนซา", "บ้านย่านดินแดง", "ท่าขนอม"],
+    upstream: ["ท่าขนอม", "บ้านย่านดินแดง", "บ้านเคียนซา"],
   },
 };
 
 type Forecast = { date: string; mm: number; maxHour: number };
+type Rain3d = { mm: number; days: { date: string; mm: number }[] };
+/** สถานีฝนตามรายงาน EWI (ศหญ./ศสร.) — ค่าหลัก = สะสม 3 วัน ณ พิกัดสถานี */
+const EWI_RAIN: Record<string, { code: string; name: string; altName?: string }[]> = {
+  hdy: [
+    { code: "SLA003", name: "สะเดา" },
+    { code: "NPCT", name: "อบต.พิจิตร" },
+  ],
+  /* รายงาน EWI เรียก «พุนพิน 1» — ในคลัง สทนช. มีพุนพิน 2 (TPI002) */
+  urt: [{ code: "TPI002", name: "พุนพิน 1", altName: "พุนพิน 2" }],
+};
+type EwiRainRow = { code: string; name: string; mm: number | null; mm24: number | null; time: string | null };
 type News = { title: string; url: string; source: string; date: string };
 type Level = OnwrData["levels"][number];
 type Gauge = {
@@ -103,8 +128,12 @@ type Gauge = {
   prev: number | null;
   runPrev: number | null;
   bank: number | null;
+  /** % ปริมาณน้ำท่า (Q/Qmax) เป็นหลัก — ไม่มีแล้วใช้ % ความจุระดับน้ำ */
   pct: number | null;
   q: number | null;
+  qmax?: number | null;
+  qPct?: number | null;
+  storagePct?: number | null;
   level: number | null;
   time: string | null;
 };
@@ -132,32 +161,110 @@ const cm = (m: number) => `${m >= 0 ? "+" : "−"}${Math.round(Math.abs(m) * 100
 
 /* ---------- แหล่งข้อมูลเพิ่มเติม ---------- */
 
-/** พยากรณ์ฝน 3 วันรายพื้นที่ (Open-Meteo — ไม่ต้องใช้คีย์) */
-async function forecasts(): Promise<Record<string, Forecast[]>> {
-  const ids = Object.keys(SITE_POINTS);
+/** พยากรณ์ฝน 3 วัน + ฝนสะสม 3 วันย้อนหลัง รายพื้นที่ (Open-Meteo — ไม่ต้องใช้คีย์) */
+type OmDaily = {
+  daily: { time: string[]; precipitation_sum: (number | null)[] };
+  hourly?: { time: string[]; precipitation: (number | null)[] };
+};
+
+async function openMeteoBatch(points: [number, number][], opts: { hourly: boolean }): Promise<OmDaily[]> {
+  if (!points.length) return [];
   const q = new URLSearchParams({
-    latitude: ids.map((id) => SITE_POINTS[id][0]).join(","),
-    longitude: ids.map((id) => SITE_POINTS[id][1]).join(","),
+    latitude: points.map((p) => p[0]).join(","),
+    longitude: points.map((p) => p[1]).join(","),
     daily: "precipitation_sum",
-    hourly: "precipitation",
     timezone: "Asia/Bangkok",
-    forecast_days: "3",
+    past_days: "3",
+    forecast_days: opts.hourly ? "3" : "0",
   });
+  if (opts.hourly) q.set("hourly", "precipitation");
   const r = await fetch(`https://api.open-meteo.com/v1/forecast?${q}`, { signal: AbortSignal.timeout(20_000) });
   if (!r.ok) throw new Error(`open-meteo ${r.status}`);
-  const j = (await r.json()) as Array<{
-    daily: { time: string[]; precipitation_sum: (number | null)[] };
-    hourly: { time: string[]; precipitation: (number | null)[] };
-  }>;
-  const out: Record<string, Forecast[]> = {};
+  const j = (await r.json()) as OmDaily | OmDaily[];
+  return Array.isArray(j) ? j : [j];
+}
+
+function rain3dFromDaily(d: OmDaily, today: string): Rain3d {
+  const daily = d.daily.time.map((date, k) => ({ date, mm: round1(d.daily.precipitation_sum[k] ?? 0) }));
+  const window = daily.filter((x) => x.date <= today).slice(-3);
+  return { mm: round1(window.reduce((a, x) => a + x.mm, 0)), days: window };
+}
+
+async function forecasts(): Promise<{ fc: Record<string, Forecast[]>; rain3d: Record<string, Rain3d> }> {
+  const ids = Object.keys(SITE_POINTS);
+  const j = await openMeteoBatch(
+    ids.map((id) => SITE_POINTS[id]),
+    { hourly: true },
+  );
+  const today = bkkIso(Date.now()).slice(0, 10);
+  const fc: Record<string, Forecast[]> = {};
+  const rain3d: Record<string, Rain3d> = {};
   ids.forEach((id, i) => {
     const d = j[i];
-    out[id] = d.daily.time.map((date, k) => ({
+    if (!d?.daily) {
+      fc[id] = [];
+      return;
+    }
+    const daily = d.daily.time.map((date, k) => ({
       date,
       mm: round1(d.daily.precipitation_sum[k] ?? 0),
-      maxHour: round1(Math.max(0, ...d.hourly.time.flatMap((t, h) => (t.startsWith(date) ? [d.hourly.precipitation[h] ?? 0] : [])))),
+      maxHour: round1(
+        Math.max(0, ...((d.hourly?.time ?? []).flatMap((t, h) => (t.startsWith(date) ? [d.hourly!.precipitation[h] ?? 0] : [])))),
+      ),
     }));
+    fc[id] = daily.filter((x) => x.date >= today).slice(0, 3);
+    rain3d[id] = rain3dFromDaily(d, today);
   });
+  return { fc, rain3d };
+}
+
+/** ฝนสะสม 3 วันรายสถานีตามรายงาน EWI (พิกัดจาก สทนช.) */
+async function ewiRainRows(onwr: OnwrData): Promise<Record<string, EwiRainRow[]>> {
+  const today = bkkIso(Date.now()).slice(0, 10);
+  const specs: { site: string; code: string; name: string; altName?: string; lat: number; lon: number; mm24: number | null; time: string | null }[] = [];
+  for (const [site, list] of Object.entries(EWI_RAIN)) {
+    for (const st of list) {
+      const hit =
+        onwr.rain.byCode[st.code] ||
+        onwr.rain.byName[st.name] ||
+        (st.altName ? onwr.rain.byName[st.altName] : undefined);
+      if (!hit) {
+        specs.push({ site, code: st.code, name: st.name, altName: st.altName, lat: NaN, lon: NaN, mm24: null, time: null });
+        continue;
+      }
+      specs.push({
+        site,
+        code: st.code,
+        name: st.name,
+        altName: st.altName,
+        lat: hit.lat,
+        lon: hit.lon,
+        mm24: hit.mm,
+        time: hit.time,
+      });
+    }
+  }
+  const pts = specs.filter((s) => Number.isFinite(s.lat) && Number.isFinite(s.lon));
+  let om: OmDaily[] = [];
+  try {
+    om = await openMeteoBatch(
+      pts.map((s) => [s.lat, s.lon]),
+      { hourly: false },
+    );
+  } catch {
+    om = [];
+  }
+  const out: Record<string, EwiRainRow[]> = {};
+  let oi = 0;
+  for (const s of specs) {
+    const row: EwiRainRow = { code: s.code, name: s.name, mm: null, mm24: s.mm24, time: s.time };
+    if (Number.isFinite(s.lat) && Number.isFinite(s.lon)) {
+      const d = om[oi++];
+      if (d?.daily) row.mm = rain3dFromDaily(d, today).mm;
+      else if (s.mm24 != null) row.mm = s.mm24;
+    }
+    (out[s.site] ??= []).push(row);
+  }
   return out;
 }
 
@@ -198,15 +305,55 @@ async function news(prov: string): Promise<News[]> {
 
 /* ---------- เกณฑ์ ธปท. (ต้องตรงกับ BOT_TRIGGERS / LIVE_BOT ใน water-monitor/index.html) ---------- */
 
-type BotInd = { label: string; unit: string; th: [number, number, number]; gt?: boolean; manual?: ManualKey; read: (o: OnwrData) => number | null };
-const regional = (station: string): BotInd => ({
+type BotInd = {
+  label: string;
+  unit: string;
+  th: [number, number, number];
+  gt?: boolean;
+  manual?: ManualKey;
+  /** local = กระทบที่ตั้ง (กำหนดสีพื้นที่) · upstream = น้ำเหนือ (เฝ้า/คาดการณ์เท่านั้น) */
+  impact?: "local" | "upstream";
+  lead?: string;
+  read: (o: OnwrData) => number | null;
+};
+/** % ปริมาณน้ำท่า (Q/Qmax ตาม EWI) — รวมค่าจากสถานี proxy ถ้ามี · ไม่ใช้ % ความจุระดับน้ำ */
+const runoffPctOf = (l: Parameters<typeof runoffPctStrictOf>[0]): number | null => runoffPctStrictOf(l);
+const regional = (
+  station: string,
+  code?: string,
+  opts?: { impact?: "local" | "upstream"; lead?: string },
+): BotInd => ({
   label: station,
   unit: "%",
   th: [30, 70, 100],
   gt: true,
-  read: (o) => o.levels.find((l) => l.name === station)?.pct ?? null,
+  impact: opts?.impact ?? "local",
+  lead: opts?.lead,
+  read: (o) => runoffPctOf(findLevelForRunoff(o.levels, station, code)),
 });
 const byCode = (o: OnwrData, code: string) => o.levels.find((l) => l.code === code);
+/** เกณฑ์ฝนรายชั่วโมง — ชุดเดียวกับ สนญ. · สพฐ. คัดเฉพาะอ.นครชัยศรี */
+const rainHour = (
+  id: string,
+  label = "ฝน 1 ชม. ใกล้ที่ตั้ง",
+  manual?: ManualKey,
+  opts?: { amphoe?: string; radiusKm?: number },
+): BotInd => ({
+  label,
+  unit: "มม./ชม.",
+  th: [50, 80, 120],
+  manual: manual ?? ((id === "hq" ? "phranakhon_rain" : `${id}_rain`) as ManualKey),
+  read: (o) => {
+    const radius = opts?.radiusKm ?? 10;
+    const h = (o.rain.near[id] ?? [])
+      .filter((r) => r.km <= radius && r.h1 != null)
+      .filter((r) => !opts?.amphoe || String(r.amphoe || "").includes(opts.amphoe))
+      .map((r) => r.h1 as number);
+    return h.length ? Math.max(...h) : null;
+  },
+});
+const withRain = (id: string, inds: BotInd[], label?: string, manual?: ManualKey, opts?: { amphoe?: string; radiusKm?: number }) =>
+  inds.some((i) => i.unit === "มม./ชม.") ? inds : [...inds, rainHour(id, label, manual, opts)];
 const BOT_CRITERIA: Record<string, BotInd[]> = {
   hq: [
     {
@@ -222,16 +369,7 @@ const BOT_CRITERIA: Record<string, BotInd[]> = {
         return a == null ? null : a + (byCode(o, "S.26")?.q ?? 0);
       },
     },
-    {
-      label: "ฝน 1 ชม. เขตพระนคร",
-      unit: "มม./ชม.",
-      th: [50, 80, 120],
-      manual: "phranakhon_rain",
-      read: (o) => {
-        const h = (o.rain.near.hq ?? []).filter((r) => r.km <= 10 && r.h1 != null).map((r) => r.h1 as number);
-        return h.length ? Math.max(...h) : null;
-      },
-    },
+    rainHour("hq", "ฝน 1 ชม. เขตพระนคร", "phranakhon_rain"),
     {
       label: "ระดับน้ำขึ้นสูงสุด 24 ชม. (C.12 แทน บก.ทร.)",
       unit: "ม.รทก.",
@@ -245,19 +383,62 @@ const BOT_CRITERIA: Record<string, BotInd[]> = {
       },
     },
   ],
+  /* ฝนรายชั่วโมงเป็นทริกเกอร์เฉพาะ สนญ. — พื้นที่อื่นใช้เฉพาะจุดวัดน้ำ */
   ipd: [
     {
-      label: "ท่าจีน สะพานนครชัยศรี",
+      label: "ท่าจีน ที่ว่าการอ.นครชัยศรี (T.1)",
       unit: "ม.รทก.",
-      th: [2.5, 2.7, 3.0],
-      read: (o) => o.levels.find((l) => l.name === "สะพานนครชัยศรี")?.msl ?? null,
+      th: [1.8, 2.0, 2.5],
+      read: (o) =>
+        o.levels.find((l) => l.name === "ที่ว่าการอ.นครชัยศรี")?.msl
+        ?? o.levels.find((l) => l.name === "สะพานนครชัยศรี")?.msl
+        ?? null,
     },
   ],
-  kkn: [regional("ลำน้ำพอง โรงเรียนลำน้ำพอง"), regional("บ้านกุดกว้าง")],
-  cnx: [regional("สะพานนวรัฐ"), regional("สะพานวงแหวนรอบ 3"), regional("บ้านแม่แต")],
-  hdy: [regional("บ้านม่วงก็อง"), regional("บ้านบางศาลา"), regional("บ้านคลองหวะ")],
-  /* ศูนย์จัดการธนบัตร — ธปท. ยังไม่กำหนดจุดวัด ใช้เกณฑ์ % ความจุลำน้ำแบบ สนภ. กับสถานีใกล้ที่ตั้ง (SITE_INFO.gauges) */
-  ...Object.fromEntries(["ryg", "phs", "ubn", "nrm", "urt"].map((id) => [id, SITE_INFO[id].gauges.map(regional)])),
+  kkn: [
+    regional("ลำน้ำพอง โรงเรียนลำน้ำพอง", "URTD02", { impact: "upstream", lead: "6–12 ชม." }),
+    regional("บ้านกุดกว้าง", "E.16A", { impact: "local" }),
+  ],
+  cnx: [
+    regional("สะพานนวรัฐ", "P.1", { impact: "local" }),
+    regional("สะพานวงแหวนรอบ 3", "P.103", { impact: "local" }),
+    regional("บ้านแม่แต", "P.67", { impact: "local", lead: "4–6 ชม." }),
+  ],
+  hdy: [
+    regional("บ้านม่วงก็อง", "X.173A", { impact: "upstream", lead: "10–14 ชม." }),
+    regional("บ้านบางศาลา", "X.90", { impact: "local" }),
+    regional("บ้านคลองหวะ", "X.174", { impact: "local" }),
+  ],
+  urt: [
+    regional("ท่าขนอม", "TPI004", { impact: "upstream", lead: "ประมาณ 1 วัน" }),
+    regional("บ้านย่านดินแดง", "X.37A", { impact: "upstream", lead: "2–3 วัน" }),
+    regional("บ้านเคียนซา", "X.217", { impact: "upstream", lead: "1–1.5 วัน" }),
+    regional("บ้านท่าข้าม", "X.5C", { impact: "local", lead: "6–12 ชม." }),
+  ],
+  ryg: [
+    regional("บ้านเขาโบสถ์", "Z.38", { impact: "local", lead: "คลองทับมา · ใกล้ที่ตั้ง" }),
+    regional("บ้านเขาวังไทร", "Z.11", { impact: "upstream", lead: "ลุ่มประแสร์ · ไม่ไหลสู่ที่ตั้ง" }),
+    regional("บ้านค่าย", "RAY004", { impact: "upstream", lead: "4–8 ชม. · คลองใหญ่" }),
+  ],
+  phs: [
+    regional("สะพานสุพรรณกัลยา", "N.5A", { impact: "local" }),
+    regional("ท้ายเขื่อนนเรศวร", "N.27A", { impact: "upstream", lead: "6–12 ชม. · น้ำเหนือน่าน" }),
+    regional("คลองผันน้ำยม-น่าน4", "DIV004", { impact: "local" }),
+    regional("เมืองพิษณุโลก", "NAN012", { impact: "local" }),
+  ],
+  ubn: [
+    /* จุดหลัก M.7 สะพานเสรีฯ — PMTS16 ชื่อคล้ายแต่ Q ในคลังเพี้ยน ใช้เป็น alias ผ่าน proxy เท่านั้น */
+    regional("สะพานเสรีประชาธิปไตย", "M.7", { impact: "local" }),
+    regional("แม่น้ำมูล เมืองอุบลราชธานี (M.7)", "PMTS16", { impact: "local", lead: "alias M.7 · ใช้ Q/Qmax จากสะพานเสรีฯ" }),
+    regional("แม่น้ำมูล วัดปากโดม", "PMTS4", { impact: "upstream", lead: "ท้ายน้ำ · อ.พิบูลมังสาหาร" }),
+    regional("แม่น้ำมูล บ้านคันไร่", "PMTS15", { impact: "upstream", lead: "ท้ายน้ำ · ไม่กระทบที่ตั้ง" }),
+  ],
+  nrm: [
+    regional("ตำบลในเมือง", "M.164", { impact: "local" }),
+    regional("บ้านลาดบัวขาว", "M.177", { impact: "upstream", lead: "12–24 ชม. · ท้ายเขื่อนลำตะคอง" }),
+    regional("บ้านท่ามะปรางค์", "M.43A", { impact: "upstream", lead: "เหนือเขื่อนลำตะคอง" }),
+    regional("สำนักเทคโนโลยีชีวภัณฑ์สัตว์", "M.89", { impact: "local" }),
+  ],
 };
 
 function botStatus(id: string, o: OnwrData): { s: number; text: string } | null {
@@ -272,25 +453,50 @@ function botStatus(id: string, o: OnwrData): { s: number; text: string } | null 
     return [{ ind, v, s, man }];
   });
   if (!ev.length) return null;
-  const top = ev.sort((a, b) => b.s - a.s || b.v / b.ind.th[Math.min(b.s, 2)] - a.v / a.ind.th[Math.min(a.s, 2)])[0];
-  const v = top.ind.unit === "ลบ.ม./วิ." ? Math.round(top.v).toLocaleString("th-TH") : top.ind.unit === "%" ? fmt1(top.v) : top.v.toFixed(2);
+  const rank = (a: (typeof ev)[0], b: (typeof ev)[0]) =>
+    b.s - a.s || b.v / b.ind.th[Math.min(b.s, 2)] - a.v / a.ind.th[Math.min(a.s, 2)];
+  const localEv = ev.filter((e) => (e.ind.impact ?? "local") !== "upstream");
+  const upEv = ev.filter((e) => e.ind.impact === "upstream");
+  /* สีพื้นที่ = จุดกระทบที่ตั้งเท่านั้น · ถ้าไม่มีค่า local แต่มีน้ำเหนือ → ไม่ดึงสีขึ้น (คงเขียว + ข้อความเฝ้า) */
+  const top = localEv.length
+    ? [...localEv].sort(rank)[0]
+    : { ind: upEv[0]!.ind, v: upEv[0]!.v, s: 0 as number, man: upEv[0]!.man };
+  const areaS = localEv.length ? top.s : 0;
+  const upTop = upEv.length ? [...upEv].sort(rank)[0] : null;
+  const v =
+    top.ind.unit === "ลบ.ม./วิ."
+      ? Math.round(top.v).toLocaleString("th-TH")
+      : top.ind.unit === "%"
+        ? fmt1(top.v)
+        : top.v.toFixed(2);
   const gap =
-    top.s >= 3
+    areaS >= 3
       ? "เกินเกณฑ์สีแดง"
-      : `อีก ${top.ind.unit === "%" ? fmt1(top.ind.th[top.s] - top.v) + "%" : (top.ind.th[top.s] - top.v).toFixed(top.ind.unit === "ลบ.ม./วิ." ? 0 : 2) + " " + top.ind.unit} ถึง${STATUS_NAME[top.s + 1]}`;
-  const label = top.man ? `${MANUAL_KEYS[top.man.key].label} (${manualLabel(top.man)})` : top.ind.label;
+      : localEv.length
+        ? `อีก ${top.ind.unit === "%" ? fmt1(top.ind.th[areaS] - top.v) + "%" : (top.ind.th[areaS] - top.v).toFixed(top.ind.unit === "ลบ.ม./วิ." ? 0 : 2) + " " + top.ind.unit} ถึง${STATUS_NAME[areaS + 1]}`
+        : "รอจุดกระทบที่ตั้ง";
+  const label = top.man
+    ? `${MANUAL_KEYS[top.man.key].label} (${manualLabel(top.man)})`
+    : localEv.length
+      ? top.ind.label
+      : `จุดกระทบที่ตั้ง (ยังไม่มีค่า)`;
   const manNote = ev
     .filter((e) => e.man && e !== top)
     .map((e) => `${MANUAL_KEYS[e.man!.key].label} ${e.v.toLocaleString("th-TH")} ${e.ind.unit} (เจ้าหน้าที่กรอก · ${STATUS_NAME[e.s]})`);
+  const upNote =
+    upTop && upTop.s > areaS
+      ? ` · น้ำเหนือ${upTop.ind.label} ${upTop.ind.unit === "%" ? fmt1(upTop.v) + "%" : upTop.v.toFixed(2) + " " + upTop.ind.unit} (${STATUS_NAME[upTop.s]}${upTop.ind.lead ? " · " + upTop.ind.lead : ""}) — ยังไม่กำหนดสีพื้นที่`
+      : "";
   return {
-    s: top.s,
-    text: `เกณฑ์ ธปท. ${STATUS_NAME[top.s]}: ${label} ${v}${top.ind.unit === "%" ? "%" : " " + top.ind.unit} (${gap})${manNote.length ? ` · ${manNote.join(" · ")}` : ""}`,
+    s: areaS,
+    text: `เกณฑ์ ธปท. ${STATUS_NAME[areaS]}: ${label}${localEv.length ? ` ${v}${top.ind.unit === "%" ? "%" : " " + top.ind.unit}` : ""} (${gap})${upNote}${manNote.length ? ` · ${manNote.join(" · ")}` : ""}`,
   };
 }
 
 /* ---------- วิเคราะห์ ---------- */
 
 function gaugeOf(name: string, l: Level, prevRound: Gauge | undefined): Gauge {
+  const qPct = runoffPctOf(l);
   return {
     name,
     amphoe: l.amphoe,
@@ -299,9 +505,12 @@ function gaugeOf(name: string, l: Level, prevRound: Gauge | undefined): Gauge {
     prev: l.prev,
     runPrev: prevRound?.msl ?? null,
     bank: l.bank,
-    pct: l.pct,
+    pct: qPct,
     q: l.q,
-    level: pctLevel(l.pct),
+    qmax: l.qmax,
+    qPct,
+    storagePct: l.pct,
+    level: pctLevel(qPct),
     time: l.time,
   };
 }
@@ -309,11 +518,13 @@ function gaugeOf(name: string, l: Level, prevRound: Gauge | undefined): Gauge {
 const deltaOf = (g: Gauge) => (g.msl !== null && g.runPrev !== null ? g.msl - g.runPrev : null);
 
 function gaugeText(g: Gauge) {
-  if (g.pct === null) return g.name;
-  const bank = g.bank === null ? "" : ` ${g.pct >= 100 ? "สูงกว่า" : "ต่ำกว่า"}ตลิ่ง ${fmt1(Math.abs(g.bank))} ม.`;
+  if (g.pct === null && g.msl === null) return g.name;
   const d = deltaOf(g);
   const move = d === null ? "" : Math.abs(d) < 0.02 ? " (ทรงตัว)" : ` (${cm(d)} จากรอบก่อน)`;
-  return `${g.name} ${fmt1(g.pct)}%${bank}${move}`;
+  const msl = g.msl != null ? `${fmt1(g.msl)} ม.รทก.` : "";
+  const q = g.q != null ? ` · Q ${fmt1(g.q)} ลบ.ม./วิ.` : "";
+  const pct = g.pct != null ? ` · ${fmt1(g.pct)}% น้ำท่า` : "";
+  return `${g.name} ${msl}${q}${pct}${move}`.replace(/\s+/g, " ").trim();
 }
 
 function upstreamText(list: Gauge[]) {
@@ -336,6 +547,8 @@ function buildSite(
   id: string,
   onwr: OnwrData,
   fc: Forecast[],
+  rain3d: Rain3d | undefined,
+  ewiRain: EwiRainRow[] | undefined,
   newsList: News[],
   prev: SiteDoc | undefined,
   updatedAt: string,
@@ -354,18 +567,35 @@ function buildSite(
   const upstream = pick(info.upstream, prev?.upstream);
 
   const near = onwr.rain.near[id] ?? [];
-  const rainNear = near
-    .filter((r) => r.km <= 20)
+  /* รายสถานีใกล้ที่ตั้ง — ฝน 24 ชม. จาก สทนช. (อ้างอิง) · ค่าหลักใช้ฝนสะสม 3 วันด้านล่าง */
+  const rainNear = [...near]
     .sort((a, b) => b.mm - a.mm)
-    .slice(0, 3)
-    .map((r) => ({ name: r.name, amphoe: r.amphoe, mm: r.mm, time: r.time }));
+    .slice(0, 5)
+    .map((r) => ({ name: r.name, amphoe: r.amphoe, mm: r.mm, time: r.time, km: r.km }));
   const prov = onwr.rain.byProv[info.prov];
   const rainTop = (prov?.top ?? []).map((r) => ({ name: r.name, amphoe: r.amphoe, mm: r.mm, time: r.time }));
+  const rain3dMm = rain3d?.mm ?? null;
 
   const worst = water.reduce<Gauge | null>((m, w) => ((w.pct ?? -1) > (m?.pct ?? -1) ? w : m), null);
   const bot = botStatus(id, onwr);
   /* สีพื้นที่ = ค่าวัดจริงที่จุดทริกเกอร์ตามเกณฑ์ ธปท. — ค่าประเมินภายใน 12 ชม. เป็นคำเตือน ไม่เปลี่ยนสี */
   const status = bot ? bot.s : pctStatus(worst?.pct ?? null);
+  const sitePt = SITE_POINTS[id];
+  const dams = sitePt
+    ? onwr.dams
+        .map((d) => {
+          const lat = typeof d.lat === "number" ? d.lat : null;
+          const lon = typeof d.lon === "number" ? d.lon : null;
+          if (lat == null || lon == null) return null;
+          const dy = (lat - sitePt[0]) * 111;
+          const dx = (lon - sitePt[1]) * 111 * Math.cos((sitePt[0] * Math.PI) / 180);
+          const km = Math.sqrt(dx * dx + dy * dy);
+          return km <= 180 ? { name: d.name, storage: d.storage, release: d.release, inflow: d.inflow, km: Math.round(km) } : null;
+        })
+        .filter((x): x is NonNullable<typeof x> => Boolean(x))
+        .sort((a, b) => a.km - b.km)
+        .slice(0, 4)
+    : [];
 
   const parts: string[] = [];
   if (bot) parts.push(bot.text);
@@ -374,9 +604,14 @@ function buildSite(
   for (const g of ordered.slice(0, 2)) if (g.pct !== null) parts.push(gaugeText(g));
   const up = upstreamText(upstream);
   if (up) parts.push(up);
-  const nearMax = rainNear[0];
-  if (nearMax && nearMax.mm >= 0.1) parts.push(`ฝน 24 ชม. ใกล้ที่ตั้งสูงสุด ${fmt1(nearMax.mm)} มม. ที่${nearMax.name} (${rainClass(nearMax.mm)})`);
-  else if (rainTop[0]) parts.push(`ฝน 24 ชม. ใน${info.prov} สูงสุด ${fmt1(rainTop[0].mm)} มม. ที่${rainTop[0].name}`);
+  if (rain3dMm != null) {
+    parts.push(`ฝนสะสม 3 วัน ${fmt1(rain3dMm)} มม. ณ พิกัดที่ตั้ง (${rainClass(rain3dMm)})`);
+    if (rainNear[0] && rainNear[0].mm >= 0.1) parts.push(`ฝน 24 ชม. สถานีใกล้สุด ${fmt1(rainNear[0].mm)} มม. ที่${rainNear[0].name}`);
+  } else if (rainNear[0] && rainNear[0].mm >= 0.1) {
+    parts.push(`ฝน 24 ชม. ใกล้ที่ตั้งสูงสุด ${fmt1(rainNear[0].mm)} มม. ที่${rainNear[0].name} (${rainClass(rainNear[0].mm)})`);
+  } else if (rainTop[0]) {
+    parts.push(`ฝน 24 ชม. ใน${info.prov} สูงสุด ${fmt1(rainTop[0].mm)} มม. ที่${rainTop[0].name}`);
+  }
   if (fc.length) {
     const peak = fc.reduce((m, f) => (f.mm > m.mm ? f : m));
     parts.push(`คาดฝน 3 วัน ${fc.map((f) => fmt1(f.mm)).join(" / ")} มม.${peak.mm > 35 ? ` — ฝน${rainClass(peak.mm)}วันที่ ${Number(peak.date.slice(8))}` : ""}`);
@@ -405,9 +640,11 @@ function buildSite(
     rainCount: prov?.count ?? 0,
     rainNear,
     rainTop,
+    ...(rain3d ? { rain3d } : {}),
+    ...(ewiRain && ewiRain.length ? { ewiRain } : {}),
     water,
     upstream,
-    dams: [],
+    dams,
     news: newsList,
   };
 }
@@ -487,11 +724,23 @@ function nationNote(onwr: OnwrData, sites: Record<string, SiteDoc>, prev: Report
 }
 
 async function buildReport(at: number, prev: Report | null): Promise<Report> {
-  const [onwr, fc, newsBySite, ag] = await Promise.all([
-    getOnwr(),
-    forecasts().catch((): Record<string, Forecast[]> => {
-      const out: Record<string, Forecast[]> = {};
-      for (const [id, s] of Object.entries(prev?.sites ?? {})) out[id] = (s.forecast as Forecast[]) ?? [];
+  const onwr = await getOnwr();
+  const [weather, ewiRainBySite, newsBySite, ag] = await Promise.all([
+    forecasts().catch((): { fc: Record<string, Forecast[]>; rain3d: Record<string, Rain3d> } => {
+      const fc: Record<string, Forecast[]> = {};
+      const rain3d: Record<string, Rain3d> = {};
+      for (const [id, s] of Object.entries(prev?.sites ?? {})) {
+        fc[id] = (s.forecast as Forecast[]) ?? [];
+        if (s.rain3d && typeof s.rain3d === "object") rain3d[id] = s.rain3d as Rain3d;
+      }
+      return { fc, rain3d };
+    }),
+    ewiRainRows(onwr).catch(() => {
+      const out: Record<string, EwiRainRow[]> = {};
+      for (const [id, s] of Object.entries(prev?.sites ?? {})) {
+        const rows = (s as { ewiRain?: EwiRainRow[] }).ewiRain;
+        if (Array.isArray(rows)) out[id] = rows;
+      }
       return out;
     }),
     Promise.all(
@@ -499,6 +748,8 @@ async function buildReport(at: number, prev: Report | null): Promise<Report> {
     ).then(Object.fromEntries) as Promise<Record<string, News[]>>,
     agencies(),
   ]);
+  const fc = weather.fc;
+  const rain3d = weather.rain3d;
   manualNow = await activeManual().catch(() => ({}));
   const updatedAt = bkkIso(at);
   const label = roundLabel(at);
@@ -520,10 +771,13 @@ async function buildReport(at: number, prev: Report | null): Promise<Report> {
     ),
   ) as Record<string, SiteForecast | null>;
   const sites: Record<string, SiteDoc> = {};
-  for (const id of Object.keys(SITE_INFO))
-    sites[id] = buildSite(id, onwr, fc[id] ?? [], newsBySite[id] ?? [], prev?.sites?.[id], updatedAt, label, ag, f72[id]);
-  const bot = manualBot(manualNow);
-  if (bot) sites.hq.bot = bot;
+  for (const id of Object.keys(SITE_INFO)) {
+    sites[id] = buildSite(id, onwr, fc[id] ?? [], rain3d[id], ewiRainBySite[id], newsBySite[id] ?? [], prev?.sites?.[id], updatedAt, label, ag, f72[id]);
+    const siteBot = Object.fromEntries(
+      Object.entries(manualBot(manualNow) ?? {}).filter(([k]) => MANUAL_KEYS[k as ManualKey]?.site === id),
+    );
+    if (Object.keys(siteBot).length) sites[id].bot = siteBot;
+  }
   const { note, changes } = nationNote(onwr, sites, prev, label, ag);
   const stamp = bkkIso(Date.now()).slice(0, 16).replace("T", " ");
   const newsCount = Object.values(newsBySite).reduce((a, n) => a + n.length, 0);
@@ -531,7 +785,7 @@ async function buildReport(at: number, prev: Report | null): Promise<Report> {
     { name: "คลังข้อมูลน้ำแห่งชาติ (สทนช./สสน.)", what: `ระดับน้ำ ${onwr.levels.length} สถานี · ฝน ${onwr.rain.stations} สถานี · เขื่อน ${onwr.dams.length} แห่ง`, ok: onwr.levels.length > 0, at: stamp },
     { name: "กรมชลประทาน", what: `ระดับน้ำ/ปริมาณน้ำรายชั่วโมง เจ้าพระยาตอนล่าง ${onwr.rid.length} สถานี (สามโคก C.29B, สามเสน C.12)`, ok: onwr.rid.length > 0, at: stamp },
     ...ag.status,
-    { name: "Open-Meteo", what: "ปริมาณฝนคาดการณ์ 3 วัน ณ พิกัดที่ตั้ง", ok: Object.values(fc).some((f) => f.length > 0), at: stamp },
+    { name: "Open-Meteo", what: "ฝนสะสม 3 วัน + คาดการณ์ 3 วัน ณ พิกัดที่ตั้ง", ok: Object.values(fc).some((f) => f.length > 0) || Object.values(rain3d).some((r) => r.mm >= 0), at: stamp },
     { name: "Google News", what: `ข่าวน้ำท่วมรายจังหวัด ${newsCount} ข่าว`, ok: newsCount > 0, at: stamp },
   ];
   return {
@@ -552,45 +806,45 @@ async function buildReport(at: number, prev: Report | null): Promise<Report> {
   };
 }
 
-/* ---------- เก็บไฟล์ + ตั้งเวลา ---------- */
+/* ---------- เก็บ MySQL (WaterRound) + ตั้งเวลา ---------- */
 
 async function readReport(): Promise<Report | null> {
-  try {
-    const text = (await fs.readFile(dataFile(), "utf8")).replace(/^\uFEFF/, "");
-    const j = JSON.parse(text) as Report;
-    return j?.sites ? j : null;
-  } catch {
-    return null;
-  }
+  const j = await dbReadLatest();
+  return j?.sites ? (j as Report) : null;
 }
 
-const reportTime = (r: Report | null) => Date.parse(String(r?.meta?.updatedAt ?? ""));
+const reportTime = (r: Report | null) => parseReportTime(r?.meta?.updatedAt);
 
-async function saveReport(r: Report) {
-  const file = dataFile();
-  await fs.mkdir(path.dirname(file), { recursive: true });
-  const body = JSON.stringify(r);
-  await fs.writeFile(file + ".tmp", body, "utf8");
-  await fs.rename(file + ".tmp", file);
-  const dir = roundsDir();
-  await fs.mkdir(dir, { recursive: true });
-  const stamp = String(r.meta.updatedAt).slice(0, 13).replace(/[-T:]/g, "");
-  await fs.writeFile(path.join(dir, `${stamp}.json`), body, "utf8");
-  const old = (await fs.readdir(dir)).filter((f) => /^\d{10}\.json$/.test(f)).sort().slice(0, -KEEP_ROUNDS);
-  await Promise.all(old.map((f) => fs.unlink(path.join(dir, f)).catch(() => undefined)));
+async function saveReport(r: Report, roundAtMs: number) {
+  const roundAt = new Date(roundAtMs);
+  const result = await dbSaveReport(r, roundAt);
+  if (result !== "unchanged") await dbPruneRounds(KEEP_ROUNDS);
+  return result;
 }
 
 let running: Promise<Report> | null = null;
+let dbReady: Promise<void> | null = null;
+
+/** นำเข้า JSON เดิมครั้งแรกเมื่อตารางว่าง */
+export function ensureWaterDbReady(): Promise<void> {
+  dbReady ??= dbImportJsonIfEmpty(dataFile())
+    .then(() => undefined)
+    .catch((e) => {
+      console.error("[water-db] นำเข้า JSON ไม่สำเร็จ:", e instanceof Error ? e.message : e);
+    });
+  return dbReady;
+}
 
 /** สร้างรายงานรอบปัจจุบัน (ถ้ายังไม่มี) แล้วบันทึก */
 export function runRound(): Promise<Report> {
   running ??= (async () => {
+    await ensureWaterDbReady();
     const at = roundStart();
     const prev = await readReport();
     if (prev && reportTime(prev) >= at) return prev;
     const rep = await buildReport(at, prev);
-    await saveReport(rep);
-    console.log(`[water-report] รอบ ${rep.meta.round} บันทึกแล้ว — ${rep.meta.note}`);
+    const saved = await saveReport(rep, at);
+    console.log(`[water-report] รอบ ${rep.meta.round} ${saved === "unchanged" ? "ไม่เปลี่ยน" : "บันทึก MySQL"} — ${rep.meta.note}`);
     return rep;
   })().finally(() => {
     running = null;
@@ -602,18 +856,14 @@ export function runRound(): Promise<Report> {
 export async function rebuildRound(): Promise<Report> {
   if (running) await running.catch(() => undefined);
   running = (async () => {
+    await ensureWaterDbReady();
     const at = roundStart();
     const cur = await readReport();
     let prev = cur && reportTime(cur) < at ? cur : null;
-    if (!prev) {
-      const stamp = bkkIso(at).slice(0, 13).replace(/[-T:]/g, "");
-      const dir = roundsDir();
-      const older = (await fs.readdir(dir).catch(() => [] as string[])).filter((f) => /^\d{10}\.json$/.test(f) && f.slice(0, 10) < stamp).sort();
-      if (older.length) prev = JSON.parse((await fs.readFile(path.join(dir, older.at(-1)!), "utf8")).replace(/^\uFEFF/, "")) as Report;
-    }
+    if (!prev) prev = (await dbReadPrevious(new Date(at))) as Report | null;
     const rep = await buildReport(at, prev);
-    await saveReport(rep);
-    console.log(`[water-report] คำนวณรอบ ${rep.meta.round} ใหม่ — ${rep.meta.note}`);
+    const saved = await saveReport(rep, at);
+    console.log(`[water-report] คำนวณรอบ ${rep.meta.round} ใหม่ (${saved}) — ${rep.meta.note}`);
     return rep;
   })().finally(() => {
     running = null;
@@ -621,8 +871,9 @@ export async function rebuildRound(): Promise<Report> {
   return running;
 }
 
-/** รายงานล่าสุด — ถ้าไฟล์ไม่มีหรือเก่าเกินรอบ จะสร้างรอบใหม่ทันที */
+/** รายงานล่าสุด — ถ้าไม่มีหรือเก่าเกินรอบ จะสร้างรอบใหม่ทันที */
 export async function latestReport(): Promise<Report> {
+  await ensureWaterDbReady();
   const cur = await readReport();
   if (cur && Date.now() - reportTime(cur) < FILE_MAX_AGE_MS) return cur;
   return runRound();
@@ -633,10 +884,12 @@ let timer: NodeJS.Timeout | null = null;
 export function startWaterReportScheduler() {
   if (timer || process.env.WATER_REPORT_SCHEDULER === "off") return;
   const tick = () => {
-    runRound().catch((e) => {
-      console.error("[water-report] สร้างรอบรายงานไม่สำเร็จ จะลองใหม่ใน 10 นาที:", e instanceof Error ? e.message : e);
-      setTimeout(() => void runRound().catch(() => undefined), 10 * 60_000).unref();
-    });
+    void ensureWaterDbReady().then(() =>
+      runRound().catch((e) => {
+        console.error("[water-report] สร้างรอบรายงานไม่สำเร็จ จะลองใหม่ใน 10 นาที:", e instanceof Error ? e.message : e);
+        setTimeout(() => void runRound().catch(() => undefined), 10 * 60_000).unref();
+      }),
+    );
     const next = roundStart() + ROUND_MS + ROUND_DELAY_MS;
     timer = setTimeout(tick, Math.max(60_000, next - Date.now()));
   };
