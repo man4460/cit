@@ -1265,9 +1265,11 @@ const UPSTREAM = {
     {name:"บางเลน", where:"อ.บางเลน นครปฐม", river:"แม่น้ำท่าจีน", lead:"12–24 ชม.", h:12}]},
   cnx:{river:"แม่น้ำปิง", pts:[
     {name:"เชียงดาว", code:"P.20", where:"อ.เชียงดาว", river:"แม่น้ำปิง", lead:"24–27 ชม.", h:24},
+    {name:"บ้านเมืองกึ๊ด", code:"P.92", where:"อ.แม่แตง", river:"แม่น้ำปิง", lead:"14–18 ชม.", h:14, role:"ต้นน้ำแม่แตง ก่อนไหลลงแม่น้ำปิง"},
     {name:"แม่แตง", where:"อ.แม่แตง", river:"แม่น้ำปิง", lead:"10–14 ชม.", h:10},
     {name:"บ้านแม่แตง", where:"อ.แม่แตง", river:"น้ำแม่แตง", lead:"10–14 ชม.", h:10},
     {name:"บ้านแม่แต", code:"P.67", where:"อ.แม่ริม", river:"แม่น้ำปิง", lead:"4–6 ชม.", h:4, role:"ชลประทานใช้ระดับตลิ่งที่ P.67 เป็นระดับวิกฤต"},
+    {name:"สันทราย", where:"อ.สันทราย", river:"แม่น้ำปิง", lead:"2–4 ชม.", h:2},
     {name:"สะพานวงแหวนรอบ 3", where:"อ.แม่ริม", river:"แม่น้ำปิง", lead:"1–2 ชม.", h:1}]},
   kkn:{river:"ลำน้ำพอง / แม่น้ำชี", pts:[
     {name:"เขื่อนอุบลรัตน์", type:"dam", where:"อ.อุบลรัตน์", river:"ลำน้ำพอง", lead:"1–2 วัน", h:24, st:[90,100,105]},
@@ -1278,6 +1280,8 @@ const UPSTREAM = {
   hdy:{river:"คลองอู่ตะเภา", pts:[
     {name:"สะเดา", where:"อ.สะเดา", river:"คลองอู่ตะเภา", lead:"12–18 ชม.", h:12},
     {name:"บ้านม่วงก็อง", code:"X.173A", where:"อ.สะเดา", river:"คลองอู่ตะเภา", lead:"10–14 ชม.", h:10, role:"ระบบเตือนภัยหาดใหญ่ใช้ +16.40 ม.รทก. (ราวระดับตลิ่ง) เป็นเกณฑ์คาดการณ์"},
+    {name:"บ้านทุ่งปราบ", code:"X.113", where:"อ.สะเดา (คลองหล้าปัง)", river:"คลองอู่ตะเภา", lead:"10–14 ชม.", h:11},
+    {name:"คลองหอยโข่ง", where:"อ.คลองหอยโข่ง", river:"คลองอู่ตะเภา", lead:"6–10 ชม.", h:6},
     {name:"บ้านบางศาลา", code:"X.90", where:"อ.หาดใหญ่", river:"คลองอู่ตะเภา", lead:"3–6 ชม.", h:3, role:"ธงแดงหาดใหญ่ที่ +9.30 ม.รทก. (ราวระดับตลิ่ง) คาดน้ำท่วมใน 6–30 ชม."},
     {name:"บ้านคลองหวะ", where:"อ.หาดใหญ่", river:"คลองหวะ", lead:"2–4 ชม.", h:2}]},
   ryg:{river:"คลองใหญ่ → แม่น้ำระยอง", pts:[
@@ -1288,7 +1292,7 @@ const UPSTREAM = {
     {name:"เขื่อนสิริกิติ์", type:"dam", where:"อ.ท่าปลา อุตรดิตถ์", river:"แม่น้ำน่าน", lead:"2–3 วัน", h:48, st:[90,100,105]},
     {name:"บ้านหาดสองแคว (N.60)", code:"N.60", where:"อ.ตรอน อุตรดิตถ์", river:"แม่น้ำน่าน", lead:"1.5–2 วัน", h:36},
     {name:"พิชัย", where:"อ.พิชัย อุตรดิตถ์", river:"แม่น้ำน่าน", lead:"ประมาณ 1 วัน", h:24},
-    {name:"นครไทย", where:"อ.นครไทย", river:"น้ำแควน้อย", lead:"1–1.5 วัน", h:24, cap:2, role:"มีเขื่อนแควน้อยบำรุงแดนหน่วงน้ำก่อนถึงแม่น้ำน่าน"},
+    {name:"บ้านหนองกระท้าว", code:"N.36", where:"อ.นครไทย", river:"น้ำแควน้อย", lead:"1–1.5 วัน", h:24, cap:2, role:"มีเขื่อนแควน้อยบำรุงแดนหน่วงน้ำก่อนถึงแม่น้ำน่าน"},
     {name:"อ.วัดโบสถ์ (N.22A)", code:"N.22A", where:"อ.วัดโบสถ์", river:"น้ำแควน้อย", lead:"8–12 ชม.", h:8},
     {name:"ท้ายเขื่อนนเรศวร", where:"อ.พรหมพิราม", river:"แม่น้ำน่าน", lead:"6–12 ชม.", h:6}]},
   ubn:{river:"แม่น้ำมูล / แม่น้ำชี", pts:[
@@ -2405,48 +2409,101 @@ function detailOpinionBits(site, o, water){
   return {headline, uniq};
 }
 
-/** จุดน้ำเหนือสำหรับหน้ารายละเอียด — จากเกณฑ์ ธปท. ก่อน แล้วเสริมจาก UPSTREAM (สูงสุด 3) */
-function detailUpstreamRows(siteId){
+/** จุดน้ำเหนือสำหรับหน้ารายละเอียด/รายงาน — จากเกณฑ์ ธปท. ก่อน แล้วเติมจาก UPSTREAM ให้ครบ 3
+ *  opts.exclude = ชื่อจุดที่ไม่เอามา (เช่น จุดหลักของการ์ดรายงาน) · opts.want = จำนวนที่ต้องการ (ค่าเริ่ม 3) */
+function detailUpstreamRows(siteId, opts){
+  const want = (opts && opts.want) || 3;
+  const exclude = (opts && opts.exclude) || [];
   const be = botEval(siteId);
-  const fromBot = be ? partitionImpact(be.ev, e => e.ind).ups.filter(x => !isRainInd(x.ind)) : [];
-  if(fromBot.length){
-    return fromBot.slice(0, 3).map((x, i) => {
-      const e = x.item, ind = x.ind;
-      const v = e.r ? e.r.value : null;
-      return {
-        upNo: i + 1,
-        title: ind.label.replace(/^สถานี/, ""),
-        where: ind.where || "",
-        lead: ind.lead || (ind.leadH != null ? `~${ind.leadH} ชม.` : ""),
-        value: v, unit: ind.unit, th: ind.th, gt: ind.gt, status: e.s,
-        time: e.r && e.r.time, why: e.s >= 0 ? botStatusLabel(e.s) : "รอข้อมูล",
-      };
-    });
-  }
-  const cfg = UPSTREAM[siteId], d = data[siteId];
-  if(!cfg || !d) return [];
-  /* ใกล้ที่ตั้งก่อน = น้ำเหนือ1 */
-  const pts = [...cfg.pts].filter(p => p.type !== "dam").reverse().slice(0, 3);
-  return pts.map((p, i) => {
-    const ev = evalPoint(p, d);
-    const v = ev.v;
-    const pct = v ? num(v.pct) : null;
-    const msl = v ? num(v.msl) : null;
-    const q = v ? num(v.q) : null;
-    const usePct = pct != null;
+  const parts = be ? partitionImpact(be.ev, e => e.ind) : {locals: [], ups: []};
+  const fromBot = parts.ups.filter(x => !isRainInd(x.ind));
+  const clean = n => String(n || "").replace(/^สถานี/, "").replace(/\s*\(% ความจุอ่าง\)$/, "").replace(/\s*\(.*\)$/, "").trim();
+  const same = (a, b) => { a = clean(a); b = clean(b); return Boolean(a && b && (a === b || a.includes(b) || b.includes(a))); };
+  const isEx = n => exclude.some(x => same(n, x));
+  /* จุด ธปท. ที่ระบุว่าท้ายน้ำ / คนละลุ่ม ไม่ส่งผลต่อที่ตั้ง — ใช้เมื่อไม่มีจุดในสายเดียวกันพอ */
+  const offLine = ind => /ไม่ไหลสู่|ไม่กระทบ|ท้ายน้ำ/.test(`${ind.lead || ""} ${ind.where || ""}`);
+  const toRow = x => {
+    const e = x.item, ind = x.ind;
     return {
-      upNo: i + 1,
-      title: p.name,
-      where: [p.where, p.river].filter(Boolean).join(" · "),
-      lead: p.lead || (p.h != null ? `~${p.h} ชม.` : ""),
-      value: usePct ? pct : (msl != null ? msl : q),
-      unit: usePct ? "%" : (msl != null ? "ม.รทก." : (q != null ? "ลบ.ม./วิ." : "%")),
-      th: usePct ? (p.t || DEF_T) : (p.qt || [30, 70, 100]),
-      gt: true, status: ev.s, time: v && v.time, why: ev.why || "",
+      title: ind.label.replace(/^สถานี/, ""),
+      where: ind.where || "",
+      lead: ind.lead || (ind.leadH != null ? `~${ind.leadH} ชม.` : ""),
+      h: ind.leadH ?? 999,
+      value: e.r ? e.r.value : null, unit: ind.unit, th: ind.th, gt: ind.gt, status: e.s,
+      metric: ind.runoff ? "runoff" : null,
+      time: e.r && e.r.time, why: e.s >= 0 ? botStatusLabel(e.s) : "รอข้อมูล",
     };
-  });
+  };
+  let rows = fromBot.filter(x => !offLine(x.ind)).map(toRow).filter(r => !isEx(r.title) && typeof r.value === "number");
+  const offRows = fromBot.filter(x => offLine(x.ind)).map(toRow).filter(r => !isEx(r.title) && typeof r.value === "number");
+  const cfg = UPSTREAM[siteId], d = data[siteId];
+  if(cfg && d && rows.length < want){
+    const taken = [
+      ...fromBot.map(x => x.ind.label),
+      ...parts.locals.map(x => x.ind.label),
+      ...rows.map(r => r.title),
+      ...exclude,
+    ];
+    const rivers = new Set(cfg.pts.filter(p => rows.some(r => same(r.title, p.name))).map(p => p.river));
+    if(!rivers.size) String(cfg.river || "").split(/\s*(?:\/|→)\s*/).forEach(r => rivers.add(r));
+    const RUNOFF_TH = [30, 70, 100];
+    const runoffLv = (v, t) => v > t[2] ? 3 : v > t[1] ? 2 : v > t[0] ? 1 : 0;
+    const cands = cfg.pts
+      .filter(p => !taken.some(t => same(t, p.name)) && !isEx(p.name))
+      .map(p => {
+        const ev = evalPoint(p, d), v = ev.v;
+        if(p.type === "dam"){
+          if(!v || ev.stale) return null;
+          const st = num(v.storage);
+          if(st == null) return null;
+          return {p, value: st, unit: "%", th: p.st || [90, 100, 105], s: ev.s, metric: "dam", why: ev.why,
+            time: v.date, title: `${p.name} (% ความจุอ่าง)`};
+        }
+        /* เกณฑ์ ธปท. ใช้ % น้ำท่า (Q/Qmax) ของสถานีเอง (ไม่ใช้ proxy — จะซ้ำกับจุดอื่น) · หาด้วยรหัสก่อนชื่อ */
+        const ownQ = l => l && !(l.runoffProxy && num(l.qmax) === null) && !isStale(l.time, d.updatedAt) ? runoffPct(l) : null;
+        const rq = [p.code && liveByCode(p.code), stationRec(d, p.name, "qPct")].find(l => ownQ(l) != null);
+        const qt = p.t || RUNOFF_TH;
+        const lvOf = x => Math.min(runoffLv(x, qt), p.cap ?? 3);
+        if(rq){
+          const qp = ownQ(rq);
+          return {p, value: qp, unit: "%", th: qt, s: lvOf(qp), metric: "runoff",
+            why: `${fmt1(qp)}% น้ำท่า (Q/Qmax)`, time: rq.time, title: p.name};
+        }
+        if(!v || ev.stale) return null;
+        const pct = num(v.pct), q = num(v.q);
+        /* ไม่มีอัตราการไหล → ประมาณจากระดับน้ำ: Q ∝ ความลึก^(5/3) (Manning) · Qmax ที่ระดับตลิ่ง */
+        if(pct != null){
+          const est = Math.round(Math.pow(Math.max(pct, 0) / 100, 5 / 3) * 1000) / 10;
+          return {p, value: est, unit: "%", th: qt, s: lvOf(est), metric: "runoffEst",
+            why: `≈ ${fmt1(est)}% น้ำท่า ประมาณจากระดับน้ำ ${fmt1(pct)}% ของตลิ่ง`, time: v.time, title: p.name};
+        }
+        if(q != null && p.qt) return {p, value: q, unit: "ลบ.ม./วิ.", th: p.qt, s: ev.s, metric: "q", why: ev.why, time: v.time, title: p.name};
+        return null;
+      })
+      .filter(Boolean)
+      .sort((a, b) => Number(a.metric === "runoffEst") - Number(b.metric === "runoffEst")
+        || Number(!rivers.has(a.p.river)) - Number(!rivers.has(b.p.river)) || (a.p.h ?? 999) - (b.p.h ?? 999));
+    for(const c of cands){
+      if(rows.length >= want) break;
+      if(isEx(c.title) || rows.some(r => same(r.title, c.title))) continue;
+      rows.push({
+        title: c.title,
+        where: [c.p.where, c.p.river].filter(Boolean).join(" · "),
+        lead: c.p.lead || (c.p.h != null ? `~${c.p.h} ชม.` : ""),
+        h: c.p.h ?? 999,
+        value: c.value, unit: c.unit, th: c.th, gt: true, status: c.s, metric: c.metric,
+        time: c.time, why: c.why || "",
+      });
+    }
+  }
+  /* ใกล้ที่ตั้งก่อน = น้ำเหนือ1 · จุดนอกสายต่อท้ายเมื่อยังไม่ครบ */
+  const onLine = rows.sort((a, b) => a.h - b.h).slice(0, want);
+  const need = want - onLine.length;
+  const extra = need > 0 ? offRows.filter(r => !onLine.some(x => same(x.title, r.title))).slice(0, need) : [];
+  return [...onLine, ...extra].map((r, i) => ({...r, upNo: i + 1}));
 }
-
+const METRIC_LABEL = {runoff: "% น้ำท่า (Q/Qmax)", runoffEst: "≈ % น้ำท่า (ประมาณจากระดับน้ำ)", cap: "% ความจุลำน้ำ (ระดับเทียบตลิ่ง)", dam: "% ความจุอ่าง"};
+const METRIC_SHORT = {runoff: "น้ำท่า", runoffEst: "น้ำท่า", cap: "ความจุ", dam: "อ่าง"};
 /** การ์ดรายละเอียด: (1) จุดที่ตั้ง+ความเห็น (2) น้ำเหนือ1–3 (3) ฝนสะสม · สนญ. +ฝน/ชม. */
 function detailStoryCards(site, o, st){
   const be = botEval(site.id);
@@ -2516,7 +2573,7 @@ function detailStoryCards(site, o, st){
       icon: ICO.flow, title: u.title,
       headline: u.title,
       value: u.value, unit: u.unit, th: u.th, gt: u.gt, status: u.status,
-      time: u.time, meta: [u.where, u.lead ? `ถึงที่ตั้งราว ${u.lead}` : ""].filter(Boolean).join(" · "),
+      time: u.time, meta: [METRIC_LABEL[u.metric] || "", u.where, u.lead ? `ถึงที่ตั้งราว ${u.lead}` : ""].filter(Boolean).join(" · "),
       sideTitle: "ผลกระทบต่อที่ตั้ง",
       sideHtml: `<div>${esc(u.why || "ติดตามต่อ")}</div>${u.lead ? `<div>คาดถึงที่ตั้งราว ${esc(u.lead)}</div>` : `<div>ไม่กำหนดสีพื้นที่ — ใช้เฝ้าระวัง</div>`}`,
       warnLv: u.status,
@@ -2815,10 +2872,6 @@ function renderDetail(){
       <section class="dcol">
         <div class="dcol-h"><span class="ico">${ICO.central}</span><div><h3>แนวโน้มกลาง</h3><small>สทนช. / กรมชลประทาน · กราฟย้อนหลัง 7 วัน</small></div></div>
         ${centralMetrics(s.id)}
-      </section>
-      <section class="dcol staff">
-        <div class="dcol-h"><span class="ico">${ICO.staff}</span><div><h3>ข้อมูลเจ้าหน้าที่กรอก</h3><small>วัดหน้างาน · บันทึกและแนบรูป</small></div></div>
-        ${staffMetrics(s.id)}
       </section>
     </div>
     ${now.length ? `<div class="measure" data-s="${o.s}" style="margin-top:14px"><b>Action ตอนนี้</b>${measureList(now)}</div>` : ""}
@@ -3636,7 +3689,7 @@ function applyOnwr(j){
 }
 
 /* ---------- รายงานผู้บังคับบัญชา (ภาพ PNG สำหรับคัดลอกไปวางใน LINE / อีเมล / สไลด์) ---------- */
-const REP = {W: 1400, pad: 48, font: '"IBM Plex Sans Thai", "Leelawadee UI", Tahoma, sans-serif',
+const REP = {W: 1600, pad: 48, font: '"IBM Plex Sans Thai", "Leelawadee UI", Tahoma, sans-serif',
   navy: "#0b2a43", ink: "#14212b", muted: "#5b6a75", line: "#d9e0e4", soft: "#f3f5f6",
   s: ["#2e8b57", "#c99a06", "#d9650b", "#c62828"], bg: ["#e3f3ea", "#fbf3d0", "#fde6d2", "#fbe0e0"]};
 const repSeg = typeof Intl !== "undefined" && Intl.Segmenter ? new Intl.Segmenter("th", {granularity: "word"}) : null;
@@ -3667,39 +3720,10 @@ function repPill(ctx, x, y, text, lv, h = 30){
   return w;
 }
 /* ตัวชี้วัดหลักของแต่ละพื้นที่: main = ค่าปัจจุบัน, sub = ห่างเกณฑ์ถัดไปเท่าไร / ทำไมคาดว่าแย่ลง */
-const repNum = (v, ind) => ind.int ? fmtInt(v) : ind.unit === "%" ? fmt1(v) : (Math.round(v * 100) / 100).toFixed(2);
 function repNext(v, th, unit, s, int, gt){
   if(s >= 3) return `เกินเกณฑ์สีแดง (${gt ? ">" : "≥"} ${int ? fmtInt(th[2]) : th[2]} ${unit})`;
   const gap = th[s] - v;
   return `อีก ${int ? fmtInt(gap) : unit === "%" ? fmt1(gap) : gap.toFixed(2)}${unit === "%" ? "%" : " " + unit} ถึง${STATUS[s + 1]} (เกณฑ์ ${int ? fmtInt(th[s]) : th[s]})`;
-}
-function repIndicator(id, o){
-  let main = "–", sub = "";
-  const b = botEval(id);
-  const ev = b ? b.ev.filter(x => x.r) : [];
-  if(ev.length){
-    const e = ev.sort((a, c) => (c.s - a.s) || (c.r.value / c.ind.th[Math.min(c.s, 2)] - a.r.value / a.ind.th[Math.min(a.s, 2)]))[0];
-    const name = e.ind.label.replace(/^สถานี/, "").replace(/^ปริมาณน้ำไหลผ่านสถานี/, "น้ำไหลผ่าน").replace(/^ระดับน้ำ(แม่น้ำ)?/, "ระดับ");
-    main = `${name} ${repNum(e.r.value, e.ind)}${e.ind.unit === "%" ? "% ของความจุลำน้ำ" : " " + e.ind.unit}`;
-    sub = `เกณฑ์ ธปท.: ${repNext(e.r.value, e.ind.th, e.ind.unit, e.s, e.ind.int, e.ind.gt)}`;
-  } else {
-    const up = upstreamSummary(id);
-    const g = siteGauges(id).find(x => x.value !== null);
-    if(up.top){
-      main = `น้ำเหนือ ${up.top.p.name}: ${up.top.why}`;
-      sub = `${STATUS[up.s]} · น้ำถึงที่ตั้งราว ${up.top.p.lead}`;
-    } else if(g){
-      const w = stationRec(data[id], g.name);
-      const bank = w && num(w.bank) !== null ? ` · ${g.value >= 100 ? "สูงกว่า" : "ต่ำกว่า"}ตลิ่ง ${fmt1(Math.abs(w.bank))} ม.` : "";
-      main = `${g.name} ${fmt1(g.value)}% ของความจุลำน้ำ${bank}`;
-      sub = `เฝ้าระวัง: ${repNext(g.value, DEF_T, "%", g.s, false, false)}`;
-    }
-  }
-  if(o && o.trend === "up"){
-    const why = o.text.split(" — ")[1];
-    if(why) sub = `${sub.startsWith("เกณฑ์") || sub.startsWith("เฝ้าระวัง") ? sub.replace(/^[^:]+: /, "") + " · " : ""}คาดแย่ลงเพราะ ${why}`;
-  }
-  return {main, sub};
 }
 function repHeadlines(list){
   const out = [];
@@ -3720,6 +3744,170 @@ function repHeadlines(list){
   }
   return out;
 }
+/* จุดวัดของพื้นที่สำหรับการ์ดรายงาน — main = จุดน้ำเสี่ยงสุด (ไม่ใช่ฝน) */
+function repPoints(id){
+  const b = botEval(id);
+  const ev = b ? b.ev.filter(x => x.r) : [];
+  const risk = c => c.r.value / (c.ind.th[Math.min(Math.max(c.s, 0), 2)] || 1);
+  let items = [...ev].sort((a, c) => (c.s - a.s) || (risk(c) - risk(a))).map(e => {
+    const rain = isRainInd(e.ind);
+    return {name: shortGaugeName(e.ind.label, rain), value: e.r.value, unit: e.ind.unit, th: e.ind.th,
+      gt: Boolean(e.ind.gt), s: e.s, int: e.ind.int, time: e.r.time, rain, metric: e.ind.runoff ? "runoff" : null};
+  });
+  if(!items.length) items = siteGauges(id).filter(g => g.value !== null).map(g => ({
+    name: g.short || g.name, value: g.value, unit: g.unit, th: g.th, gt: g.gt, s: g.s, int: g.int, time: g.time, rain: g.rain,
+    metric: g.unit === "%" ? "cap" : null}));
+  const main = items.find(x => !x.rain) || items[0] || null;
+  /* น้ำเหนือ 1–3 · ตัดจุดหลักของการ์ดออกก่อน แล้วเติมจาก UPSTREAM ให้ครบ */
+  const ups = detailUpstreamRows(id, {exclude: main ? [main.name] : [], want: 3})
+    .filter(u => typeof u.value === "number")
+    .map(u => ({name: u.title.replace(/\s*\(% ความจุอ่าง\)$/, ""), value: u.value, unit: u.unit, th: u.th, gt: u.gt, s: u.status, upNo: u.upNo,
+      metric: u.metric, lead: String(u.lead || "").split(" · ")[0]}));
+  if(ups.length) return {main, others: ups, upstream: true};
+  return {main, others: items.filter(x => x !== main).slice(0, 3), upstream: false};
+}
+const repVal = (v, g) => g.int ? fmtInt(v) : g.unit === "%" ? fmt1(v) : /มม/.test(String(g.unit || "")) ? fmt1(v) : (Math.round(v * 100) / 100).toFixed(2);
+const repUnit = u => u === "ลบ.ม./วินาที" ? "ลบ.ม./วิ." : (u || "");
+/* ไม้วัดระดับน้ำ: พื้นทึบสีเดียวตามธงค่าปัจจุบัน · ขีดวัด · น้ำขึ้นถึงค่า · ลูกศรชี้ */
+function repGauge(ctx, x, y, h, g){
+  const sw = 30, th = g.th || [30, 70, 100], v = g.value;
+  const lv = g.s >= 0 ? Math.min(3, Math.round(g.s)) : -1;
+  const col = lv >= 0 ? REP.s[lv] : REP.muted;
+  const bg = lv >= 0 ? REP.bg[lv] : REP.soft;
+  let lo, hi;
+  if(g.unit === "%"){ lo = 0; hi = Math.max(120, v * 1.08); }
+  else if(/ม\.รทก/.test(String(g.unit || ""))){
+    const span = Math.max(0.3, th[2] - th[0]);
+    lo = Math.min(th[0] - span * 0.9, v - span * 0.15); hi = Math.max(th[2] + span * 0.6, v + span * 0.15);
+  } else { lo = 0; hi = Math.max(th[2] * 1.25, v * 1.08); }
+  const yOf = val => y + h - (Math.min(Math.max(val, lo), hi) - lo) / (hi - lo) * h;
+  const wy = yOf(v);
+  ctx.save();
+  ctx.beginPath(); ctx.roundRect(x, y, sw, h, 6); ctx.clip();
+  /* พื้นทึบสีตามธง — ไม่ไล่สีตามช่วงเกณฑ์ */
+  ctx.fillStyle = bg; ctx.fillRect(x, y, sw, h);
+  /* น้ำทึบถึงระดับปัจจุบัน สีเดียวกับธง (ทึบ ไม่ไล่) */
+  ctx.fillStyle = col;
+  ctx.fillRect(x, wy, sw, y + h - wy);
+  /* ขีดแบบไม้วัดระดับ (ตัว E) */
+  ctx.fillStyle = "rgba(20,33,43,.45)";
+  for(let k = 0; k <= 40; k++){
+    const ty = y + h - (k / 40) * h;
+    ctx.fillRect(x + sw - (k % 5 === 0 ? 16 : 8), ty - .5, k % 5 === 0 ? 16 : 8, 1);
+  }
+  ctx.restore();
+  ctx.strokeStyle = col; ctx.lineWidth = 1.6;
+  ctx.beginPath(); ctx.roundRect(x, y, sw, h, 6); ctx.stroke();
+  /* ป้ายเกณฑ์ด้านขวา (สีตามช่วงเกณฑ์นั้น) */
+  ctx.font = `600 11px ${REP.font}`;
+  let lastY = Infinity;
+  th.forEach((t, i) => {
+    if(t < lo || t > hi) return;
+    const ty = yOf(t);
+    if(Math.abs(lastY - ty) < 12) return;
+    lastY = ty;
+    ctx.fillStyle = REP.s[i + 1];
+    ctx.fillRect(x + sw, ty - .75, 6, 1.5);
+    ctx.fillText(repVal(t, g), x + sw + 9, ty + 4);
+  });
+  /* ลูกศรชี้ระดับปัจจุบัน — สีตามธง */
+  ctx.fillStyle = col; ctx.strokeStyle = col; ctx.lineWidth = 3;
+  ctx.beginPath(); ctx.moveTo(x - 4, wy); ctx.lineTo(x + sw + 4, wy); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(x - 4, wy); ctx.lineTo(x - 16, wy - 8); ctx.lineTo(x - 16, wy + 8); ctx.closePath(); ctx.fill();
+}
+function repCard(ctx, cx, cy, cw, ch, s, o){
+  const lv = o.s;
+  ctx.fillStyle = "#fff"; ctx.strokeStyle = REP.line; ctx.lineWidth = 1;
+  ctx.beginPath(); ctx.roundRect(cx, cy, cw, ch, 14); ctx.fill(); ctx.stroke();
+  ctx.fillStyle = lv >= 0 ? REP.s[lv] : REP.muted;
+  ctx.beginPath(); ctx.roundRect(cx, cy, cw, 7, [14, 14, 0, 0]); ctx.fill();
+  /* หัวการ์ด */
+  ctx.font = `700 15px ${REP.font}`;
+  const pillTxt = lv >= 0 ? STATUS[lv] : "รอข้อมูล";
+  const pw = ctx.measureText(pillTxt).width + 26;
+  repPill(ctx, cx + cw - 16 - pw, cy + 20, pillTxt, lv);
+  ctx.font = `700 21px ${REP.font}`; ctx.fillStyle = REP.ink;
+  ctx.fillText(repFit(ctx, shortAbbr(s), cw - pw - 44), cx + 16, cy + 42);
+  ctx.font = `400 13px ${REP.font}`; ctx.fillStyle = REP.muted;
+  ctx.fillText(repFit(ctx, s.prov, cw - pw - 44), cx + 16, cy + 62);
+  ctx.strokeStyle = REP.line; ctx.beginPath(); ctx.moveTo(cx + 14, cy + 76); ctx.lineTo(cx + cw - 14, cy + 76); ctx.stroke();
+
+  const {main, others, upstream} = repPoints(s.id);
+  const gy = cy + 94, gh = 214, tx = cx + 116, tw = cx + cw - 14 - tx;
+  if(main){
+    repGauge(ctx, cx + 30, gy, gh, main);
+    ctx.font = `600 13.5px ${REP.font}`; ctx.fillStyle = REP.ink;
+    const nl = repWrap(ctx, main.name, tw);
+    nl.slice(0, 2).forEach((ln, k) => ctx.fillText(k === 1 && nl.length > 2 ? repFit(ctx, ln + "…", tw) : ln, tx, gy + 14 + k * 19));
+    ctx.font = `700 36px ${REP.font}`; ctx.fillStyle = main.s >= 0 ? REP.s[main.s] : REP.ink;
+    ctx.fillText(repFit(ctx, repVal(main.value, main), tw), tx, gy + 92);
+    ctx.font = `600 14px ${REP.font}`; ctx.fillStyle = REP.muted;
+    ctx.fillText(repFit(ctx, main.metric ? METRIC_LABEL[main.metric] : repUnit(main.unit), tw), tx, gy + 114);
+    ctx.font = `400 12px ${REP.font}`;
+    if(main.time) ctx.fillText(repFit(ctx, "วัด " + fmtTime(main.time), tw), tx, gy + 134);
+    if(main.th && main.s >= 0){
+      ctx.font = `600 13px ${REP.font}`; ctx.fillStyle = main.s >= 3 ? REP.s[3] : REP.ink;
+      const gl = repWrap(ctx, repNext(main.value, main.th, repUnit(main.unit), main.s, main.int, main.gt), tw);
+      gl.slice(0, 3).forEach((ln, k) => ctx.fillText(ln, tx, gy + 162 + k * 18));
+    }
+  } else {
+    ctx.font = `500 15px ${REP.font}`; ctx.fillStyle = REP.muted;
+    ctx.fillText("ยังไม่มีข้อมูลจุดวัด", cx + 16, gy + 100);
+  }
+
+  /* คาดการณ์ 72 ชม. */
+  let y = cy + 326;
+  ctx.fillStyle = REP.soft; ctx.beginPath(); ctx.roundRect(cx + 12, y, cw - 24, 38, 10); ctx.fill();
+  ctx.font = `600 13px ${REP.font}`; ctx.fillStyle = REP.muted; ctx.fillText("คาด 72 ชม.", cx + 24, y + 24);
+  if(o.trend === "up" && Number.isFinite(o.proj)){
+    const plv = Math.min(3, Math.max(0, o.proj));
+    ctx.font = `700 16px ${REP.font}`; ctx.fillStyle = REP.s[plv]; ctx.fillText("▲", cx + 104, y + 25);
+    repPill(ctx, cx + 124, y + 5, STATUS[plv], plv, 28);
+  } else {
+    const tlv = trendColorLv(o);
+    ctx.font = `700 14px ${REP.font}`; ctx.fillStyle = tlv >= 0 ? REP.s[tlv] : REP.muted;
+    ctx.fillText(`${TREND_ICON[o.trend] || ""} ${TREND_SHORT[o.trend] || "–"}`, cx + 104, y + 24);
+  }
+
+  /* จุดวัดอื่น */
+  y += 56;
+  ctx.font = `700 12px ${REP.font}`; ctx.fillStyle = REP.muted;
+  ctx.fillText(upstream ? "น้ำเหนือ (ใกล้ที่ตั้ง → ไกล)" : "จุดวัดอื่น", cx + 16, y);
+  if(!others.length){ ctx.font = `400 12.5px ${REP.font}`; ctx.fillText(upstream ? "ไม่มีน้ำเหนือเด่น" : "–", cx + 16, y + 22); }
+  others.forEach((g, k) => {
+    const ry = y + 22 + k * 22;
+    const col = g.s >= 0 ? REP.s[g.s] : REP.muted;
+    ctx.fillStyle = col;
+    ctx.beginPath(); ctx.arc(cx + 22, ry - 4, upstream ? 7.5 : 4.5, 0, Math.PI * 2); ctx.fill();
+    if(upstream){
+      ctx.font = `700 10.5px ${REP.font}`; ctx.fillStyle = "#fff"; ctx.textAlign = "center";
+      ctx.fillText(String(g.upNo || k + 1), cx + 22, ry);
+    }
+    const val = g.unit === "%" ? `${g.metric === "runoffEst" ? "≈" : ""}${repVal(g.value, g)}% ${METRIC_SHORT[g.metric] || ""}`.trim() : `${repVal(g.value, g)} ${repUnit(g.unit)}`;
+    ctx.font = `700 12.5px ${REP.font}`; ctx.fillStyle = col; ctx.textAlign = "right"; ctx.fillText(val, cx + cw - 16, ry);
+    const vw = ctx.measureText(val).width;
+    ctx.textAlign = "left";
+    const nw = cw - 56 - vw;
+    const lead = upstream && g.lead ? ` · ${g.lead}` : "";
+    ctx.font = `400 12.5px ${REP.font}`; ctx.fillStyle = REP.ink;
+    const nm = repFit(ctx, g.name, Math.max(40, nw - (lead ? Math.min(ctx.measureText(lead).width, nw * 0.4) : 0)));
+    ctx.fillText(nm, cx + 34, ry);
+    if(lead){
+      const lx = cx + 34 + ctx.measureText(nm).width;
+      ctx.font = `400 11px ${REP.font}`; ctx.fillStyle = REP.muted;
+      ctx.fillText(repFit(ctx, lead, cx + cw - 22 - vw - lx), lx, ry);
+    }
+  });
+
+  /* Action */
+  y += 22 + 3 * 22 + 4;
+  ctx.strokeStyle = REP.line; ctx.beginPath(); ctx.moveTo(cx + 14, y - 14); ctx.lineTo(cx + cw - 14, y - 14); ctx.stroke();
+  ctx.font = `700 12px ${REP.font}`; ctx.fillStyle = REP.navy; ctx.fillText("Action", cx + 16, y + 4);
+  const act = plainActions(actionsFor(s.id, o.trend === "up" ? o.proj : o.s))[0] || "ติดตามสถานการณ์ตามปกติ";
+  ctx.font = `400 13px ${REP.font}`; ctx.fillStyle = REP.ink;
+  const al = repWrap(ctx, act, cw - 32);
+  al.slice(0, 3).forEach((ln, k) => ctx.fillText(k === 2 && al.length > 3 ? repFit(ctx, ln + "…", cw - 32) : ln, cx + 16, y + 24 + k * 18));
+}
 async function buildReport(){
   try{ await Promise.all([document.fonts.load(`400 16px ${REP.font}`), document.fonts.load(`700 16px ${REP.font}`)]); }catch(e){}
   const list = sortedSites().map(s => ({s, o: outlook(s.id)}));
@@ -3728,7 +3916,9 @@ async function buildReport(){
   meas.font = `500 18px ${REP.font}`;
   const heads = repHeadlines(list).map(([lv, t]) => ({lv, lines: repWrap(meas, t, inner - 70)}));
   const headH = 64 + heads.reduce((a, h) => a + h.lines.length * 28 + 10, 0);
-  const rowH = 84, H = 128 + 26 + 118 + 26 + headH + 26 + 50 + list.length * rowH + 30 + 74;
+  const perRow = 5, gap = 16, cardH = 556, rows = Math.ceil(list.length / perRow);
+  const gridH = rows * cardH + (rows - 1) * gap;
+  const H = 128 + 26 + 118 + 26 + headH + 26 + gridH + 56 + 74;
   const cv = document.createElement("canvas");
   cv.width = W * scale; cv.height = H * scale;
   const ctx = cv.getContext("2d");
@@ -3783,55 +3973,18 @@ async function buildReport(){
     hy += h.lines.length * 28 + 10;
   }
 
-  /* ตารางรายพื้นที่ */
+  /* การ์ดรายพื้นที่ พร้อมไม้วัดระดับน้ำ */
   y += headH + 26;
-  const cols = [{k: "#", w: 44}, {k: "พื้นที่", w: 200}, {k: "ตอนนี้", w: 122}, {k: "คาดใน 72 ชม.", w: 170}, {k: "ตัวชี้วัดหลัก และระยะห่างเกณฑ์", w: 440}, {k: "Action ที่ต้องทำ", w: 0}];
-  cols[5].w = inner - cols.slice(0, 5).reduce((a, c) => a + c.w, 0);
-  ctx.fillStyle = REP.navy; ctx.beginPath(); ctx.roundRect(pad, y, inner, 50, [10, 10, 0, 0]); ctx.fill();
-  ctx.font = `700 16px ${REP.font}`; ctx.fillStyle = "#fff";
-  let cx = pad;
-  for(const c of cols){ ctx.fillText(c.k, cx + 14, y + 32); cx += c.w; }
-  y += 50;
+  const cw = (inner - (perRow - 1) * gap) / perRow;
   list.forEach((x, i) => {
-    const {s, o} = x, ry = y + i * rowH, mid = ry + rowH / 2;
-    ctx.fillStyle = i % 2 ? "#fafbfc" : "#fff"; ctx.fillRect(pad, ry, inner, rowH);
-    ctx.fillStyle = o.s >= 0 ? REP.s[o.s] : REP.muted; ctx.fillRect(pad, ry, 5, rowH);
-    ctx.strokeStyle = REP.line; ctx.beginPath(); ctx.moveTo(pad, ry + rowH); ctx.lineTo(pad + inner, ry + rowH); ctx.stroke();
-    let c = pad;
-    ctx.font = `700 18px ${REP.font}`; ctx.fillStyle = REP.muted; ctx.fillText(String(i + 1), c + 16, mid + 6); c += cols[0].w;
-    ctx.font = `700 18px ${REP.font}`; ctx.fillStyle = REP.ink; ctx.fillText(repFit(ctx, s.abbr, cols[1].w - 20), c + 14, mid - 2);
-    ctx.font = `400 14px ${REP.font}`; ctx.fillStyle = REP.muted; ctx.fillText(repFit(ctx, s.prov, cols[1].w - 20), c + 14, mid + 18); c += cols[1].w;
-    repPill(ctx, c + 14, mid - 15, o.s >= 0 ? STATUS[o.s] : "รอข้อมูล", o.s); c += cols[2].w;
-    if(o.trend === "up"){
-      const plv = Number.isFinite(o.proj) ? Math.min(3, Math.max(0, o.proj)) : 2;
-      ctx.font = `700 18px ${REP.font}`; ctx.fillStyle = REP.s[plv]; ctx.fillText("▲", c + 14, mid + 6);
-      repPill(ctx, c + 40, mid - 15, STATUS[o.proj], o.proj);
-    } else {
-      const tlv = trendColorLv(o);
-      ctx.font = `600 16px ${REP.font}`;
-      ctx.fillStyle = tlv >= 0 ? REP.s[tlv] : REP.muted;
-      ctx.fillText(`${TREND_ICON[o.trend]} ${TREND_SHORT[o.trend]}`, c + 14, mid + 6);
-    }
-    c += cols[3].w;
-    const ind = repIndicator(s.id, o), iw = cols[4].w - 28;
-    ctx.font = `600 15px ${REP.font}`; ctx.fillStyle = REP.ink;
-    ctx.fillText(repFit(ctx, ind.main, iw), c + 14, ry + 27);
-    ctx.font = `400 13.5px ${REP.font}`; ctx.fillStyle = o.trend === "up" && Number.isFinite(o.proj) ? REP.s[Math.min(3, Math.max(0, o.proj))] : REP.muted;
-    const sl = repWrap(ctx, ind.sub, iw);
-    sl.slice(0, 2).forEach((ln, k) => ctx.fillText(k === 1 && sl.length > 2 ? repFit(ctx, ln + "…", iw) : ln, c + 14, ry + 49 + k * 19));
-    c += cols[4].w;
-    const act = plainActions(actionsFor(s.id, o.trend === "up" ? o.proj : o.s))[0] || "–";
-    ctx.font = `400 15px ${REP.font}`; ctx.fillStyle = REP.ink;
-    const al = repWrap(ctx, act, cols[5].w - 28);
-    const an = Math.min(3, al.length);
-    al.slice(0, an).forEach((ln, k) => ctx.fillText(k === 2 && al.length > 3 ? repFit(ctx, ln + "…", cols[5].w - 28) : ln, c + 14, mid + 5 - (an - 1) * 10 + k * 20));
+    repCard(ctx, pad + (i % perRow) * (cw + gap), y + Math.floor(i / perRow) * (cardH + gap), cw, cardH, x.s, x.o);
   });
-  ctx.strokeStyle = REP.line; ctx.strokeRect(pad + .5, y - 50 + .5, inner - 1, 50 + list.length * rowH - 1);
 
   /* ท้ายรายงาน */
-  y += list.length * rowH + 30;
+  y += gridH + 56;
   ctx.font = `400 13.5px ${REP.font}`; ctx.fillStyle = REP.muted;
-  ctx.fillText("เกณฑ์สถานะ: ทุกพื้นที่ใช้เกณฑ์ ธปท. (9 ต.ค. 2569) · ศูนย์จัดการธนบัตร 5 แห่งใช้เกณฑ์ % ความจุลำน้ำแบบ สนภ. กับสถานีใกล้ที่ตั้ง · คาดการณ์ 72 ชม. จากข้อมูลรายชั่วโมงย้อนหลัง 7 วัน", pad, y);
+  ctx.fillText("ไม้วัดระดับ: พื้นทึบสีตามธงค่าปัจจุบัน · น้ำทึบถึงระดับวัด · ลูกศร = ค่าปัจจุบัน · ขีดข้าง = เกณฑ์ ธปท.", pad, y - 22);
+  ctx.fillText("เกณฑ์สถานะ: ทุกพื้นที่ใช้เกณฑ์ ธปท. (9 ต.ค. 2569) · ศูนย์จัดการธนบัตร 5 แห่งใช้เกณฑ์ % น้ำท่า (Q/Qmax) แบบ EWI สนภ. กับสถานีใกล้ที่ตั้ง · ≈ = ประมาณ % น้ำท่าจากระดับน้ำ (Manning) เฉพาะสถานีที่ไม่มีอัตราการไหล · คาดการณ์ 72 ชม. จากข้อมูลรายชั่วโมงย้อนหลัง 7 วัน", pad, y);
   ctx.fillText("ที่มา: คลังข้อมูลน้ำแห่งชาติ (สทนช./สสน.) · กรมชลประทาน · กรมอุตุนิยมวิทยา · กรมอุทกศาสตร์ · Open-Meteo · ข้อมูลเบื้องต้นเพื่อการเฝ้าระวังภายใน ใช้ประกอบกับประกาศทางการ", pad, y + 22);
   ctx.textAlign = "right"; ctx.fillText(`จัดทำ ${fmtTime(new Date().toISOString())}`, W - pad, y + 22); ctx.textAlign = "left";
   return cv;
