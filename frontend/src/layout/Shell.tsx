@@ -101,6 +101,8 @@ export function Shell() {
   const [refreshing, setRefreshing] = useState(false);
   const activeGroup = findGroupForPath(location.pathname, user);
   const pageLevel = levelForPath(user, location.pathname);
+  /** สถานการณ์น้ำบนมือถือ — เนื้อหา/เมนูล่างชิดขอบจอ */
+  const waterMobileBleed = location.pathname.startsWith("/water-situation");
 
   useEffect(() => {
     const onRefresh = () => {
@@ -350,16 +352,33 @@ export function Shell() {
         </aside>
 
         <main
-          className={`min-h-0 min-w-0 flex-1 overflow-y-auto overflow-x-hidden overscroll-y-contain px-3 pb-4 print:max-w-none print:overflow-visible print:p-0 sm:px-5 sm:pb-6 lg:px-6 lg:pb-8 ${
-            moduleHeaderCollapsed ? "pt-2 sm:pt-2 lg:pt-2" : "pt-4 sm:pt-6 lg:pt-8"
+          className={`min-h-0 min-w-0 flex-1 overflow-x-hidden overscroll-y-contain print:max-w-none print:overflow-visible print:p-0 sm:px-5 sm:pb-6 lg:px-6 lg:pb-8 ${
+            waterMobileBleed
+              ? "max-md:flex max-md:flex-col max-md:overflow-hidden max-md:px-0 max-md:pb-0 max-md:pt-2 px-3 pb-4 overflow-y-auto"
+              : "overflow-y-auto px-3 pb-4"
+          } ${
+            moduleHeaderCollapsed ? "pt-2 sm:pt-2 lg:pt-2" : waterMobileBleed ? "sm:pt-6 lg:pt-8 pt-4 max-md:pt-2" : "pt-4 sm:pt-6 lg:pt-8"
           }`}
-          style={{ paddingBottom: "max(1rem, env(safe-area-inset-bottom, 0px))" }}
+          style={
+            waterMobileBleed
+              ? undefined
+              : { paddingBottom: "max(1rem, env(safe-area-inset-bottom, 0px))" }
+          }
         >
-          <div className="w-full min-w-0 max-w-none print:max-w-none">
-            <ModuleSectionChrome viewer={user} />
+          <div
+            className={`w-full min-w-0 max-w-none print:max-w-none ${
+              waterMobileBleed ? "max-md:flex max-md:min-h-0 max-md:flex-1 max-md:flex-col" : ""
+            }`}
+          >
+            <div className={waterMobileBleed ? "max-md:hidden" : undefined}>
+              <ModuleSectionChrome viewer={user} />
+            </div>
             <div
-              className={`app-card-surface w-full rounded-[1.5rem] border border-white/70 px-4 pb-4 sm:px-6 sm:pb-6 ${
-                moduleHeaderCollapsed ? "pt-3 sm:pt-4" : "pt-4 sm:pt-6"
+              className={`app-card-surface w-full sm:px-6 sm:pb-6 ${
+                waterMobileBleed
+                  ? "rounded-[1.5rem] border border-white/70 px-4 pb-4 max-md:flex max-md:min-h-0 max-md:flex-1 max-md:flex-col max-md:rounded-none max-md:border-0 max-md:bg-transparent max-md:px-0 max-md:pb-0 max-md:pt-0 " +
+                    (moduleHeaderCollapsed ? "pt-3 sm:pt-4" : "pt-4 sm:pt-6")
+                  : `rounded-[1.5rem] border border-white/70 px-4 pb-4 ${moduleHeaderCollapsed ? "pt-3 sm:pt-4" : "pt-4 sm:pt-6"}`
               }`}
             >
               {pageLevel === "none" ? (

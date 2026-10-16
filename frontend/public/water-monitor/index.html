@@ -238,18 +238,66 @@ tbody tr:hover{background:var(--soft)}
 @media (max-width:860px){.measure-all{grid-template-columns:minmax(0,1fr)}}
 .bot-mark{display:inline-block;font-size:.68rem;font-weight:600;color:var(--accent);margin-top:2px}
 
-/* tabs */
-.tabs{position:sticky;top:0;z-index:900;display:flex;gap:6px;overflow-x:auto;background:var(--bg);padding:10px 0;border-bottom:1px solid var(--line)}
-.tabs button{appearance:none;border:1px solid var(--line);background:var(--panel);color:var(--muted);font:inherit;font-weight:600;font-size:.9rem;padding:7px 14px;border-radius:999px;cursor:pointer;display:inline-flex;align-items:center;gap:6px;white-space:nowrap}
+/* tabs — เดสก์ท็อปอยู่บน · มือถือเป็นแถบล่างแบบแอป (อ้างอิง Ai Cluster mobile dock) */
+.tabs{position:sticky;top:0;z-index:900;display:flex;gap:6px;overflow-x:auto;background:var(--bg);padding:10px 0;border-bottom:1px solid var(--line);-webkit-overflow-scrolling:touch;scrollbar-width:none}
+.tabs::-webkit-scrollbar{display:none}
+.tabs button{appearance:none;border:1px solid var(--line);background:var(--panel);color:var(--muted);font:inherit;font-weight:600;font-size:.88rem;padding:7px 14px;border-radius:999px;cursor:pointer;display:inline-flex;align-items:center;gap:7px;white-space:nowrap;transition:color .15s ease,background .15s ease,border-color .15s ease,transform .12s ease}
 .tabs button:hover{color:var(--ink);border-color:var(--accent)}
 .tabs button[aria-selected="true"]{background:var(--accent);border-color:var(--accent);color:var(--accent-ink)}
-.tabs svg{width:17px;height:17px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+.tabs button:active{transform:scale(.96)}
+.tabs .tab-ico{display:inline-flex;align-items:center;justify-content:center;flex:none}
+.tabs svg{width:17px;height:17px;fill:none;stroke:currentColor;stroke-width:1.85;stroke-linecap:round;stroke-linejoin:round}
+.tabs .tab-lbl-short{display:none}
 .tab{padding-top:14px}
 .top .legend{margin:6px 0 0}
 
+/* มือถือ / แท็บเล็ตแนวตั้ง: เมนูล่าง + หัวกระชับ */
+@media (max-width:899px){
+  .wrap{padding-inline:10px;padding-block:8px calc(4.85rem + env(safe-area-inset-bottom,0px))}
+  body.detail-mode .wrap{padding-bottom:max(16px,env(safe-area-inset-bottom,0px))}
+  .top{gap:6px 10px;padding-bottom:8px;align-items:flex-start;border-bottom-color:color-mix(in srgb,var(--line) 70%,transparent)}
+  .top h1{font-size:1.02rem;letter-spacing:-.02em;line-height:1.25}
+  .top .legend{margin:4px 0 0;gap:4px 8px;font-size:.68rem;line-height:1.35}
+  .top .legend .sw{width:7px;height:7px;border-radius:2px}
+  .stamp{align-items:stretch;width:100%;gap:5px}
+  .stamp .live,#updatedWrap{font-size:.72rem}
+  .stamp .rep-btn{width:100%;justify-content:center;min-height:38px;border-radius:10px;font-size:.8rem;padding:6px 10px}
+  .tabs{
+    position:fixed;left:0;right:0;bottom:0;top:auto;width:100%;max-width:100%;
+    margin:0;z-index:960;box-sizing:border-box;
+    display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:0;
+    overflow:visible;padding:4px 0 env(safe-area-inset-bottom,0px);
+    background:color-mix(in srgb,var(--panel) 94%,transparent);
+    border:0;border-radius:0;border-top:1px solid color-mix(in srgb,var(--line) 75%,transparent);
+    box-shadow:0 -6px 24px -16px rgba(20,33,43,.22);
+    -webkit-backdrop-filter:blur(18px) saturate(1.2);backdrop-filter:blur(18px) saturate(1.2);
+  }
+  .tabs button{
+    flex-direction:column;justify-content:center;align-items:center;gap:3px;
+    min-height:52px;min-width:0;width:100%;padding:6px 1px 4px;
+    border:0;border-radius:0;background:transparent;color:var(--muted);
+    font-size:.62rem;font-weight:600;letter-spacing:-.01em;line-height:1.15;
+    white-space:normal;text-align:center;
+  }
+  .tabs button:hover{border-color:transparent;color:var(--ink);background:color-mix(in srgb,var(--soft) 70%,transparent)}
+  .tabs button[aria-selected="true"]{
+    background:color-mix(in srgb,var(--water-soft) 55%,var(--panel));
+    color:var(--accent);font-weight:800;
+    box-shadow:0 1px 0 color-mix(in srgb,var(--accent) 12%,transparent);
+  }
+  .tabs .tab-ico{width:28px;height:28px;border-radius:10px;display:grid;place-items:center}
+  .tabs button[aria-selected="true"] .tab-ico{background:color-mix(in srgb,var(--accent) 12%,var(--panel));color:var(--accent)}
+  .tabs svg{width:20px;height:20px;stroke-width:1.9}
+  .tabs .tab-lbl-full{display:none}
+  .tabs .tab-lbl-short{display:block;max-width:100%;overflow:hidden;text-overflow:ellipsis}
+  .tab{padding-top:10px}
+  #map{height:calc(100dvh - 12.5rem - env(safe-area-inset-bottom,0px));min-height:260px;border-radius:14px}
+  #dlg{width:min(720px,100vw);max-height:min(90vh,100dvh);border-radius:16px 16px 0 0;margin:auto 0 0}
+  .foot{margin-top:16px;padding-bottom:4px}
+}
+
 /* overview */
 .kpis{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:8px}
-@media (max-width:860px){.kpis{grid-template-columns:repeat(3,minmax(0,1fr))}}
 .kpi{appearance:none;font:inherit;color:inherit;text-align:left;cursor:pointer;background:var(--panel);border:1px solid var(--line);border-top:5px solid var(--muted);border-radius:12px;padding:10px 14px;min-width:0}
 .kpi:hover{border-color:var(--accent)}
 .kpi[data-s="0"]{border-top-color:var(--s0)}.kpi[data-s="1"]{border-top-color:var(--s1)}
@@ -337,6 +385,64 @@ tbody tr:hover{background:var(--soft)}
 .outl.up[data-s="0"],.outl.down[data-s="0"],.outl.flat[data-s="0"]{color:var(--s0)}
 .outl.up[data-s="1"],.outl.down[data-s="1"],.outl.flat[data-s="1"]{color:var(--s1)}
 .outl.up[data-s="2"],.outl.down[data-s="2"],.outl.flat[data-s="2"]{color:var(--s2)}
+/* ภาพรวมมือถือ: KPI กริด 2×2 + การ์ดแจ้งเตือนเต็มแถว · รายการเป็นการ์ดเรียงแนวตั้ง */
+@media (max-width:899px){
+  .kpis{
+    grid-template-columns:repeat(2,minmax(0,1fr));
+    gap:8px;
+  }
+  .kpis > .kpi-up{grid-column:1/-1}
+  .kpi{
+    padding:10px 12px 11px;
+    border-radius:14px;
+    border-top-width:4px;
+    display:flex;flex-direction:column;gap:2px;min-height:4.75rem;
+  }
+  .kpi .t{font-size:.72rem;letter-spacing:.01em}
+  .kpi .n{font-size:1.55rem;line-height:1.05}
+  .kpi .who{font-size:.7rem;margin-top:auto;white-space:normal;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;line-height:1.25}
+  .kpi-up{padding-right:48px;min-height:4.5rem;justify-content:center}
+  .kpi-up .bell{top:12px;right:14px;width:26px;height:26px}
+  .risk{margin-top:14px;background:transparent;border:0;border-radius:0;padding:0}
+  .risk + .risk{margin-top:18px}
+  .risk-title{padding:4px 2px 8px;font-size:.88rem}
+  .risk-h{display:none}
+  .risk > .rrow{
+    display:grid;
+    grid-template-columns:1.5rem minmax(0,1fr) auto;
+    grid-template-areas:"rank ra outl" "body body body";
+    gap:4px 10px;
+    align-items:center;
+    margin:0 0 8px;
+    padding:12px 12px 10px;
+    background:var(--panel);
+    border:1px solid var(--line);
+    border-radius:14px;
+    box-shadow:0 1px 0 color-mix(in srgb,var(--line) 55%,transparent);
+  }
+  .risk > .rrow:last-of-type{margin-bottom:0}
+  .risk > .rrow:hover{background:var(--panel);border-color:var(--accent)}
+  .risk > .rrow .rank{grid-area:rank;font-size:.78rem;align-self:start;padding-top:2px}
+  .risk > .rrow .ra{grid-area:ra;min-width:0}
+  .risk > .rrow .ra b{font-size:.92rem;white-space:normal}
+  .risk > .rrow .ra small{font-size:.72rem;white-space:normal}
+  .risk > .rrow .outl{grid-area:outl;justify-self:end;align-self:start;font-size:.72rem;padding-top:2px}
+  .risk > .rrow .rbody{
+    grid-area:body;
+    display:flex;flex-direction:column;gap:8px;
+    padding-top:6px;margin-top:2px;
+    border-top:1px dashed var(--soft);
+  }
+  .risk > .rrow .rbody .slv{max-width:11.5rem;height:26px}
+  .risk > .rrow .rbody .oscale.compact .oscale-h .ttl{align-items:center}
+  .risk > .rrow .rbody .oscale.compact .oscale-h .ttl > span:last-child{
+    white-space:normal;overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;
+    word-break:normal;overflow-wrap:anywhere;line-height:1.3;font-size:.78rem;
+  }
+  .risk > .rrow .rbody .oscale.compact .osbar-wrap{padding-bottom:18px;margin-top:4px}
+  .risk > .rrow .rbody .oscale.compact .osbar{height:12px}
+  .risk-legend{padding:8px 4px 0;border-top:0;margin-top:4px;gap:8px 12px}
+}
 .outl.up[data-s="3"],.outl.down[data-s="3"],.outl.flat[data-s="3"]{color:var(--s3)}
 
 /* zone gauges — ใช้ใน dialog สถานี/เขื่อน */
@@ -805,12 +911,27 @@ body.detail-mode .wrap{padding-top:12px}
     </div>
   </header>
 
-  <nav class="tabs" id="tabs" role="tablist">
-    <button data-tab="overview" aria-selected="true"><svg viewBox="0 0 24 24"><path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/></svg>ภาพรวม</button>
-    <button data-tab="map" aria-selected="false"><svg viewBox="0 0 24 24"><path d="M9 4L3 6v14l6-2 6 2 6-2V4l-6 2-6-2zM9 4v14M15 6v14"/></svg>แผนที่</button>
-    <button data-tab="rain" aria-selected="false"><svg viewBox="0 0 24 24"><path d="M7 15a5 5 0 1 1 1-9.9A6 6 0 0 1 19 8a4 4 0 0 1 0 7H7zM8 19l-1 2M12 19l-1 2M16 19l-1 2"/></svg>ฝนพยากรณ์</button>
-    <button data-tab="cctv" aria-selected="false"><svg viewBox="0 0 24 24"><path d="M3 7h11a2 2 0 0 1 2 2v6a2 2 0 0 1-2 2H3zM16 10l5-3v10l-5-3"/></svg>กล้อง CCTV</button>
-    <button data-tab="nation" aria-selected="false"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3a14 14 0 0 1 0 18M12 3a14 14 0 0 0 0 18"/></svg>ทั่วประเทศ</button>
+  <nav class="tabs" id="tabs" role="tablist" aria-label="เมนูหลัก">
+    <button type="button" data-tab="overview" aria-selected="true">
+      <span class="tab-ico" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/></svg></span>
+      <span class="tab-lbl-full">ภาพรวม</span><span class="tab-lbl-short">ภาพรวม</span>
+    </button>
+    <button type="button" data-tab="map" aria-selected="false">
+      <span class="tab-ico" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M9 4L3 6v14l6-2 6 2 6-2V4l-6 2-6-2zM9 4v14M15 6v14"/></svg></span>
+      <span class="tab-lbl-full">แผนที่</span><span class="tab-lbl-short">แผนที่</span>
+    </button>
+    <button type="button" data-tab="rain" aria-selected="false">
+      <span class="tab-ico" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M7 15a5 5 0 1 1 1-9.9A6 6 0 0 1 19 8a4 4 0 0 1 0 7H7zM8 19v2M12 19v2M16 19v2"/></svg></span>
+      <span class="tab-lbl-full">ฝนพยากรณ์</span><span class="tab-lbl-short">ฝน</span>
+    </button>
+    <button type="button" data-tab="cctv" aria-selected="false">
+      <span class="tab-ico" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M3 7h11a2 2 0 0 1 2 2v6a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V9a2 2 0 0 1 2-2zM16 10l5-3v10l-5-3"/><circle cx="8.5" cy="12" r="1.6"/></svg></span>
+      <span class="tab-lbl-full">กล้อง CCTV</span><span class="tab-lbl-short">กล้อง</span>
+    </button>
+    <button type="button" data-tab="nation" aria-selected="false">
+      <span class="tab-ico" aria-hidden="true"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3a14 14 0 0 1 0 18M12 3a14 14 0 0 0 0 18"/></svg></span>
+      <span class="tab-lbl-full">ทั่วประเทศ</span><span class="tab-lbl-short">ประเทศ</span>
+    </button>
   </nav>
 
   <section class="tab" id="tab-overview"><div id="exec"></div></section>
