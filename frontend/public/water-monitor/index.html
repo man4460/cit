@@ -396,10 +396,8 @@ tbody tr:hover{background:var(--soft)}
 .watch-side{display:flex;flex-direction:column;gap:8px;min-width:0;padding:2px 0 2px 12px;margin:0;border:0;border-left:1px dashed var(--soft);border-radius:0;background:transparent}
 .ov-gauge{flex:1 1 0;display:flex;flex-direction:column;align-items:center;gap:3px;min-width:88px;padding:4px 10px;border:0;border-radius:0;background:transparent}
 .ov-gauge + .ov-gauge{border-left:1px dashed var(--soft)}
-.ov-gauge.has-tip{cursor:help;position:relative;z-index:1}
-.ov-gauge.has-tip:hover,.ov-gauge.has-tip:focus-within{z-index:30}
-.ov-gauge.has-tip > .otip-all{left:50%;right:auto;transform:translateX(-50%)}
-/* โชว์เฉพาะตอน fixed แล้ว — กันล้น/ถูกตัดขอบการ์ดก่อนจัดตำแหน่ง */
+.ov-gauge.has-tip{cursor:pointer;position:relative;z-index:1}
+.ov-gauge.has-tip > .otip-all{display:none}
 .ov-gauge .og-lab{align-self:stretch;display:flex;justify-content:center;min-height:1.15rem}
 .ov-gauge .og-lab .role-badge{font-size:.62rem;padding:1px 6px;margin:0}
 .ov-gauge .og-title{font-size:.66rem;font-weight:600;text-align:center;line-height:1.25;height:calc(1.25em * 2);min-height:calc(1.25em * 2);overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;word-break:break-word}
@@ -878,13 +876,28 @@ tbody tr:hover{background:var(--soft)}
 .otip.otip-all .row .v .u{font-size:.68rem;font-weight:600;color:var(--muted);margin-left:3px;font-family:var(--f-body)}
 .otip.otip-all .row.soft{align-items:flex-start;padding-top:4px;padding-bottom:4px}
 .otip.otip-all .row.soft .v{font-family:var(--f-body);font-size:.72rem;font-weight:500;white-space:normal;text-align:right;max-width:9.5rem;line-height:1.35;color:var(--muted)}
-.otip.otip-all.is-fixed{position:fixed;z-index:10050;opacity:1;visibility:visible;bottom:auto;right:auto;transform:none;pointer-events:none}
-.otip.otip-all.is-fixed.below::after{bottom:auto;top:-5px}
-.osbar-wrap.has-tip{cursor:help;z-index:1}
-.osbar-wrap.has-tip:hover,.osbar-wrap.has-tip:focus-within{z-index:30}
+/* คลิกเปิดกลางจอ — ไม่ใช้ hover เลื่อนตามแถบ */
+.otip-scrim{position:fixed;inset:0;z-index:10040;background:rgba(20,33,43,.38);backdrop-filter:blur(2px);-webkit-backdrop-filter:blur(2px)}
+.otip.otip-all.is-modal{
+  position:fixed;left:50%;top:50%;transform:translate(-50%,-50%);
+  z-index:10050;opacity:1;visibility:visible;pointer-events:auto;
+  bottom:auto;right:auto;width:min(22rem,calc(100vw - 32px));max-width:min(22rem,calc(100vw - 32px));
+  max-height:calc(100dvh - 32px);display:flex;flex-direction:column;overflow:hidden;box-sizing:border-box;
+  box-shadow:0 24px 64px rgba(20,33,43,.28),0 4px 16px rgba(20,33,43,.12);
+}
+.otip.otip-all.is-modal::after{display:none}
+.otip.otip-all.is-modal .otip-hd{flex:none;padding-right:40px;position:relative}
+.otip.otip-all.is-modal .otip-rows{flex:1 1 auto;min-height:0;max-height:none;overflow:auto}
+.otip.otip-all .otip-x{
+  position:absolute;top:8px;right:8px;width:28px;height:28px;border:0;border-radius:8px;
+  background:var(--soft);color:var(--ink);font-size:1.25rem;line-height:1;cursor:pointer;
+  display:none;align-items:center;justify-content:center;padding:0;
+}
+.otip.otip-all.is-modal .otip-x{display:inline-flex}
+.otip.otip-all .otip-x:hover{background:var(--line)}
+.osbar-wrap.has-tip{cursor:pointer;z-index:1}
 .oscale{position:relative}
-.osbar-wrap.has-tip > .otip-all{left:50%;right:auto;transform:translateX(-50%)}
-/* โชว์เฉพาะตอน is-fixed (JS จัดใน viewport) */
+.osbar-wrap.has-tip > .otip-all{display:none}
 .osends{position:absolute;left:0;right:0;top:0;bottom:30px;height:auto;pointer-events:none;z-index:4}
 .osends .end{position:absolute;width:36px;height:100%;top:0;pointer-events:auto;cursor:default}
 .osends .end.lo{left:0}
@@ -2691,7 +2704,7 @@ function impactScaleHtml(item, opts){
       <div class="ttl"><span class="ci">${isRain ? ICO.rain : ICO.tide}</span><span>${esc(lab)}</span></div>
       <span class="pill" data-s="${st}" title="${st >= 0 ? esc(botStatusLabel(st)) : ""}">${st >= 0 ? STATUS[st] : "รอข้อมูล"}</span>
     </div>
-    <div class="osbar-wrap has-tip" tabindex="0" title="ชี้เพื่อดูค่าทั้งหมด">
+    <div class="osbar-wrap has-tip" tabindex="0" role="button" title="คลิกดูค่าทั้งหมด" aria-label="คลิกดูค่าทั้งหมด">
       ${allTip}
       <div class="osbar" role="img" aria-label="${esc(lab)} ปัจจุบัน ${curNum} ${unitLabel}${hasPeak ? " สูงสุด " + peakNum + " " + unitLabel : ""}">
         <div class="fill" style="width:${pctOf(Math.max(cur, showPeakMark ? peak : cur)).toFixed(1)}%"></div>
@@ -3417,7 +3430,7 @@ function overviewMiniGauge({role, roleLabel, title, value, unit, th, gt, status,
   const roleCls = role === "rain" ? "rain" : (role === "flow" ? "flow" : "loc");
   const roleIco = role === "rain" ? ICO.rain : (role === "flow" ? ICO.flow : ICO.pin);
   const tipCls = allTip ? " has-tip" : "";
-  const tipAttr = allTip ? ` tabindex="0" title="ชี้เพื่อดูค่าทั้งหมด"` : "";
+  const tipAttr = allTip ? ` tabindex="0" role="button" title="คลิกดูค่าทั้งหมด" aria-label="คลิกดูค่าทั้งหมด"` : "";
   return `<div class="ov-gauge${tipCls}" data-s="${st}"${tipAttr}>
     ${allTip}
     <div class="og-lab"><span class="role-badge ${roleCls}">${roleIco}${esc(roleLabel || "")}</span></div>
@@ -5232,17 +5245,36 @@ function select(id, push=true){
   renderRail(); renderSite();
 }
 
-/* popup สเกล — ย้ายไป body ตอนโชว์ กันการ์ด/overflow ตัดเนื้อหา */
+/* popup สเกล — คลิกเปิดกลางจอ (ไม่ใช้ hover) */
 function resetTipStyles(tip){
   if(!tip) return;
-  tip.classList.remove("is-fixed", "below");
+  tip.classList.remove("is-modal", "is-fixed", "below");
   tip.style.left = "";
   tip.style.top = "";
   tip.style.right = "";
   tip.style.bottom = "";
   tip.style.transform = "";
   tip.style.maxWidth = "";
+  tip.style.maxHeight = "";
   tip.style.width = "";
+  tip.setAttribute("role", "tooltip");
+  tip.removeAttribute("aria-modal");
+}
+function ensureTipCloseBtn(tip){
+  if(!tip || tip.querySelector(".otip-x")) return;
+  const hd = tip.querySelector(".otip-hd");
+  if(!hd) return;
+  const btn = document.createElement("button");
+  btn.type = "button";
+  btn.className = "otip-x";
+  btn.setAttribute("aria-label", "ปิด");
+  btn.textContent = "×";
+  btn.addEventListener("click", e => {
+    e.preventDefault();
+    e.stopPropagation();
+    dismissAllScaleTips();
+  });
+  hd.appendChild(btn);
 }
 function clearScaleTip(wrap){
   if(!wrap) return;
@@ -5261,96 +5293,58 @@ function clearScaleTip(wrap){
 function dismissAllScaleTips(){
   if(_scaleTipWrap) clearScaleTip(_scaleTipWrap);
   _scaleTipWrap = null;
+  document.querySelectorAll("body > .otip-scrim").forEach(el => el.remove());
+  /* orphan ที่ค้างบน body (host หายหลัง re-render) */
   document.querySelectorAll("body > .otip.otip-all").forEach(el => el.remove());
 }
-function scaleTipAnchor(wrap){
-  return wrap.querySelector(".osbar") || wrap.querySelector(".gauge-box") || wrap;
-}
-function placeScaleTip(wrap){
+function openScaleTip(wrap){
   if(!wrap) return;
   let tip = wrap._tipEl || wrap.querySelector(".otip-all");
   if(!tip) return;
-  if(!wrap._tipHost) wrap._tipHost = tip.parentNode;
+  if(wrap._tipOn && _scaleTipWrap === wrap){
+    dismissAllScaleTips();
+    return;
+  }
+  dismissAllScaleTips();
+  if(!wrap._tipHost || !document.contains(wrap._tipHost)) wrap._tipHost = tip.parentNode;
   wrap._tipEl = tip;
-  /* ออกจากการ์ด — position:fixed ใน ancestor ที่มี overflow/transform ยังถูกตัดได้ */
+  wrap._tipOn = true;
+  _scaleTipWrap = wrap;
+  ensureTipCloseBtn(tip);
+  tip.classList.add("is-modal");
+  tip.setAttribute("role", "dialog");
+  tip.setAttribute("aria-modal", "true");
+  const scrim = document.createElement("div");
+  scrim.className = "otip-scrim";
+  scrim.addEventListener("click", () => dismissAllScaleTips());
   if(tip.parentNode !== document.body) document.body.appendChild(tip);
-  const bar = scaleTipAnchor(wrap);
-  const br = bar.getBoundingClientRect();
-  const pad = 8;
-  const vw = window.innerWidth;
-  const vh = window.innerHeight;
-  tip.classList.add("is-fixed");
-  tip.classList.remove("below");
-  tip.style.left = "0px";
-  tip.style.top = "0px";
-  tip.style.right = "auto";
-  tip.style.bottom = "auto";
-  tip.style.transform = "none";
-  const maxW = Math.max(160, Math.min(300, vw - pad * 2));
-  tip.style.maxWidth = maxW.toFixed(0) + "px";
-  tip.style.width = "max-content";
-  let tw = Math.min(tip.offsetWidth || 200, maxW);
-  let th = tip.offsetHeight || 120;
-  if(tip.offsetWidth > maxW){
-    tip.style.maxWidth = maxW.toFixed(0) + "px";
-    tw = tip.offsetWidth || maxW;
-    th = tip.offsetHeight || th;
-  }
-  let left = br.left + br.width / 2 - tw / 2;
-  left = Math.min(Math.max(pad, left), Math.max(pad, vw - pad - tw));
-  let top = br.top - th - 10;
-  if(top < pad){
-    top = br.bottom + 10;
-    tip.classList.add("below");
-  }
-  if(top + th > vh - pad){
-    const above = br.top - th - 10;
-    if(above >= pad){
-      top = above;
-      tip.classList.remove("below");
-    } else {
-      top = Math.max(pad, vh - pad - th);
-    }
-  }
-  tip.style.left = left.toFixed(1) + "px";
-  tip.style.top = top.toFixed(1) + "px";
+  document.body.appendChild(scrim);
+  const x = tip.querySelector(".otip-x");
+  if(x) try{ x.focus({ preventScroll: true }); }catch(_){}
 }
 const SCALE_TIP_SEL = ".osbar-wrap.has-tip, .ov-gauge.has-tip";
 let _scaleTipWrap = null;
-function onScaleTipEnter(e){
-  const wrap = e.target.closest(SCALE_TIP_SEL);
-  if(!wrap || wrap._tipOn) return;
-  if(_scaleTipWrap && _scaleTipWrap !== wrap) clearScaleTip(_scaleTipWrap);
-  wrap._tipOn = true;
-  _scaleTipWrap = wrap;
-  requestAnimationFrame(() => requestAnimationFrame(() => {
-    if(wrap._tipOn) placeScaleTip(wrap);
-  }));
-}
-function onScaleTipLeave(e){
-  const wrap = e.target.closest(SCALE_TIP_SEL);
-  if(!wrap) return;
-  const to = e.relatedTarget;
-  if(to && wrap.contains(to)) return;
-  if(_scaleTipWrap === wrap) _scaleTipWrap = null;
-  clearScaleTip(wrap);
-}
-function onScaleTipReposition(){
-  if(_scaleTipWrap && _scaleTipWrap._tipOn) placeScaleTip(_scaleTipWrap);
-}
-document.addEventListener("mouseover", onScaleTipEnter);
-document.addEventListener("mouseout", onScaleTipLeave);
-document.addEventListener("focusin", onScaleTipEnter);
-document.addEventListener("focusout", e => {
+document.addEventListener("click", e => {
   const wrap = e.target.closest && e.target.closest(SCALE_TIP_SEL);
   if(!wrap) return;
-  const to = e.relatedTarget;
-  if(to && wrap.contains(to)) return;
-  if(_scaleTipWrap === wrap) _scaleTipWrap = null;
-  clearScaleTip(wrap);
+  /* กันการ์ดแถว / ลิงก์อื่นรับคลิก */
+  e.preventDefault();
+  e.stopPropagation();
+  openScaleTip(wrap);
+}, true);
+document.addEventListener("keydown", e => {
+  if(e.key === "Escape" && _scaleTipWrap){
+    e.preventDefault();
+    dismissAllScaleTips();
+  }
+  if((e.key === "Enter" || e.key === " ") && e.target && e.target.closest && e.target.closest(SCALE_TIP_SEL)){
+    const wrap = e.target.closest(SCALE_TIP_SEL);
+    if(!wrap) return;
+    e.preventDefault();
+    e.stopPropagation();
+    openScaleTip(wrap);
+  }
 });
-window.addEventListener("resize", onScaleTipReposition);
-window.addEventListener("scroll", onScaleTipReposition, true);
 
 document.addEventListener("click", e => {
   const t = e.target.closest("[data-tab],[data-kpi],[data-list],[data-nat],[data-st],[data-dam],[data-open],[data-goto],[data-cam],[data-flycam],[data-report],[data-round],[data-back-overview],[data-back-site],.dlg-x,.chip");
