@@ -47,6 +47,7 @@ import {
   type BudgetKind,
   type BudgetYearLineRow,
 } from "./budgetFormat";
+import { BudgetPaceBar } from "./BudgetPaceBar";
 import {
   BudgetAvailabilityPanel,
   BudgetCommitmentBreakdown,
@@ -774,6 +775,9 @@ export function BudgetYearPage() {
   const title = isCommitment ? `งบผูกพันปี ${yearBe}` : `งบปี ${yearBe}`;
   const fmt = formatBaht;
   const unit = "บาท";
+  const asOfIso = importData?.batch?.asOfDate ?? null;
+  const tone = (pct: number | null | undefined, remaining?: number | null, net?: number | null) =>
+    pctToneClass(pct, { yearBe, asOfIso, remaining: remaining ?? null, netBudget: net ?? null });
 
   const popupChildren = popupMajor?.children ?? [];
 
@@ -957,7 +961,7 @@ export function BudgetYearPage() {
           <>
             <BudgetStatCard label="ใช้ไป" tone={BUDGET_STAT_TONES.spent}>
               <p
-                className={`text-[1.375rem] font-black leading-tight tabular-nums ${pctToneClass(totals.pctUsed)}`}
+                className={`text-[1.375rem] font-black leading-tight tabular-nums ${tone(totals.pctUsed, totals.remaining, totals.allocated)}`}
                 title={`${fmt(totals.spent)} ${unit}`}
               >
                 {fmt(totals.spent)} <span className="text-base font-bold text-[#66638c]">{unit}</span>
@@ -969,7 +973,7 @@ export function BudgetYearPage() {
               </p>
             </BudgetStatCard>
             <BudgetStatCard label="% ใช้ไป" tone={BUDGET_STAT_TONES.pct} className="sm:col-span-1">
-              <p className={`text-[1.375rem] font-black leading-tight tabular-nums ${pctToneClass(totals.pctUsed)}`} title={formatPct(totals.pctUsed)}>
+              <p className={`text-[1.375rem] font-black leading-tight tabular-nums ${tone(totals.pctUsed, totals.remaining, totals.allocated)}`} title={formatPct(totals.pctUsed)}>
                 {formatPct(totals.pctUsed)}
               </p>
             </BudgetStatCard>
@@ -1016,7 +1020,7 @@ export function BudgetYearPage() {
                 <dl className="mt-2 grid grid-cols-3 gap-2 text-xs">
                   <div className="min-w-0">
                     <dt className="text-slate-500">ใช้ไป</dt>
-                    <dd className={`font-semibold ${pctToneClass(k.pctUsed)}`}>
+                    <dd className={`font-semibold ${tone(k.pctUsed, k.remaining, k.allocated)}`}>
                       <FitSingleLine className="font-semibold tabular-nums" maxPx={12} minPx={8} title={fmt(k.spent)}>
                         {fmt(k.spent)}
                       </FitSingleLine>
@@ -1032,7 +1036,7 @@ export function BudgetYearPage() {
                   </div>
                   <div className="min-w-0">
                     <dt className="text-slate-500">% ใช้</dt>
-                    <dd className={`font-semibold ${pctToneClass(k.pctUsed)}`}>{formatPct(k.pctUsed)}</dd>
+                    <dd className={`font-semibold ${tone(k.pctUsed, k.remaining, k.allocated)}`}>{formatPct(k.pctUsed)}</dd>
                   </div>
                 </dl>
               ) : (
@@ -1125,6 +1129,17 @@ export function BudgetYearPage() {
                   <div className="mt-0.5 text-[10px] leading-none text-slate-500">
                     {block.children.length} รายการย่อย
                   </div>
+                  {isTracking ? (
+                    <BudgetPaceBar
+                      className="mt-1 max-w-xs"
+                      spentPct={pct}
+                      yearBe={yearBe}
+                      asOfIso={asOfIso}
+                      remaining={block.remaining}
+                      netBudget={block.allocated}
+                      showChip
+                    />
+                  ) : null}
                 </div>
                 <div className="flex min-w-0 max-w-[55%] shrink-0 items-center gap-3 text-right text-xs sm:max-w-none">
                   <div className="min-w-0 w-[5.5rem] sm:w-[6.5rem]">
@@ -1143,7 +1158,7 @@ export function BudgetYearPage() {
                       <div className="min-w-0 w-[5.5rem] sm:w-[6.5rem]">
                         <div className="text-[9px] font-bold uppercase leading-none text-slate-400">ใช้ไป</div>
                         <FitSingleLine
-                          className={`font-semibold tabular-nums leading-tight ${pctToneClass(pct)}`}
+                          className={`font-semibold tabular-nums leading-tight ${tone(pct, block.remaining, block.allocated)}`}
                           maxPx={12}
                           minPx={8}
                           title={fmt(block.spent)}
@@ -1151,7 +1166,7 @@ export function BudgetYearPage() {
                           {fmt(block.spent)}
                         </FitSingleLine>
                       </div>
-                      <div className={`min-w-[2.75rem] text-[12px] font-bold ${pctToneClass(pct)}`}>
+                      <div className={`min-w-[2.75rem] text-[12px] font-bold ${tone(pct, block.remaining, block.allocated)}`}>
                         {formatPct(pct)}
                       </div>
                     </>
@@ -1246,13 +1261,13 @@ export function BudgetYearPage() {
                   <>
                     <div className="rounded-xl border border-[#e8e6fc] bg-white/90 px-3 py-2">
                       <div className="text-[10px] font-bold text-slate-500">ใช้ไป</div>
-                      <div className={`text-sm font-black tabular-nums ${pctToneClass(popupMajor.pctUsed)}`}>
+                      <div className={`text-sm font-black tabular-nums ${tone(popupMajor.pctUsed, popupMajor.remaining, popupMajor.allocated)}`}>
                         {fmt(popupMajor.spent)} {unit}
                       </div>
                     </div>
                     <div className="rounded-xl border border-[#e8e6fc] bg-white/90 px-3 py-2">
                       <div className="text-[10px] font-bold text-slate-500">% ใช้</div>
-                      <div className={`text-sm font-black ${pctToneClass(popupMajor.pctUsed)}`}>
+                      <div className={`text-sm font-black ${tone(popupMajor.pctUsed, popupMajor.remaining, popupMajor.allocated)}`}>
                         {formatPct(popupMajor.pctUsed)}
                       </div>
                     </div>
@@ -1365,7 +1380,13 @@ export function BudgetYearPage() {
                                         ? "ใช้ไป (ระบบหลัก)"
                                         : "ใช้ไป"}
                                   </div>
-                                  <div className={`font-semibold tabular-nums ${pctToneClass(displayPct)}`}>
+                                  <div
+                                    className={`font-semibold tabular-nums ${tone(
+                                      displayPct,
+                                      displayAllocated - displaySpent,
+                                      displayAllocated,
+                                    )}`}
+                                  >
                                     {fmt(displaySpent)}
                                   </div>
                                 </div>
@@ -1504,7 +1525,9 @@ export function BudgetYearPage() {
                     <>
                       {" "}
                       · ใช้ไป {fmt(selected.spent)}{" "}
-                      <span className={pctToneClass(selected.pctUsed)}>({formatPct(selected.pctUsed)})</span>
+                      <span className={tone(selected.pctUsed, selected.remaining, selected.allocatedAmount)}>
+                        ({formatPct(selected.pctUsed)})
+                      </span>
                     </>
                   ) : null}
                 </div>
@@ -1528,7 +1551,11 @@ export function BudgetYearPage() {
                 isCommitment ? (
                   <BudgetCommitmentBreakdown row={selectedImportRow} asOfDate={importData?.batch?.asOfDate ?? null} />
                 ) : (
-                  <BudgetImportRowBreakdown row={selectedImportRow} asOfDate={importData?.batch?.asOfDate ?? null} />
+                  <BudgetImportRowBreakdown
+                    row={selectedImportRow}
+                    asOfDate={importData?.batch?.asOfDate ?? null}
+                    yearBe={importData?.batch?.yearBe ?? yearBe}
+                  />
                 )
               ) : null}
               {isTracking && !selected.isSummary ? (() => {

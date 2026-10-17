@@ -4,7 +4,7 @@ import { Bar, BarChart, CartesianGrid, Legend, ResponsiveContainer, Tooltip, XAx
 import { FitSingleLine } from "../../components/FitSingleLine";
 import { Modal } from "../../components/Modal";
 import { chartAxisFill, chartGridStroke } from "../../lib/uiTokens";
-import { formatPct, kindLabel, type BudgetKind } from "./budgetFormat";
+import { budgetPace, elapsedOfYear, formatPct, kindLabel, type BudgetKind } from "./budgetFormat";
 import {
   AVAILABILITY_META,
   availabilityOf,
@@ -42,67 +42,86 @@ function totalsOf(rows: BudgetImportRow[]): Totals {
   );
 }
 
-/** ปีงบ = ปีปฏิทิน — สัดส่วนเวลาที่ผ่านไป ณ วันที่ข้อมูล */
-function elapsedOfYear(yearBe: number, asOfIso: string): number {
-  const yearAd = yearBe - 543;
-  const start = Date.UTC(yearAd, 0, 1);
-  const end = Date.UTC(yearAd + 1, 0, 1);
-  const asOf = new Date(asOfIso).getTime();
-  if (!Number.isFinite(asOf)) return 0;
-  return Math.min(1, Math.max(0, (asOf - start) / (end - start)));
-}
-
-type Pace = { label: string; chip: string; hint: string };
-
-function paceOf(spentPct: number, elapsed: number): Pace {
-  const gap = elapsed - spentPct;
-  if (gap <= 0.1)
-    return {
-      label: "ตามแผน",
-      chip: "bg-emerald-100 text-emerald-700 ring-emerald-200",
-      hint: "เบิกจ่ายใกล้เคียงหรือเร็วกว่าเวลาที่ผ่านไป",
-    };
-  if (gap <= 0.25)
-    return {
-      label: "ช้ากว่าแผนเล็กน้อย",
-      chip: "bg-amber-100 text-amber-800 ring-amber-200",
-      hint: "เบิกจ่ายช้ากว่าเวลาที่ผ่านไป 10–25%",
-    };
-  return {
-    label: "ล่าช้า ควรเร่งรัด",
-    chip: "bg-rose-100 text-rose-700 ring-rose-200",
-    hint: "เบิกจ่ายช้ากว่าเวลาที่ผ่านไปเกิน 25%",
-  };
-}
-
 function ratio(a: number, b: number): number {
   return b > 0 ? a / b : 0;
 }
 
-/** แถบ เบิกแล้ว | PO | PR/กันเงิน | คงเหลือ พร้อมเส้นเวลาที่ผ่านไป */
-function ProgressBar({ t, elapsed, tall }: { t: Totals; elapsed: number; tall?: boolean }) {
+/** เบิกแล้ว + PO + PR/กันเงิน — ถือว่าใช้แล้วเพราะกันงบไว้แล้ว */
+function usedAmount(t: Pick<Totals, "spent" | "po" | "pending">): number {
+  return t.spent + t.po + t.pending;
+}
+
+function usedPctOf(t: Pick<Totals, "spent" | "po" | "pending" | "net">): number {
+  return ratio(usedAmount(t), t.net);
+}
+
+/** ชิปจังหวะปีงบ — label สั้นสำหรับการ์ดสรุป */
+function paceChip(
+  spentPct: number,
+  yearBe: number,
+  asOfIso: string,
+  remaining?: number,
+  netBudget?: number,
+) {
+  const p = budgetPace(spentPct, { yearBe, asOfIso, remaining, netBudget });
+  return { label: p.label, chip: p.chipClass, hint: p.hint, elapsed: p.elapsed };
+}
+
+/** แถบ เบิกแล้ว | PO | PR/กันเงิน | คงเหลือ พร้อมเส้นเวลา — ชี้แต่ละสีดูยอด */
+function ProgressBar({
+  t,
+  elapsed,
+  tall,
+  fmt,
+  unit,
+}: {
+  t: Totals;
+  elapsed: number;
+  tall?: boolean;
+  fmt: Fmt;
+  unit: string;
+}) {
   const parts = [
-    { v: t.spent, cls: "bg-[#0000BF]" },
-    { v: t.po, cls: "bg-violet-500" },
-    { v: t.pending, cls: "bg-amber-400" },
-    { v: Math.max(0, t.remaining), cls: "bg-emerald-300" },
+    { v: t.spent, cls: "bg-[#0000BF]", label: "เบิกจ่ายแล้ว" },
+    { v: t.po, cls: "bg-violet-500", label: "PO (ทำสัญญาแล้ว)" },
+    { v: t.pending, cls: "bg-amber-400", label: "PR / กันเงิน" },
+    { v: Math.max(0, t.remaining), cls: "bg-emerald-300", label: "คงเหลือ" },
   ];
   const total = parts.reduce((s, p) => s + Math.max(0, p.v), 0) || 1;
   return (
     <div className="relative pt-4">
       <div
-        className="absolute top-0 -translate-x-1/2 whitespace-nowrap text-[10px] font-bold text-slate-500"
+        className="pointer-events-none absolute top-0 -translate-x-1/2 whitespace-nowrap text-[10px] font-bold text-slate-500"
         style={{ left: `${elapsed * 100}%` }}
       >
         เวลา {formatPct(elapsed)}
       </div>
-      <div className={`flex overflow-hidden rounded-full bg-slate-100 ${tall ? "h-4" : "h-2.5"}`}>
+      <div
+        className={`flex overflow-visible rounded-full bg-slate-100 ${tall ? "h-4" : "h-2.5"}`}
+        role="img"
+        aria-label={parts
+          .filter((p) => p.v > 0)
+          .map((p) => `${p.label} ${fmt(p.v)} ${unit}`)
+          .join(" · ")}
+      >
         {parts.map((p, i) =>
-          p.v > 0 ? <div key={i} className={p.cls} style={{ width: `${(p.v / total) * 100}%` }} /> : null,
+          p.v > 0 ? (
+            <div
+              key={i}
+              className={`group/seg relative min-w-[4px] ${p.cls} first:rounded-l-full last:rounded-r-full`}
+              style={{ width: `${(p.v / total) * 100}%` }}
+              title={`${p.label}: ${fmt(p.v)} ${unit}`}
+            >
+              <span className="pointer-events-none absolute left-1/2 top-[calc(100%+8px)] z-30 hidden -translate-x-1/2 whitespace-nowrap rounded-lg border border-[#e8e6fc] bg-white px-2 py-1 text-[10px] font-bold text-[#1e1b4b] shadow-md group-hover/seg:block">
+                <span className={`mr-1 inline-block h-2 w-2 rounded-sm align-middle ${p.cls}`} />
+                {p.label}: {fmt(p.v)} {unit}
+              </span>
+            </div>
+          ) : null,
         )}
       </div>
       <div
-        className={`absolute bottom-[-3px] w-0.5 rounded bg-[#1e1b4b] ${tall ? "h-[22px]" : "h-[16px]"}`}
+        className={`pointer-events-none absolute bottom-[-3px] w-0.5 rounded bg-[#1e1b4b] ${tall ? "h-[22px]" : "h-[16px]"}`}
         style={{ left: `${elapsed * 100}%` }}
         aria-hidden
       />
@@ -110,19 +129,28 @@ function ProgressBar({ t, elapsed, tall }: { t: Totals; elapsed: number; tall?: 
   );
 }
 
-function Legend4() {
+function Legend4({ t, fmt, unit }: { t?: Totals; fmt?: Fmt; unit?: string }) {
   const items = [
-    { cls: "bg-[#0000BF]", label: "เบิกจ่ายแล้ว" },
-    { cls: "bg-violet-500", label: "PO (ทำสัญญาแล้ว)" },
-    { cls: "bg-amber-400", label: "PR / กันเงิน" },
-    { cls: "bg-emerald-300", label: "คงเหลือ" },
+    { cls: "bg-[#0000BF]", label: "เบิกจ่ายแล้ว", v: t?.spent },
+    { cls: "bg-violet-500", label: "PO (ทำสัญญาแล้ว)", v: t?.po },
+    { cls: "bg-amber-400", label: "PR / กันเงิน", v: t?.pending },
+    { cls: "bg-emerald-300", label: "คงเหลือ", v: t != null ? Math.max(0, t.remaining) : undefined },
   ];
   return (
     <div className="flex flex-wrap gap-x-3 gap-y-1 text-[11px] text-slate-600">
       {items.map((i) => (
-        <span key={i.label} className="inline-flex items-center gap-1">
+        <span
+          key={i.label}
+          className="inline-flex items-center gap-1"
+          title={fmt && unit && i.v != null ? `${i.label}: ${fmt(i.v)} ${unit}` : i.label}
+        >
           <span className={`h-2.5 w-2.5 rounded-sm ${i.cls}`} />
           {i.label}
+          {fmt && unit && i.v != null ? (
+            <span className="font-semibold tabular-nums text-[#2e2a58]">
+              {fmt(i.v)} {unit}
+            </span>
+          ) : null}
         </span>
       ))}
       <span className="inline-flex items-center gap-1">
@@ -185,13 +213,14 @@ export function BudgetExecutiveKindCards({
 }) {
   const byKind = useMemo(() => totalsByKind(data), [data]);
   if (!data.batch) return null;
-  const elapsed = elapsedOfYear(yearBe, data.batch.asOfDate);
+  const asOfIso = data.batch.asOfDate;
+  const elapsed = elapsedOfYear(yearBe, asOfIso);
   return (
     <div className={className}>
       {KINDS.map((k) => {
         const t = byKind[k];
-        const p = ratio(t.spent, t.net);
-        const kp = paceOf(p, elapsed);
+        const p = usedPctOf(t);
+        const kp = paceChip(p, yearBe, asOfIso, t.remaining, t.net);
         const active = activeKind === k;
         return (
           <button
@@ -219,17 +248,26 @@ export function BudgetExecutiveKindCards({
               <FitSingleLine className="font-black tabular-nums text-[#1e1b4b]" maxPx={22} minPx={11} title={fmt(t.net)}>
                 {fmt(t.net)} <span className="text-[0.6em] font-bold text-[#66638c]">{unit}</span>
               </FitSingleLine>
-              <span className="shrink-0 text-lg font-black tabular-nums text-[#0000BF]">{formatPct(p)}</span>
+              <span
+                className="shrink-0 text-lg font-black tabular-nums text-[#0000BF]"
+                title={`ใช้/กันแล้ว = เบิก + PO + PR/กันเงิน · ${fmt(usedAmount(t))} ${unit}`}
+              >
+                {formatPct(p)}
+              </span>
             </div>
-            <ProgressBar t={t} elapsed={elapsed} />
-            <dl className="mt-2 grid grid-cols-3 gap-2 text-[11px]">
+            <ProgressBar t={t} elapsed={elapsed} fmt={fmt} unit={unit} />
+            <dl className="mt-2 grid grid-cols-2 gap-x-2 gap-y-1.5 text-[11px] sm:grid-cols-4">
               <div className="min-w-0">
                 <dt className="text-slate-500">เบิกแล้ว</dt>
                 <dd className="truncate font-semibold tabular-nums text-[#0000BF]">{fmt(t.spent)}</dd>
               </div>
               <div className="min-w-0">
-                <dt className="text-slate-500">ผูกพัน</dt>
-                <dd className="truncate font-semibold tabular-nums text-violet-700">{fmt(t.po + t.pending)}</dd>
+                <dt className="text-slate-500">PO</dt>
+                <dd className="truncate font-semibold tabular-nums text-violet-700">{fmt(t.po)}</dd>
+              </div>
+              <div className="min-w-0">
+                <dt className="text-slate-500">PR / กัน</dt>
+                <dd className="truncate font-semibold tabular-nums text-amber-600">{fmt(t.pending)}</dd>
               </div>
               <div className="min-w-0">
                 <dt className="text-slate-500">คงเหลือ</dt>
@@ -292,18 +330,18 @@ function WatchDetailModal({
   const r = item.row;
   const meta = AVAILABILITY_META[item.status];
   const advice = watchAdvice(item, fmt, unit, elapsed);
-  const bound = r.po + r.pr + r.reserved + r.earmark + r.carryOut;
-  const spentPct = ratio(r.spent, r.netBudget);
+  const pending = r.pr + r.reserved + r.earmark + r.carryOut;
   const quarters = [r.q1, r.q2, r.q3, r.q4];
   const qMax = Math.max(1, ...quarters.map((q) => Math.abs(q)));
   const t: Totals = {
     net: r.netBudget,
     spent: r.spent,
     po: r.po,
-    pending: r.pr + r.reserved + r.earmark + r.carryOut,
+    pending,
     remaining: r.remaining,
     q: [r.q1, r.q2, r.q3, r.q4],
   };
+  const usedPct = usedPctOf(t);
   const cell = (label: string, value: number, tone = "text-[#1e1b4b]") => (
     <div className="flex items-baseline justify-between gap-2 py-0.5">
       <dt className="text-slate-500">{label}</dt>
@@ -335,11 +373,12 @@ function WatchDetailModal({
           </p>
         </div>
 
-        <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+        <div className="grid grid-cols-2 gap-2 sm:grid-cols-5">
           {[
             { k: "งบสุทธิ", v: r.netBudget, tone: "text-[#1e1b4b]" },
-            { k: `เบิกแล้ว (${formatPct(spentPct)})`, v: r.spent, tone: "text-[#0000BF]" },
-            { k: "ผูกพัน", v: bound, tone: "text-violet-700" },
+            { k: "เบิกแล้ว", v: r.spent, tone: "text-[#0000BF]" },
+            { k: "PO", v: r.po, tone: "text-violet-700" },
+            { k: "PR / กัน", v: pending, tone: "text-amber-600" },
             { k: "คงเหลือ", v: r.remaining, tone: r.remaining < 0 ? "text-rose-700" : "text-emerald-700" },
           ].map((c) => (
             <div key={c.k} className="min-w-0 rounded-xl border border-[#e8e6fc] bg-white px-2.5 py-1.5">
@@ -350,11 +389,14 @@ function WatchDetailModal({
             </div>
           ))}
         </div>
+        <p className="text-[11px] font-semibold text-[#4d47b6]">
+          ใช้/กันแล้ว {formatPct(usedPct)} = เบิก + PO + PR/กันเงิน
+        </p>
 
         <div>
-          <ProgressBar t={t} elapsed={elapsed} />
+          <ProgressBar t={t} elapsed={elapsed} fmt={fmt} unit={unit} />
           <div className="mt-1.5">
-            <Legend4 />
+            <Legend4 t={t} fmt={fmt} unit={unit} />
           </div>
         </div>
 
@@ -509,8 +551,8 @@ export function BudgetExecutiveSummary({
   if (!data.batch) return null;
 
   const spentPct = ratio(all.spent, all.net);
-  const boundPct = ratio(all.spent + all.po, all.net);
-  const pace = paceOf(spentPct, elapsed);
+  const usedPct = usedPctOf(all);
+  const pace = paceChip(usedPct, yearBe, asOfIso, all.remaining, all.net);
   const base = `/budget/year/${yearBe}`;
 
   const statusTotals = WATCH_STATUSES.map((s) => {
@@ -666,10 +708,10 @@ export function BudgetExecutiveSummary({
             tone="text-[#0000BF]"
           />
           <Kpi
-            label="ผูกพันแล้ว (PO/PR/กันเงิน)"
+            label="PO + PR / กันเงิน"
             value={fmt(all.po + all.pending)}
             unit={unit}
-            sub={`เบิก + PO รวม ${formatPct(boundPct)}`}
+            sub={`PO ${fmt(all.po)} · PR/กัน ${fmt(all.pending)} · ใช้/กันรวม ${formatPct(usedPct)}`}
             tone="text-violet-700"
           />
           <Kpi
@@ -683,9 +725,9 @@ export function BudgetExecutiveSummary({
 
         <div className="mt-2 flex flex-wrap items-end gap-x-4 gap-y-1">
           <div className="min-w-[16rem] flex-1">
-            <ProgressBar t={all} elapsed={elapsed} tall />
+            <ProgressBar t={all} elapsed={elapsed} tall fmt={fmt} unit={unit} />
           </div>
-          <Legend4 />
+          <Legend4 t={all} fmt={fmt} unit={unit} />
         </div>
       </section>
 

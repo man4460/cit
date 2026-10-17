@@ -16,7 +16,7 @@ export type AuthUser = {
 type AuthState = {
   user: AuthUser | null;
   loading: boolean;
-  login: (username: string, password: string) => Promise<void>;
+  login: (username: string, password: string) => Promise<AuthUser>;
   logout: () => void;
   refreshMe: () => Promise<void>;
 };
@@ -91,6 +91,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
     setToken(data.token);
     setUser(data.user);
+    return data.user;
   }, []);
 
   const logout = useCallback(() => {

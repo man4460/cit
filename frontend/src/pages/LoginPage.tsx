@@ -1,13 +1,22 @@
 import { useEffect, useState } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
-import { useAuth } from "../context/AuthContext";
+import { useAuth, type AuthUser } from "../context/AuthContext";
+import { firstAllowedPath } from "../lib/navConfig";
+import { canViewPath } from "../lib/permissions";
 import { brandCtaButtonClass } from "../lib/uiTokens";
+
+/** หลัง login: กลับหน้าเดิมถ้ามีสิทธิ์ ไม่เช่นนั้นไปหน้าแรกที่ใช้งานได้ */
+function postLoginPath(user: AuthUser, from: string | undefined): string {
+  const dest = from && from !== "/login" ? from : undefined;
+  if (dest && canViewPath(user, dest)) return dest;
+  return firstAllowedPath(user);
+}
 
 export function LoginPage() {
   const { login, user } = useAuth();
   const nav = useNavigate();
   const loc = useLocation();
-  const from = (loc.state as { from?: string } | null)?.from ?? "/";
+  const from = (loc.state as { from?: string } | null)?.from;
 
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
@@ -15,7 +24,7 @@ export function LoginPage() {
   const [pending, setPending] = useState(false);
 
   useEffect(() => {
-    if (user) nav(from, { replace: true });
+    if (user) nav(postLoginPath(user, from), { replace: true });
   }, [user, from, nav]);
 
   async function onSubmit(e: React.FormEvent) {
@@ -23,8 +32,8 @@ export function LoginPage() {
     setErr(null);
     setPending(true);
     try {
-      await login(username.trim(), password);
-      nav(from, { replace: true });
+      const loggedIn = await login(username.trim(), password);
+      nav(postLoginPath(loggedIn, from), { replace: true });
     } catch (e) {
       setErr(e instanceof Error ? e.message : "เข้าสู่ระบบไม่สำเร็จ");
     } finally {

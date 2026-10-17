@@ -275,7 +275,15 @@ export function BudgetSpendPage() {
                     <td className="px-3 py-2 text-right">{formatBaht(r.carryInAmount)}</td>
                     <td className="px-3 py-2 text-right font-semibold">{formatBaht(r.totalBudget)}</td>
                     <td className="px-3 py-2 text-right">{formatBaht(r.spent)}</td>
-                    <td className={`px-3 py-2 text-right ${pctToneClass(r.pctUsed)}`}>{formatPct(r.pctUsed)}</td>
+                    <td
+                      className={`px-3 py-2 text-right ${pctToneClass(r.pctUsed, {
+                        yearBe: r.yearBe ?? (bucket === "2569" ? 2569 : null),
+                        remaining: r.remaining,
+                        netBudget: r.totalBudget,
+                      })}`}
+                    >
+                      {formatPct(r.pctUsed)}
+                    </td>
                   </>
                 ) : (
                   <td className="px-3 py-2 text-right">{formatBaht(r.commitmentAmount)}</td>
@@ -312,7 +320,15 @@ export function BudgetSpendPage() {
                   {showSpendCols ? (
                     <>
                       ใช้ไป {formatBaht(selected.spent)} / {formatBaht(selected.totalBudget)}{" "}
-                      <span className={pctToneClass(selected.pctUsed)}>({formatPct(selected.pctUsed)})</span>
+                      <span
+                        className={pctToneClass(selected.pctUsed, {
+                          yearBe: selected.yearBe ?? (bucket === "2569" ? 2569 : null),
+                          remaining: selected.remaining,
+                          netBudget: selected.totalBudget,
+                        })}
+                      >
+                        ({formatPct(selected.pctUsed)})
+                      </span>
                     </>
                   ) : (
                     <>ยอด {formatBaht(selected.allocatedAmount)}</>

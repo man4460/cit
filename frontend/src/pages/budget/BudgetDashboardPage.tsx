@@ -177,7 +177,15 @@ function SpendTable({ rows }: { rows: LineBrief[] }) {
               <td className="px-2 py-1.5 font-medium text-[#2e2a58]">{r.name}</td>
               <td className="px-2 py-1.5 text-right tabular-nums">{m(r.budget)}</td>
               <td className="px-2 py-1.5 text-right tabular-nums">{m(r.spent)}</td>
-              <td className={`px-2 py-1.5 text-right ${pctToneClass(r.pctUsed ?? null)}`}>{formatPct(r.pctUsed ?? null)}</td>
+              <td
+                className={`px-2 py-1.5 text-right ${pctToneClass(r.pctUsed ?? null, {
+                  yearBe: 2569,
+                  remaining: r.remaining ?? (r.budget != null && r.spent != null ? r.budget - r.spent : null),
+                  netBudget: r.budget ?? null,
+                })}`}
+              >
+                {formatPct(r.pctUsed ?? null)}
+              </td>
             </tr>
           ))}
         </tbody>
@@ -290,7 +298,11 @@ export function BudgetDashboardPage() {
                 value={showBaht ? formatBaht(h.spent69) : m(h.spent69)}
                 unit={showBaht ? "บาท" : "ลบ."}
                 note={`ใช้ไปประมาณ ${formatPct(h.spentPct)} ของงบปี 2569`}
-                accent={pctToneClass(h.spentPct)}
+                accent={pctToneClass(h.spentPct, {
+                  yearBe: 2569,
+                  remaining: h.remaining69,
+                  netBudget: h.year69Budget,
+                })}
               />
             </Link>
           </div>
@@ -397,7 +409,13 @@ export function BudgetDashboardPage() {
                       <td className="px-2 py-1.5 text-right tabular-nums">
                         {showBaht ? formatBaht(k.remaining69) : m(k.remaining69)}
                       </td>
-                      <td className={`px-2 py-1.5 text-right ${pctToneClass(k.pctUsed69)}`}>
+                      <td
+                        className={`px-2 py-1.5 text-right ${pctToneClass(k.pctUsed69, {
+                          yearBe: 2569,
+                          remaining: k.remaining69,
+                          netBudget: k.year69,
+                        })}`}
+                      >
                         {formatPct(k.pctUsed69)}
                       </td>
                     </tr>
@@ -413,7 +431,15 @@ export function BudgetDashboardPage() {
                     <td className="px-2 py-1.5 text-right tabular-nums">
                       {showBaht ? formatBaht(h.remaining69) : m(h.remaining69)}
                     </td>
-                    <td className={`px-2 py-1.5 text-right ${pctToneClass(h.spentPct)}`}>{formatPct(h.spentPct)}</td>
+                    <td
+                      className={`px-2 py-1.5 text-right ${pctToneClass(h.spentPct, {
+                        yearBe: 2569,
+                        remaining: h.remaining69,
+                        netBudget: h.year69Budget,
+                      })}`}
+                    >
+                      {formatPct(h.spentPct)}
+                    </td>
                   </tr>
                 </tbody>
               </table>

@@ -117,6 +117,13 @@ export function Shell() {
     setMobileOpen(false);
   }, [location.pathname]);
 
+  /* เข้าหน้าไม่มีสิทธิ์ → พาไปหน้าแรกที่ใช้งานได้ทันที */
+  useEffect(() => {
+    if (pageLevel === "none" && user) {
+      navigate(firstAllowedPath(user), { replace: true });
+    }
+  }, [pageLevel, user, navigate]);
+
   useEffect(() => {
     const mq = window.matchMedia("(min-width: 1024px)");
     const onChange = () => {

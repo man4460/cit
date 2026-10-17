@@ -20,6 +20,7 @@ import {
   pctToneClass,
   type BudgetKind,
   type BudgetYearLineRow,
+  type PctToneOpts,
 } from "./budgetFormat";
 import {
   buildCapexMajors,
@@ -30,6 +31,7 @@ import {
 } from "./budgetCategories";
 import { BudgetExecutiveKindCards, BudgetExecutiveSummary, budgetWatchCount } from "./BudgetExecutiveSummary";
 import type { BudgetImportData } from "./BudgetMainSystemImport";
+import { BudgetPaceBar } from "./BudgetPaceBar";
 
 type OverviewView = "overview" | "majors" | "watch";
 
@@ -145,6 +147,9 @@ export function BudgetOverviewPage() {
   const isTrackingYear = yearBe != null && !isRequestYear;
   const detailTo = `/budget/year/${yearBe}`;
   const fmt = (n: number | null | undefined) => (showBaht ? formatBaht(n) : m(n));
+  const asOfIso = importData?.batch?.asOfDate ?? null;
+  const tone = (pct: number | null | undefined, remaining?: number | null, net?: number | null) =>
+    pctToneClass(pct, { yearBe, asOfIso, remaining: remaining ?? null, netBudget: net ?? null } satisfies PctToneOpts);
   const unit = showBaht ? "บาท" : "ลบ.";
   const isExpenseView = kindFilter === "EXPENSE";
   const amountLabel = isRequestYear ? "คำขอตั้ง" : "จัดสรร";
@@ -187,14 +192,15 @@ export function BudgetOverviewPage() {
                 <div className="truncate text-[13px] font-semibold leading-snug text-[#1e1b4b]">{block.name}</div>
                 <div className="mt-0.5 text-[10px] leading-none text-slate-500">{block.children.length} รายการย่อย</div>
                 {isTrackingYear ? (
-                  <div className="mt-1 h-1.5 max-w-xs overflow-hidden rounded-full bg-slate-100">
-                    <div
-                      className={`h-full rounded-full ${
-                        pct != null && pct >= 0.9 ? "bg-rose-500" : pct != null && pct >= 0.5 ? "bg-amber-400" : "bg-emerald-400"
-                      }`}
-                      style={{ width: `${Math.min(100, Math.max(0, (pct ?? 0) * 100))}%` }}
-                    />
-                  </div>
+                  <BudgetPaceBar
+                    className="mt-1 max-w-xs"
+                    spentPct={pct}
+                    yearBe={yearBe}
+                    asOfIso={asOfIso}
+                    remaining={block.remaining}
+                    netBudget={block.allocated}
+                    showChip
+                  />
                 ) : null}
               </div>
               <div className="flex min-w-0 max-w-[55%] shrink-0 items-center gap-3 text-right text-xs sm:max-w-none">
@@ -214,7 +220,7 @@ export function BudgetOverviewPage() {
                     <div className="min-w-0 w-[6.5rem] sm:w-[7.5rem]">
                       <div className="text-[9px] font-bold uppercase leading-none text-slate-400">ใช้ไป</div>
                       <FitSingleLine
-                        className={`font-semibold tabular-nums leading-tight ${pctToneClass(pct)}`}
+                        className={`font-semibold tabular-nums leading-tight ${tone(pct, block.remaining, block.allocated)}`}
                         maxPx={12}
                         minPx={8}
                         title={fmt(block.spent)}
@@ -222,7 +228,9 @@ export function BudgetOverviewPage() {
                         {fmt(block.spent)}
                       </FitSingleLine>
                     </div>
-                    <div className={`min-w-[2.75rem] text-[12px] font-bold ${pctToneClass(pct)}`}>{formatPct(pct)}</div>
+                    <div className={`min-w-[2.75rem] text-[12px] font-bold ${tone(pct, block.remaining, block.allocated)}`}>
+                      {formatPct(pct)}
+                    </div>
                   </>
                 ) : null}
                 <span className="text-[10px] font-bold text-[#4d47b6]">→</span>
@@ -272,7 +280,7 @@ export function BudgetOverviewPage() {
               <dl className="mt-2 grid grid-cols-3 gap-2 text-xs">
                 <div className="min-w-0">
                   <dt className="text-slate-500">ใช้ไป</dt>
-                  <dd className={`font-semibold ${pctToneClass(k.pctUsed)}`}>
+                  <dd className={`font-semibold ${tone(k.pctUsed, k.remaining, k.allocated)}`}>
                     <FitSingleLine className="font-semibold tabular-nums" maxPx={12} minPx={8} title={fmt(k.spent)}>
                       {fmt(k.spent)}
                     </FitSingleLine>
@@ -288,7 +296,7 @@ export function BudgetOverviewPage() {
                 </div>
                 <div className="min-w-0">
                   <dt className="text-slate-500">% ใช้</dt>
-                  <dd className={`font-semibold ${pctToneClass(k.pctUsed)}`}>{formatPct(k.pctUsed)}</dd>
+                  <dd className={`font-semibold ${tone(k.pctUsed, k.remaining, k.allocated)}`}>{formatPct(k.pctUsed)}</dd>
                 </div>
               </dl>
             ) : (
@@ -418,13 +426,21 @@ export function BudgetOverviewPage() {
           <>
             <BudgetStatCard label="ใช้ไป" tone={BUDGET_STAT_TONES.spent}>
               <FitSingleLine
-                className={`font-black tabular-nums ${pctToneClass(totals.pctUsed)}`}
+                className={`font-black tabular-nums ${tone(totals.pctUsed, totals.remaining, totals.allocated)}`}
                 maxPx={30}
                 minPx={12}
                 title={`${fmt(totals.spent)} ${unit}`}
               >
                 {fmt(totals.spent)} <span className="font-bold text-[#66638c]">{unit}</span>
               </FitSingleLine>
+              <BudgetPaceBar
+                className="mt-2"
+                spentPct={totals.pctUsed}
+                yearBe={yearBe}
+                asOfIso={asOfIso}
+                remaining={totals.remaining}
+                netBudget={totals.allocated}
+              />
             </BudgetStatCard>
             <BudgetStatCard label="คงเหลือ" tone={BUDGET_STAT_TONES.remain}>
               <FitSingleLine
@@ -438,7 +454,7 @@ export function BudgetOverviewPage() {
             </BudgetStatCard>
             <BudgetStatCard label="% ใช้ไป" tone={BUDGET_STAT_TONES.pct}>
               <FitSingleLine
-                className={`font-black ${pctToneClass(totals.pctUsed)}`}
+                className={`font-black ${tone(totals.pctUsed, totals.remaining, totals.allocated)}`}
                 maxPx={30}
                 minPx={12}
                 title={formatPct(totals.pctUsed)}
@@ -506,7 +522,9 @@ export function BudgetOverviewPage() {
                   </div>
                   <div className="rounded-xl border border-[#e8e6fc] bg-white/90 px-3 py-2">
                     <div className="text-[10px] font-bold text-slate-500">ใช้ไป</div>
-                    <div className={`text-sm font-black tabular-nums ${pctToneClass(selectedPct)}`}>
+                    <div
+                      className={`text-sm font-black tabular-nums ${tone(selectedPct, selectedRemaining, selectedAllocated)}`}
+                    >
                       {fmt(selectedSpent)} {unit}
                     </div>
                   </div>
@@ -518,10 +536,23 @@ export function BudgetOverviewPage() {
                   </div>
                   <div className="rounded-xl border border-[#e8e6fc] bg-white/90 px-3 py-2">
                     <div className="text-[10px] font-bold text-slate-500">% ใช้</div>
-                    <div className={`text-sm font-black ${pctToneClass(selectedPct)}`}>{formatPct(selectedPct)}</div>
+                    <div className={`text-sm font-black ${tone(selectedPct, selectedRemaining, selectedAllocated)}`}>
+                      {formatPct(selectedPct)}
+                    </div>
                   </div>
                 </div>
               )}
+              {isTrackingYear ? (
+                <BudgetPaceBar
+                  className="mt-3"
+                  spentPct={selectedPct}
+                  yearBe={yearBe}
+                  asOfIso={asOfIso}
+                  remaining={selectedRemaining}
+                  netBudget={selectedAllocated}
+                  showChip
+                />
+              ) : null}
             </div>
 
             <div className="flex-1 space-y-3 overflow-y-auto px-5 py-4">
@@ -578,7 +609,13 @@ export function BudgetOverviewPage() {
                           <div className="shrink-0 text-right text-[11px] leading-tight">
                             <div className="tabular-nums text-slate-600">{fmt(c.allocatedAmount)}</div>
                             {isTrackingYear ? (
-                              <div className={`font-semibold tabular-nums ${pctToneClass(pct)}`}>
+                              <div
+                                className={`font-semibold tabular-nums ${tone(
+                                  pct,
+                                  c.allocatedAmount - c.spent,
+                                  c.allocatedAmount,
+                                )}`}
+                              >
                                 {fmt(c.spent)} · {formatPct(pct)}
                               </div>
                             ) : (

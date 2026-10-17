@@ -286,7 +286,15 @@ export function BudgetQuarterModal({
 }
 
 /** รายละเอียดจากระบบหลักของรายการเดียว — ใช้ในลิ้นชักรายการ */
-export function BudgetImportRowBreakdown({ row, asOfDate }: { row: BudgetImportRow; asOfDate: string | null }) {
+export function BudgetImportRowBreakdown({
+  row,
+  asOfDate,
+  yearBe,
+}: {
+  row: BudgetImportRow;
+  asOfDate: string | null;
+  yearBe?: number | null;
+}) {
   const maxQ = Math.max(...QUARTERS.map((q) => Math.abs(qOf(row, q))), 1);
   const cell = (label: string, value: number, strong = false) => (
     <div className="rounded-lg border border-[#ecebff] bg-white px-2.5 py-1.5">
@@ -311,7 +319,14 @@ export function BudgetImportRowBreakdown({ row, asOfDate }: { row: BudgetImportR
       <div className="rounded-lg border border-[#ecebff] bg-white p-2.5">
         <div className="mb-1.5 flex items-baseline justify-between text-[11px]">
           <span className="font-bold text-slate-500">เบิกจ่ายรายไตรมาส</span>
-          <span className={`font-black tabular-nums ${pctToneClass(row.pctSpent)}`}>
+          <span
+            className={`font-black tabular-nums ${pctToneClass(row.pctSpent, {
+              yearBe: yearBe ?? null,
+              asOfIso: asOfDate,
+              remaining: row.remaining,
+              netBudget: row.netBudget,
+            })}`}
+          >
             รวม {formatBaht(row.spent)} ({formatPct(row.pctSpent)})
           </span>
         </div>
@@ -750,20 +765,38 @@ export function availabilityOf(r: BudgetImportRow, asOf: Date): AvailabilityItem
   return { row: r, status: Math.abs(activity) < 0.005 ? "IDLE" : "SAVINGS", need, free };
 }
 
-/** แถบสัดส่วน: เบิกแล้ว | PO | PR+กันเงิน | คงเหลือ */
+/** แถบสัดส่วน: เบิกแล้ว | PO | PR+กันเงิน | คงเหลือ — ชี้แต่ละสีดูยอด */
 export function UsageBar({ row }: { row: BudgetImportRow }) {
   const parts = [
-    { v: row.spent, cls: "bg-[#0000BF]" },
-    { v: row.po, cls: "bg-violet-500" },
-    { v: row.pr + row.reserved + row.earmark + row.carryOut, cls: "bg-amber-400" },
-    { v: Math.max(0, row.remaining), cls: "bg-emerald-300" },
+    { v: row.spent, cls: "bg-[#0000BF]", label: "เบิกจ่ายแล้ว" },
+    { v: row.po, cls: "bg-violet-500", label: "PO" },
+    { v: row.pr + row.reserved + row.earmark + row.carryOut, cls: "bg-amber-400", label: "PR / กันเงิน" },
+    { v: Math.max(0, row.remaining), cls: "bg-emerald-300", label: "คงเหลือ" },
   ];
   const total = parts.reduce((s, p) => s + Math.max(0, p.v), 0);
   if (total <= 0) return <div className="h-2 rounded-full bg-slate-100" />;
   return (
-    <div className={`flex h-2 overflow-hidden rounded-full bg-slate-100 ${row.remaining < 0 ? "ring-1 ring-rose-400" : ""}`}>
+    <div
+      className={`flex h-2 overflow-visible rounded-full bg-slate-100 ${row.remaining < 0 ? "ring-1 ring-rose-400" : ""}`}
+      role="img"
+      aria-label={parts
+        .filter((p) => p.v > 0)
+        .map((p) => `${p.label} ${formatBaht(p.v)}`)
+        .join(" · ")}
+    >
       {parts.map((p, i) =>
-        p.v > 0 ? <div key={i} className={p.cls} style={{ width: `${(p.v / total) * 100}%` }} /> : null,
+        p.v > 0 ? (
+          <div
+            key={i}
+            className={`group/seg relative min-w-[3px] ${p.cls} first:rounded-l-full last:rounded-r-full`}
+            style={{ width: `${(p.v / total) * 100}%` }}
+            title={`${p.label}: ${formatBaht(p.v)}`}
+          >
+            <span className="pointer-events-none absolute left-1/2 top-[calc(100%+6px)] z-30 hidden -translate-x-1/2 whitespace-nowrap rounded-md border border-[#e8e6fc] bg-white px-1.5 py-0.5 text-[9px] font-bold text-[#1e1b4b] shadow-md group-hover/seg:block">
+              {p.label}: {formatBaht(p.v)}
+            </span>
+          </div>
+        ) : null,
       )}
     </div>
   );

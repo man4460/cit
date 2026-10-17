@@ -350,7 +350,11 @@ export function BudgetRequestsPage() {
                     <div className="text-[11px] text-slate-500">{kindLabel(r.kind)}</div>
                   </td>
                   <td className="px-3 py-2 text-right tabular-nums">{fmt(r.baseAllocated)}</td>
-                  <td className={`px-3 py-2 text-right ${pctToneClass(r.basePctUsed)}`}>
+                  <td
+                    className={`px-3 py-2 text-right ${pctToneClass(r.basePctUsed, {
+                      yearBe: baseYear,
+                    })}`}
+                  >
                     {fmt(r.baseSpent)}
                     <div className="text-[11px]">{formatPct(r.basePctUsed)}</div>
                   </td>
