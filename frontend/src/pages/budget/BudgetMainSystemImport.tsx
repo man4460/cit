@@ -790,7 +790,6 @@ export function UsageBar({ row }: { row: BudgetImportRow }) {
             key={i}
             className={`group/seg relative min-w-[3px] ${p.cls} first:rounded-l-full last:rounded-r-full`}
             style={{ width: `${(p.v / total) * 100}%` }}
-            title={`${p.label}: ${formatBaht(p.v)}`}
           >
             <span className="pointer-events-none absolute left-1/2 top-[calc(100%+6px)] z-30 hidden -translate-x-1/2 whitespace-nowrap rounded-md border border-[#e8e6fc] bg-white px-1.5 py-0.5 text-[9px] font-bold text-[#1e1b4b] shadow-md group-hover/seg:block">
               {p.label}: {formatBaht(p.v)}

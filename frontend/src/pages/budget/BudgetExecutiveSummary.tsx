@@ -110,7 +110,6 @@ function ProgressBar({
               key={i}
               className={`group/seg relative min-w-[4px] ${p.cls} first:rounded-l-full last:rounded-r-full`}
               style={{ width: `${(p.v / total) * 100}%` }}
-              title={`${p.label}: ${fmt(p.v)} ${unit}`}
             >
               <span className="pointer-events-none absolute left-1/2 top-[calc(100%+8px)] z-30 hidden -translate-x-1/2 whitespace-nowrap rounded-lg border border-[#e8e6fc] bg-white px-2 py-1 text-[10px] font-bold text-[#1e1b4b] shadow-md group-hover/seg:block">
                 <span className={`mr-1 inline-block h-2 w-2 rounded-sm align-middle ${p.cls}`} />
