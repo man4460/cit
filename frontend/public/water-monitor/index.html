@@ -335,18 +335,115 @@ tbody tr:hover{background:var(--soft)}
 .risk + .risk{margin-top:10px}
 .risk-title{display:flex;flex-wrap:wrap;align-items:baseline;justify-content:space-between;gap:4px 12px;padding:10px 2px 2px;font-weight:700;font-size:.92rem}
 .risk-title small{font-weight:500;color:var(--muted);font-size:.74rem}
-.risk-h,.risk > .rrow{display:grid;grid-template-columns:22px 92px minmax(0,1fr) 64px;gap:6px 14px;align-items:center;justify-items:stretch}
-.risk > .rrow{position:relative;z-index:1}
+.risk-h,.risk > .rrow{display:grid;grid-template-columns:minmax(148px,16%) minmax(0,1fr) minmax(100px,12%);gap:8px 14px;align-items:center;justify-items:stretch}
+.risk > .rrow{position:relative;z-index:1;padding:10px 8px 10px 14px}
 .risk > .rrow:hover,.risk > .rrow:focus-within{z-index:5}
-@media (max-width:720px){.risk-h,.risk > .rrow{grid-template-columns:18px 76px minmax(0,1fr) 52px;gap:4px 8px}}
-.risk-h{font-size:.7rem;color:var(--muted);font-weight:600;padding:8px 0 4px}
-.risk-h > span:last-child,.risk > .rrow .outl{justify-self:end;text-align:right}
-.rrow{appearance:none;width:100%;border:0;border-top:1px solid var(--soft);background:none;font:inherit;color:inherit;text-align:left;cursor:pointer;padding:10px 2px;border-radius:6px}
+.risk > .rrow[data-watch]{display:block;padding:0;margin:8px 0;border-radius:12px;background:transparent;border:0;box-shadow:none}
+.risk > .rrow[data-watch]:hover{background:transparent}
+.risk > .rrow .watch-card{display:flex;flex-direction:column;border:1px solid var(--line);border-radius:12px;background:var(--panel);overflow:visible}
+.risk > .rrow[data-watch]:hover,.risk > .rrow[data-watch]:focus-within{z-index:20}
+.risk > .rrow[data-watch="1"] .watch-card,
+.risk > .rrow[data-watch="2"] .watch-card,
+.risk > .rrow[data-watch="3"] .watch-card{background:var(--panel)}
+.risk > .rrow[data-watch="1"] .watch-card{box-shadow:inset 3px 0 0 var(--s1)}
+.risk > .rrow[data-watch="2"] .watch-card{box-shadow:inset 3px 0 0 var(--s2)}
+.risk > .rrow[data-watch="3"] .watch-card{box-shadow:inset 3px 0 0 var(--s3)}
+.risk > .rrow[data-watch]:hover .watch-card{border-color:color-mix(in srgb,var(--accent) 45%,var(--line))}
+.watch-card-main{display:grid;grid-template-columns:minmax(152px,18%) minmax(0,1fr) minmax(118px,14%);gap:0;align-items:stretch}
+.rrow .watch-card-main > .ra{display:flex;flex-direction:column;align-items:stretch;justify-content:center;gap:10px;min-width:0;padding:14px 12px 14px 16px;border-right:1px dashed var(--soft);align-self:stretch}
+.rrow .watch-card-main > .ra .ra-top{display:flex;flex-direction:row;align-items:flex-start;gap:8px;min-width:0;width:100%}
+.rrow .watch-card-main > .ra .ra-txt{flex:1;min-width:0}
+.rrow .watch-card-main > .ra .ra-txt b,
+.rrow .watch-card-main > .ra .ra-txt small{white-space:normal;overflow:visible;text-overflow:unset;word-break:break-word}
+.rrow .watch-card-main > .ra .ra-txt b{font-size:.9rem;line-height:1.25}
+.rrow .watch-card-main > .ra .ra-txt small{font-size:.68rem;line-height:1.25;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.rrow .watch-card-main > .ra .ra-status{display:flex;flex-direction:column;gap:6px;width:100%;padding-top:2px}
+.rrow .watch-card-main > .ra .ra-status .pill{align-self:flex-start;font-size:.62rem;font-weight:700;padding:2px 8px;border-radius:999px;line-height:1.2}
+.rrow .watch-card-main > .ra .ra-status .slv{width:100%;max-width:8.5rem;height:22px}
+.watch-card-main > .ov-side{padding:12px 12px 12px 10px;border-left:1px dashed var(--soft);align-self:stretch;justify-content:flex-start;align-items:stretch;gap:10px;min-width:0}
+.watch-card-main > .ov-side .watch-rain-val{font-family:var(--f-data);font-weight:700;font-size:1.15rem;line-height:1.15}
+.watch-card-main > .ov-side .watch-rain-val[data-s="0"]{color:var(--s0)}.watch-card-main > .ov-side .watch-rain-val[data-s="1"]{color:var(--s1)}
+.watch-card-main > .ov-side .watch-rain-val[data-s="2"]{color:var(--s2)}.watch-card-main > .ov-side .watch-rain-val[data-s="3"]{color:var(--s3)}
+.watch-card-main > .ov-side .watch-rain-meta{font-size:.64rem;color:var(--muted);line-height:1.3}
+.watch-card-main > .ov-side .ov-side-meta{display:flex;flex-direction:column;align-items:flex-end;gap:2px;margin-top:auto;padding-top:8px;border-top:1px dashed var(--soft)}
+.watch-card > .ov-focus{display:grid;grid-template-columns:1fr 1fr;gap:8px 14px;margin:0;padding:10px 14px 12px;border:0;border-top:1px dashed var(--soft);border-radius:0;background:transparent}
+.watch-card > .ov-focus.ov-graphs{grid-template-columns:1fr 1fr}
+.ov-sec{min-width:0;display:flex;flex-direction:column;gap:4px}
+.ov-sec-h{display:inline-flex;align-items:center;gap:5px;font-size:.66rem;font-weight:700;color:var(--muted);letter-spacing:.02em}
+.ov-sec-h .role-badge{margin:0;font-size:.62rem;padding:1px 6px}
+.ov-sec-h .role-badge svg{width:11px;height:11px}
+.ov-up-list{display:flex;flex-direction:column;gap:3px}
+.ov-up{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:2px 8px;align-items:baseline;font-size:.72rem;line-height:1.25;padding:3px 0;border-top:1px dashed var(--soft)}
+.ov-up:first-child{border-top:0;padding-top:0}
+.ov-up .un{font-weight:600;color:var(--ink);min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.ov-up .uv{font-family:var(--f-data);font-weight:700;white-space:nowrap}
+.ov-up .um{grid-column:1/-1;font-size:.64rem;color:var(--muted)}
+.ov-up[data-s="0"] .uv{color:var(--s0)}.ov-up[data-s="1"] .uv{color:var(--s1)}
+.ov-up[data-s="2"] .uv{color:var(--s2)}.ov-up[data-s="3"] .uv{color:var(--s3)}
+.ov-mini{min-width:0;display:flex;flex-direction:column;gap:2px}
+.ov-mini .om-h{display:flex;justify-content:space-between;align-items:baseline;gap:6px;font-size:.66rem;color:var(--muted);font-weight:600}
+.ov-mini .om-h b{font-family:var(--f-data);font-size:.72rem;font-weight:700;color:var(--ink);white-space:nowrap}
+.ov-mini .om-h b.dir.up,.ov-mini .om-h b.dir.down,.ov-mini .om-h b.dir.flat{color:var(--muted)}
+.ov-mini .om-h b.dir.up[data-s="1"],.ov-mini .om-h b.dir.down[data-s="1"],.ov-mini .om-h b.dir.flat[data-s="1"]{color:var(--s1)}
+.ov-mini .om-h b.dir.up[data-s="2"],.ov-mini .om-h b.dir.down[data-s="2"],.ov-mini .om-h b.dir.flat[data-s="2"]{color:var(--s2)}
+.ov-mini .om-h b.dir.up[data-s="3"],.ov-mini .om-h b.dir.down[data-s="3"],.ov-mini .om-h b.dir.flat[data-s="3"]{color:var(--s3)}
+.ov-mini svg,.ov-mini .spark-svg{width:100%;height:30px;display:block}
+.ov-mini .om-empty{font-size:.66rem;color:var(--muted);padding:4px 0}
+/* โฟกัส: เนื้อกลาง — ทริกเกอร์ | น้ำเหนือ (ฝนอยู่มุมขวา) */
+.rbody.watch-main{display:grid;grid-template-columns:minmax(0,1.2fr) minmax(160px,1fr);gap:0;align-items:stretch;width:100%;min-width:0;padding:10px 12px;border:0;border-radius:0;background:transparent;box-sizing:border-box}
+.watch-gauges{display:flex;flex-wrap:wrap;gap:0;align-items:stretch;justify-content:stretch;min-width:0;overflow:visible;padding:0}
+.watch-gauges .ov-gauge{min-width:0;flex:1 1 72px}
+.watch-side{display:flex;flex-direction:column;gap:8px;min-width:0;padding:2px 0 2px 12px;margin:0;border:0;border-left:1px dashed var(--soft);border-radius:0;background:transparent}
+.ov-gauge{flex:1 1 0;display:flex;flex-direction:column;align-items:center;gap:3px;min-width:88px;padding:4px 10px;border:0;border-radius:0;background:transparent}
+.ov-gauge + .ov-gauge{border-left:1px dashed var(--soft)}
+.ov-gauge.has-tip{cursor:help;position:relative;z-index:1}
+.ov-gauge.has-tip:hover,.ov-gauge.has-tip:focus-within{z-index:30}
+.ov-gauge.has-tip > .otip-all{left:50%;right:auto;transform:translateX(-50%)}
+/* โชว์เฉพาะตอน fixed แล้ว — กันล้น/ถูกตัดขอบการ์ดก่อนจัดตำแหน่ง */
+.ov-gauge .og-lab{align-self:stretch;display:flex;justify-content:center;min-height:1.15rem}
+.ov-gauge .og-lab .role-badge{font-size:.62rem;padding:1px 6px;margin:0}
+.ov-gauge .og-title{font-size:.66rem;font-weight:600;text-align:center;line-height:1.25;height:calc(1.25em * 2);min-height:calc(1.25em * 2);overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;word-break:break-word}
+.ov-gauge .gauge-box.compact{margin:0 auto;transform:scale(.9);transform-origin:top center}
+.ov-gauge .og-val{font-family:var(--f-data);font-weight:700;font-size:.78rem;line-height:1.1;text-align:center;margin-top:auto}
+.ov-gauge .og-val small{font-weight:500;font-size:.62rem;color:var(--muted);margin-left:2px}
+.ov-gauge .og-meta{font-size:.6rem;color:var(--muted);text-align:center;line-height:1.2}
+.ov-up .role-badge{margin-right:4px;padding:1px 5px;font-size:.6rem}
+@media (max-width:899px){
+  .watch-card > .ov-focus,.watch-card > .ov-focus.ov-graphs{grid-template-columns:1fr;gap:10px}
+  .watch-card-main{grid-template-columns:minmax(0,1fr) auto;grid-template-areas:"ra side" "body body"}
+  .rrow .watch-card-main > .ra{grid-area:ra;border-right:0;padding:12px 12px 8px}
+  .rrow .watch-card-main > .ra .ra-status .slv{max-width:10rem}
+  .watch-card-main > .ov-side{grid-area:side;border-left:0;padding:12px 12px 8px;align-items:stretch}
+  .watch-card-main > .ov-side .ov-side-meta{align-items:flex-end;border-top:0;padding-top:4px;margin-top:4px}
+  .watch-card-main > .rbody.watch-main{grid-area:body;grid-template-columns:1fr;padding:8px 12px 10px;border-top:1px dashed var(--soft)}
+  .watch-side{border-left:0;border-top:1px dashed var(--soft);padding:10px 0 0;margin-top:8px}
+  .ov-gauge{min-width:76px;padding:4px 8px}
+  .ov-gauge .gauge-box.compact{transform:scale(.84)}
+}
+@media (max-width:720px){.risk-h,.risk > .rrow:not([data-watch]){grid-template-columns:minmax(104px,32%) minmax(0,1fr) 88px;gap:6px 8px}}
+.risk-h{font-size:.7rem;color:var(--muted);font-weight:600;padding:8px 8px 4px 14px}
+.risk-h > span:last-child,.risk > .rrow .ov-side{justify-self:end;text-align:right}
+.ov-side{display:flex;flex-direction:column;align-items:flex-end;gap:2px;min-width:0;line-height:1.2}
+.ov-side .upchip{font-size:.68rem;font-weight:600;color:var(--muted);white-space:nowrap}
+.ov-side .upchip[data-s="0"]{color:var(--s0)}.ov-side .upchip[data-s="1"]{color:var(--s1)}
+.ov-side .upchip[data-s="2"]{color:var(--s2)}.ov-side .upchip[data-s="3"]{color:var(--s3)}
+.ov-side .upchip.na{font-weight:500}
+.ov-side .outl{font-size:.74rem}
+.rrow .ra{display:flex;flex-direction:row;align-items:center;gap:8px;min-width:0;line-height:1.25;padding-right:4px}
+.rrow .ra .ra-top{display:flex;flex-direction:row;align-items:center;gap:8px;min-width:0;width:100%}
+.rrow .ra .ra-ico{flex:0 0 auto;width:32px;height:32px;border-radius:9px;display:grid;place-items:center;background:color-mix(in srgb,var(--soft) 85%,var(--panel));color:var(--accent);border:1px solid var(--line)}
+.rrow .ra .ra-ico svg{width:16px;height:16px;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+.rrow .ra .ra-ico[data-s="0"]{color:var(--s0);border-color:color-mix(in srgb,var(--s0) 30%,var(--line));background:color-mix(in srgb,var(--s0-bg) 65%,var(--panel))}
+.rrow .ra .ra-ico[data-s="1"]{color:var(--s1);border-color:color-mix(in srgb,var(--s1) 30%,var(--line));background:color-mix(in srgb,var(--s1-bg) 65%,var(--panel))}
+.rrow .ra .ra-ico[data-s="2"]{color:var(--s2);border-color:color-mix(in srgb,var(--s2) 30%,var(--line));background:color-mix(in srgb,var(--s2-bg) 65%,var(--panel))}
+.rrow .ra .ra-ico[data-s="3"]{color:var(--s3);border-color:color-mix(in srgb,var(--s3) 30%,var(--line));background:color-mix(in srgb,var(--s3-bg) 65%,var(--panel))}
+.rrow .ra .ra-txt{display:flex;flex-direction:column;min-width:0;gap:1px;flex:1}
+.rrow:not([data-watch]) .ra .ra-txt b{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-size:.9rem;line-height:1.25}
+.rrow:not([data-watch]) .ra .ra-txt small{font-size:.68rem;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;line-height:1.25}
+.rrow{appearance:none;width:100%;border:0;border-top:1px solid var(--soft);background:none;font:inherit;color:inherit;text-align:left;cursor:pointer;border-radius:6px}
 .rrow:hover{background:var(--soft)}
-.rrow .rank{font-family:var(--f-data);font-weight:700;color:var(--muted);font-size:.82rem}
-.rrow .ra{display:flex;flex-direction:column;min-width:0;line-height:1.2;gap:1px}
-.rrow .ra b{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-size:.88rem}
-.rrow .ra small{font-size:.7rem;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.rrow .ra b{font-size:.88rem}
+.rrow .ra small{font-size:.7rem;color:var(--muted)}
 /* แถวกลางเต็มความกว้าง: ธงสี | ระดับน้ำ 1 จุด | ปริมาณน้ำ */
 .rbody{display:grid;grid-template-columns:118px minmax(0,1fr);gap:8px 20px;width:100%;min-width:0;align-items:center}
 @media (max-width:720px){.rbody{grid-template-columns:100px minmax(0,1fr);gap:6px 10px}}
@@ -407,27 +504,30 @@ tbody tr:hover{background:var(--soft)}
   .risk + .risk{margin-top:18px}
   .risk-title{padding:4px 2px 8px;font-size:.88rem}
   .risk-h{display:none}
-  .risk > .rrow{
+  .risk > .rrow:not([data-watch]){
     display:grid;
-    grid-template-columns:1.5rem minmax(0,1fr) auto;
-    grid-template-areas:"rank ra outl" "body body body";
+    grid-template-columns:minmax(0,1fr) auto;
+    grid-template-areas:"ra side" "body body";
     gap:4px 10px;
     align-items:center;
     margin:0 0 8px;
-    padding:12px 12px 10px;
+    padding:12px 14px 12px 16px;
     background:var(--panel);
     border:1px solid var(--line);
     border-radius:14px;
     box-shadow:0 1px 0 color-mix(in srgb,var(--line) 55%,transparent);
   }
+  .risk > .rrow[data-watch]{margin:0 0 8px;padding:0;background:transparent;border:0;box-shadow:none}
   .risk > .rrow:last-of-type{margin-bottom:0}
-  .risk > .rrow:hover{background:var(--panel);border-color:var(--accent)}
-  .risk > .rrow .rank{grid-area:rank;font-size:.78rem;align-self:start;padding-top:2px}
-  .risk > .rrow .ra{grid-area:ra;min-width:0}
-  .risk > .rrow .ra b{font-size:.92rem;white-space:normal}
-  .risk > .rrow .ra small{font-size:.72rem;white-space:normal}
-  .risk > .rrow .outl{grid-area:outl;justify-self:end;align-self:start;font-size:.72rem;padding-top:2px}
-  .risk > .rrow .rbody{
+  .risk > .rrow:not([data-watch]):hover{background:var(--panel);border-color:var(--accent)}
+  .risk > .rrow:not([data-watch]) .ra{grid-area:ra;min-width:0;padding-right:6px;align-items:center}
+  .risk > .rrow:not([data-watch]) .ra .ra-top{align-items:center}
+  .risk > .rrow .ra b{font-size:.92rem}
+  .risk > .rrow .ra small{font-size:.72rem}
+  .risk > .rrow:not([data-watch]) .ra .ra-txt b,
+  .risk > .rrow:not([data-watch]) .ra .ra-txt small{white-space:normal}
+  .risk > .rrow:not([data-watch]) .ov-side{grid-area:side;justify-self:end;align-self:start;padding-top:2px}
+  .risk > .rrow:not([data-watch]) .rbody{
     grid-area:body;
     display:flex;flex-direction:column;gap:8px;
     padding-top:6px;margin-top:2px;
@@ -678,14 +778,17 @@ tbody tr:hover{background:var(--soft)}
 /* การ์ดรวม แนวโน้ม + ฝน */
 .ostory.trend-combo .trend-combo-body{display:grid;grid-template-columns:minmax(0,1.4fr) minmax(200px,.85fr);gap:0;align-items:stretch}
 .ostory.trend-combo .trend-metrics{display:grid;grid-template-columns:1fr 1fr;gap:0;min-width:0;border-right:1px solid var(--line)}
+.ostory.trend-combo .trend-metrics.cols-3{grid-template-columns:1fr 1fr 1fr}
 .ostory.trend-combo .trend-metric{display:flex;flex-direction:column;align-items:center;justify-content:flex-start;padding:12px 14px 16px;min-width:0}
 .ostory.trend-combo .trend-metric + .trend-metric{border-left:1px solid var(--line)}
 .ostory.trend-combo .trend-metric .tm-label{display:flex;align-items:center;gap:6px;font-size:.78rem;font-weight:700;color:var(--muted);margin-bottom:8px;align-self:stretch}
 .ostory.trend-combo .trend-metric .tm-label .role-badge{margin-right:0}
 .ostory.trend-combo .trend-metric .tm-title{font-size:.82rem;font-weight:600;text-align:center;line-height:1.3;margin-bottom:6px;max-width:14rem}
+.ostory.trend-combo .trend-metrics.cols-3 .trend-metric .tm-title{font-size:.76rem;max-width:11.5rem}
 .ostory.trend-combo .trend-metric .tm-meta{font-size:.7rem;color:var(--muted);text-align:center;margin-top:6px;line-height:1.35}
 .ostory.trend-combo .trend-metric.rain-pane{align-items:stretch}
 .ostory.trend-combo .trend-metric.rain-pane .gauge-box{margin:0 auto}
+.ostory.trend-combo .trend-metric.flow-pane .role-badge.loc{background:#e3f2fd;color:#1565c0}
 .ostory.trend-combo .trend-combo-body > .ostory-side{border-left:0;border-top:0;padding:12px 16px 14px;justify-content:flex-start}
 /* ไอคอนธงบนไม้บรรทัด — ชี้แล้วโชว์เกณฑ์ย่ออย่างเดียว */
 .gauge-flag.has-tip{cursor:help;position:absolute}
@@ -707,16 +810,22 @@ tbody tr:hover{background:var(--soft)}
   .ostory.trend-combo .trend-metrics{border-right:0;border-bottom:1px solid var(--line)}
   .ostory.trend-combo .trend-combo-body > .ostory-side{border-top:1px solid var(--line)}
 }
+@media (max-width:1100px){
+  .ostory.trend-combo .trend-metrics.cols-3{grid-template-columns:1fr 1fr}
+  .ostory.trend-combo .trend-metrics.cols-3 .trend-metric:nth-child(3){border-left:0;border-top:1px solid var(--line);grid-column:1/-1}
+}
 @media (max-width:720px){
   .detail-cards-row,.detail-cards-row.trend-row{grid-template-columns:1fr}
-  .ostory.trend-combo .trend-metrics{grid-template-columns:1fr}
+  .ostory.trend-combo .trend-metrics,.ostory.trend-combo .trend-metrics.cols-3{grid-template-columns:1fr}
+  .ostory.trend-combo .trend-metrics.cols-3 .trend-metric:nth-child(3){grid-column:auto}
   .ostory.trend-combo .trend-metric + .trend-metric{border-left:0;border-top:1px solid var(--line)}
 }
-.ostory .role-badge{display:inline-flex;align-items:center;gap:4px;font-size:.72rem;font-weight:700;padding:2px 8px;border-radius:999px;margin-right:6px;vertical-align:middle}
-.ostory .role-badge.loc{background:#e8f5e9;color:#2e7d32}
-.ostory .role-badge.up{background:#eef2f7;color:#455a64}
-.ostory .role-badge.rain{background:var(--water-soft);color:var(--accent)}
-.ostory .role-badge svg{width:12px;height:12px;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+.ostory .role-badge,.ov-gauge .role-badge,.ov-sec .role-badge{display:inline-flex;align-items:center;gap:4px;font-size:.72rem;font-weight:700;padding:2px 8px;border-radius:999px;margin-right:6px;vertical-align:middle}
+.ostory .role-badge.loc,.ov-gauge .role-badge.loc{background:#e8f5e9;color:#2e7d32}
+.ostory .role-badge.up,.ov-gauge .role-badge.up,.ov-sec .role-badge.up{background:#eef2f7;color:#455a64}
+.ostory .role-badge.rain,.ov-gauge .role-badge.rain,.ov-sec .role-badge.rain{background:var(--water-soft);color:var(--accent)}
+.ostory .role-badge svg,.ov-gauge .role-badge svg,.ov-sec .role-badge svg{width:12px;height:12px;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+.ov-gauge .role-badge.flow{background:#e3f2fd;color:#1565c0}
 .oscale{border:0;border-radius:0;padding:4px 0 8px;background:transparent;min-width:0}
 .oscale-h{display:flex;flex-wrap:wrap;gap:6px 10px;align-items:center;justify-content:space-between;margin-bottom:4px}
 .oscale-h .ttl{display:flex;align-items:center;gap:8px;min-width:0;font-weight:700;font-size:.88rem}
@@ -775,7 +884,7 @@ tbody tr:hover{background:var(--soft)}
 .osbar-wrap.has-tip:hover,.osbar-wrap.has-tip:focus-within{z-index:30}
 .oscale{position:relative}
 .osbar-wrap.has-tip > .otip-all{left:50%;right:auto;transform:translateX(-50%)}
-.osbar-wrap.has-tip:hover > .otip-all:not(.is-fixed),.osbar-wrap.has-tip:focus-within > .otip-all:not(.is-fixed){opacity:1;visibility:visible}
+/* โชว์เฉพาะตอน is-fixed (JS จัดใน viewport) */
 .osends{position:absolute;left:0;right:0;top:0;bottom:30px;height:auto;pointer-events:none;z-index:4}
 .osends .end{position:absolute;width:36px;height:100%;top:0;pointer-events:auto;cursor:default}
 .osends .end.lo{left:0}
@@ -1394,12 +1503,49 @@ const outlHtml = (o, extra = "") => {
   return `<span class="outl ${o.trend || "na"}"${ds}${extra}>${TREND_ICON[o.trend] || "–"} ${TREND_SHORT[o.trend] || "รอข้อมูล"}</span>`;
 };
 
-/* เรียงจากหนักไปเบา: ระดับสูงสุดภายใน 72 ชม. → สถานะปัจจุบัน → น้ำเหนือ → ฝนคาดการณ์ */
+/* สีสั้นจากสถานะ: แดง / ส้ม / เหลือง / เขียว */
+const STATUS_SHORT = {"-1":"–",0:"เขียว",1:"เหลือง",2:"ส้ม",3:"แดง"};
+/** ระดับน้ำเหนือที่แสดงบนภาพรวม — รวมจุดทริกเกอร์ + สรุปต้นน้ำ */
+function upstreamLevelOf(id, o){
+  const be = botEval(id);
+  const fromBot = be && Number.isFinite(be.upS) ? be.upS : -1;
+  const fromSum = o && o.up && Number.isFinite(o.up.s) ? o.up.s : -1;
+  return Math.max(fromBot, fromSum);
+}
+/** เรียงให้ความสำคัญ: แดง → ส้ม → เหลือง → เขียว แล้วตามน้ำเหนือ / แนวโน้มแย่ลง */
+function sitePriorityCmp(a, b){
+  const upA = upstreamLevelOf(a.s.id, a.o), upB = upstreamLevelOf(b.s.id, b.o);
+  const trendRank = t => (t === "up" ? 2 : t === "flat" ? 1 : t === "down" ? 0 : -1);
+  return (b.o.s - a.o.s)
+    || (upB - upA)
+    || (trendRank(b.o.trend) - trendRank(a.o.trend))
+    || ((b.o.proj ?? -1) - (a.o.proj ?? -1))
+    || ((b.o.total ?? 0) - (a.o.total ?? 0))
+    || (a.s.no - b.s.no);
+}
+function overviewSideHtml(siteId, o, opts){
+  const us = upstreamLevelOf(siteId, o);
+  const upTip = us >= 0
+    ? (o.up && o.up.top ? `น้ำเหนือ${STATUS[us]} · ${o.up.top.p.name}${o.up.top.p.lead ? " · ถึงที่ตั้ง " + o.up.top.p.lead : ""}` : `น้ำเหนือ${STATUS[us]}`)
+    : "ยังไม่มีข้อมูลน้ำเหนือ";
+  const upHtml = us >= 0
+    ? `<span class="upchip" data-s="${us}" title="${esc(upTip)}">น้ำเหนือ ${STATUS_SHORT[us]}</span>`
+    : `<span class="upchip na" title="${esc(upTip)}">น้ำเหนือ –</span>`;
+  const head = String(o.text || "").split(" — ")[0];
+  const meta = `${upHtml}${outlHtml(o, ` title="${esc(head)}"`)}`;
+  /* โฟกัส: ฝนสะสมมุมขวา · สรุปน้ำเหนือ/แนวโน้มด้านล่าง */
+  if(opts && opts.rain){
+    return `<span class="ov-side">
+      <div class="ov-sec">${overviewRainAsideHtml(siteId, o)}</div>
+      <div class="ov-side-meta">${meta}</div>
+    </span>`;
+  }
+  return `<span class="ov-side">${meta}</span>`;
+}
+const siteAreaIcon = s => (s && s.id === "hq" ? ICO.central : ICO.site);
+/* เรียงจากหนักไปเบา: สีพื้นที่ปัจจุบัน → น้ำเหนือ → แนวโน้ม → คาด 72 ชม. */
 function sortedSites(){
-  const risk = o => Math.max(o.s, o.proj);
-  return SITES.map(s => ({s, o: outlook(s.id)})).sort((a, b) =>
-    (risk(b.o) - risk(a.o)) || (b.o.s - a.o.s) || (b.o.up.s - a.o.up.s) || (b.o.total - a.o.total) || (a.s.no - b.s.no)
-  ).map(x => x.s);
+  return SITES.map(s => ({s, o: outlook(s.id)})).sort(sitePriorityCmp).map(x => x.s);
 }
 const STALE_H = 24;
 
@@ -1490,7 +1636,7 @@ function evalPoint(p, d){
   const v = stationRec(d, p.name);
   if(!v) return {s:-1, why:"ยังไม่มีข้อมูล", v:null};
   if(isStale(v.time, ref)) return {s:-1, why:"ข้อมูลค้าง ไม่ใช้ประเมิน", v, stale:true};
-  const pct = num(v.pct), q = num(v.q);
+  const pct = num(v.storagePct) ?? num(v.pct), q = num(v.q);
   const t = p.t === null ? null : (p.t || DEF_T);
   let s = Math.max(levelBy(pct, t), levelBy(q, p.qt), 0);
   const why = [];
@@ -1532,6 +1678,11 @@ const ridStation = code => onwr && (onwr.rid || []).find(x => x.code === code) |
 const liveDam = name => onwr && onwr.dams.find(x => "เขื่อน" + x.name === name || x.name === name) || null;
 /** % ปริมาณน้ำท่า (Q/Qmax) ตามรายงาน EWI — ไม่ใช้ % ความจุระดับน้ำ
  *  ถ้า backend ติด runoffProxy (เช่น PMTS16 ที่ Q เพี้ยน) ให้ใช้คู่จาก proxy ทั้งชุด — ห้ามผสม Q ตนกับ qmax คนละสถานี */
+/** ประมาณ % น้ำท่าจาก % ความจุตลิ่ง เมื่อคลังไม่มี Q (Manning) */
+function estRunoffFromStorage(pct){
+  if(pct == null || !Number.isFinite(pct)) return null;
+  return Math.round(Math.pow(Math.max(pct, 0) / 100, 5 / 3) * 1000) / 10;
+}
 function runoffPct(l){
   if(!l) return null;
   if(l.runoffProxy && num(l.runoffProxy.qPct) !== null && num(l.qmax) === null)
@@ -1540,6 +1691,10 @@ function runoffPct(l){
   const q = num(l.q), qmax = num(l.qmax);
   if(q !== null && qmax !== null && qmax > 0) return Math.round(q / qmax * 1000) / 10;
   if(l.runoffProxy && num(l.runoffProxy.qPct) !== null) return num(l.runoffProxy.qPct);
+  /* ลุ่มท่าจีน/ตาปีมักไม่มี Q — ประมาณจาก % ตลิ่ง (report.storagePct หรือ onwr.pct) */
+  const stor = num(l.storagePct);
+  if(stor !== null) return estRunoffFromStorage(stor);
+  if(q === null && qmax === null && num(l.pct) !== null) return estRunoffFromStorage(num(l.pct));
   return null;
 }
 function stationRec(d, name, field){
@@ -2059,11 +2214,13 @@ function seriesTrend(pts, key){
   if(Math.abs(d) < (key === "rainMm" ? 0.2 : 0.5)) return {dir:"flat", label:"คงที่", delta:d};
   return d > 0 ? {dir:"up", label:"ขึ้น", delta:d} : {dir:"down", label:"ลง", delta:d};
 }
-function sparkSvg(pts, key){
+let _sparkGradSeq = 0;
+function sparkSvg(pts, key, opt){
   const vals = pts.map(p => p[key]);
   const nums = vals.filter(v => typeof v === "number");
-  if(!nums.length) return `<div class="tiny">ยังไม่มีข้อมูลย้อนหลัง</div>`;
-  const W = 220, H = 44, P = 3;
+  if(!nums.length) return `<div class="${opt && opt.mini ? "om-empty" : "tiny"}">ยังไม่มีข้อมูลย้อนหลัง</div>`;
+  const W = (opt && opt.w) || 220, H = (opt && opt.h) || 44, P = (opt && opt.p) != null ? opt.p : 3;
+  const mini = Boolean(opt && opt.mini);
   const min = Math.min(...nums), max = Math.max(...nums), span = max - min || 1;
   const coords = [];
   vals.forEach((v, i) => {
@@ -2072,11 +2229,30 @@ function sparkSvg(pts, key){
     const y = H - P - ((v - min) / span) * (H - 2 * P);
     coords.push([x, y, v, pts[i]]);
   });
+  if(!coords.length) return `<div class="${mini ? "om-empty" : "tiny"}">ยังไม่มีข้อมูลย้อนหลัง</div>`;
   const line = coords.map((c, i) => `${i ? "L" : "M"}${c[0].toFixed(1)},${c[1].toFixed(1)}`).join(" ");
   const last = coords[coords.length - 1];
-  const stroke = key === "rainMm" ? "var(--water)" : "var(--accent)";
-  const dots = coords.map(c => `<circle cx="${c[0].toFixed(1)}" cy="${c[1].toFixed(1)}" r="2.2" fill="${stroke}"><title>${esc(c[3].round || "")} · ${typeof c[2] === "number" ? (key === "rainMm" ? fmt1(c[2]) + " มม." : fmt1(c[2]) + "%") : "–"}</title></circle>`).join("");
-  return `<svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" role="img"><path d="${line}" fill="none" stroke="${stroke}" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>${dots}${last ? `<circle cx="${last[0].toFixed(1)}" cy="${last[1].toFixed(1)}" r="3.5" fill="${stroke}"/>` : ""}</svg>`;
+  const first = coords[0];
+  const baseY = (H - P).toFixed(1);
+  const area = `M${first[0].toFixed(1)},${baseY} ${coords.map(c => `L${c[0].toFixed(1)},${c[1].toFixed(1)}`).join(" ")} L${last[0].toFixed(1)},${baseY} Z`;
+  /* สีตามธีม: น้ำ = สถานะ/accent · ฝน = water blue · รองรับ opt.stroke / opt.status */
+  const stroke = (opt && opt.stroke)
+    || (opt && opt.status >= 0 ? `var(--s${opt.status})` : null)
+    || (key === "rainMm" ? "var(--water)" : "var(--accent)");
+  const rDot = mini ? 1.5 : 2.2, rLast = mini ? 2.6 : 3.5;
+  const sw = mini ? 2.1 : 2.25;
+  const unitLab = key === "rainMm" ? " มม." : (key === "waterMsl" ? " ม.รทก." : "%");
+  const gid = `spg${++_sparkGradSeq}`;
+  const dots = mini ? "" : coords.map(c => `<circle cx="${c[0].toFixed(1)}" cy="${c[1].toFixed(1)}" r="${rDot}" fill="${stroke}"><title>${esc(c[3].round || "")} · ${typeof c[2] === "number" ? fmt1(c[2]) + unitLab : "–"}</title></circle>`).join("");
+  return `<svg class="spark-svg" viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" role="img">
+    <defs><linearGradient id="${gid}" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="${stroke}" stop-opacity=".32"/>
+      <stop offset="100%" stop-color="${stroke}" stop-opacity="0"/>
+    </linearGradient></defs>
+    <path d="${area}" fill="url(#${gid})"/>
+    <path d="${line}" fill="none" stroke="${stroke}" stroke-width="${sw}" stroke-linejoin="round" stroke-linecap="round"/>
+    ${dots}<circle cx="${last[0].toFixed(1)}" cy="${last[1].toFixed(1)}" r="${rLast}" fill="${stroke}" stroke="var(--panel)" stroke-width="1.2"><title>${esc((last[3] && last[3].round) || "")} · ${fmt1(last[2])}${unitLab}</title></circle>
+  </svg>`;
 }
 function sparkBox(pts, key, title, unit){
   const t = seriesTrend(pts, key);
@@ -2108,6 +2284,12 @@ const ICO = {
   pin: '<svg viewBox="0 0 24 24"><path d="M12 21s-6-5.3-6-10a6 6 0 1 1 12 0c0 4.7-6 10-6 10z"/><circle cx="12" cy="11" r="2.2"/></svg>',
   /** น้ำเหนือ / ต้นน้ำ */
   flow: '<svg viewBox="0 0 24 24"><path d="M12 3v12M9 12l3 3 3-3"/><path d="M4 19c2.2 0 2.2-2 4.4-2s2.2 2 4.4 2 2.2-2 4.4-2 2.2 2 4.4 2"/></svg>',
+  /** พื้นที่ / ที่ตั้งหน่วยงาน */
+  site: '<svg viewBox="0 0 24 24"><path d="M3 21h18"/><path d="M5 21V8l7-4 7 4v13"/><path d="M9 21v-6h6v6M9 10h.01M15 10h.01M12 10h.01"/></svg>',
+  /** แนวโน้ม 72 ชม. */
+  trendUp: '<svg viewBox="0 0 24 24"><path d="M4 18l6-6 4 3 6-8"/><path d="M14 7h6v6"/></svg>',
+  trendDown: '<svg viewBox="0 0 24 24"><path d="M4 7l6 6 4-3 6 8"/><path d="M14 17h6v-6"/></svg>',
+  trendFlat: '<svg viewBox="0 0 24 24"><path d="M4 12h16"/><path d="M8 8v8M16 8v8"/></svg>',
 };
 
 function chipIconFor(text){
@@ -2502,6 +2684,7 @@ function impactScaleHtml(item, opts){
   ].join("");
   const tipHead = `<div class="otip-hd"><span class="otip-ico" aria-hidden="true">${isRain ? ICO.rain : ICO.tide}</span><div><b>${esc(lab)}</b><small>${st >= 0 ? STATUS[st] : "รอข้อมูล"}${item.station && item.station !== lab ? " · " + esc(item.station) : ""}</small></div></div>`;
   const allTip = `<div class="otip otip-all" role="tooltip" data-s="${st}">${tipHead}<div class="otip-rows">${allTipRows}</div></div>`;
+  if(opts && opts.tipOnly) return allTip;
 
   return `<div class="oscale${compact ? " compact" : ""}${rainOverview ? " rain-ov" : ""}" data-s="${st}">
     <div class="oscale-h">
@@ -2649,10 +2832,10 @@ function detailUpstreamRows(siteId, opts){
             why: `${fmt1(qp)}% น้ำท่า (Q/Qmax)`, time: rq.time, title: p.name};
         }
         if(!v || ev.stale) return null;
-        const pct = num(v.pct), q = num(v.q);
+        const pct = num(v.storagePct) ?? num(v.pct), q = num(v.q);
         /* ไม่มีอัตราการไหล → ประมาณจากระดับน้ำ: Q ∝ ความลึก^(5/3) (Manning) · Qmax ที่ระดับตลิ่ง */
         if(pct != null){
-          const est = Math.round(Math.pow(Math.max(pct, 0) / 100, 5 / 3) * 1000) / 10;
+          const est = estRunoffFromStorage(pct);
           return {p, value: est, unit: "%", th: qt, s: lvOf(est), metric: "runoffEst",
             why: `≈ ${fmt1(est)}% น้ำท่า ประมาณจากระดับน้ำ ${fmt1(pct)}% ของตลิ่ง`, time: v.time, title: p.name};
         }
@@ -2729,6 +2912,9 @@ function detailStoryCards(site, o, st){
     if(aq !== bq) return aq - bq;
     return b.item.s - a.item.s || ((b.item.r && b.item.r.value) || 0) - ((a.item.r && a.item.r.value) || 0);
   })[0];
+  /* ปริมาณไหลผ่าน (เช่น สามโคก สนญ.) — แสดงแยกจากระดับน้ำ ม.รทก. */
+  const qtyEv = [...locals].filter(x => isQtyInd(x.ind))
+    .sort((a, b) => b.item.s - a.item.s || ((b.item.r && b.item.r.value) || 0) - ((a.item.r && a.item.r.value) || 0))[0];
   const {water} = resolveSiteImpacts(site.id, o);
   const {headline, uniq} = detailOpinionBits(site, o, water);
   const warnLv = o.trend === "up" ? Math.max(st, o.proj || 0) : (o.f72 && o.f72.lvAssess > st ? o.f72.lvAssess : st);
@@ -2753,6 +2939,20 @@ function detailStoryCards(site, o, st){
     ? (when ? `คาดการณ์ภายใน ${when[1]} ชม.` : "คาดการณ์ภายใน 72 ชม.")
     : (o.trend === "down" ? "แนวโน้มคลี่คลาย" : "แนวโน้ม 72 ชม.");
 
+  /* แผงปริมาณไหลผ่าน — สนญ. แสดงสามโคกคู่กับระดับน้ำ บก.ทร. */
+  let flowPane = "";
+  if(qtyEv && (!localEv || qtyEv.ind !== localEv.ind)){
+    const ind = qtyEv.ind, e = qtyEv.item, v = e.r ? e.r.value : null;
+    const pane = trendMetricPane({
+      role: "loc", roleLabel: "ไหลผ่าน",
+      title: ind.label.replace(/^สถานี/, ""),
+      value: v, unit: ind.unit, th: ind.th, gt: ind.gt, status: e.s,
+      time: e.r && e.r.time,
+      meta: e.r && e.r.live ? "สด · เฉลี่ย 24 ชม." : (e.r && e.r.manual ? "เจ้าหน้าที่กรอก" : "เกณฑ์ ธปท."),
+    });
+    flowPane = pane.replace('class="trend-metric"', 'class="trend-metric flow-pane"');
+  }
+
   /* แผงน้ำที่ตั้ง */
   let waterPane = "";
   if(localEv){
@@ -2770,7 +2970,7 @@ function detailStoryCards(site, o, st){
       value: water.cur, unit: water.unit, th: water.th, gt: true, status: water.status,
       meta: water.where || "",
     });
-  } else {
+  } else if(!flowPane){
     waterPane = `<div class="trend-metric"><div class="tm-label"><span class="role-badge loc">${ICO.pin}ที่ตั้ง</span></div>
       <div class="tm-title">รอข้อมูลจุดที่ตั้ง</div><div class="tiny" style="margin-top:12px;color:var(--muted)">ยังไม่มีค่าวัด</div></div>`;
   }
@@ -2798,6 +2998,9 @@ function detailStoryCards(site, o, st){
   }
 
   const headLv = warnLv >= 0 ? warnLv : st;
+  /* เรียงเหมือน สนญ.: ไหลผ่าน → ฝน → ที่ตั้ง */
+  const metricPanes = `${flowPane}${rainPane}${waterPane}`;
+  const cols3 = Boolean(flowPane && waterPane && rainPane);
   const trend = `<div class="ostory trend-combo" data-s="${headLv}">
     <div class="ostory-h">
       <div class="lead">
@@ -2807,7 +3010,7 @@ function detailStoryCards(site, o, st){
       <div class="head-right">${pathHead}</div>
     </div>
     <div class="trend-combo-body">
-      <div class="trend-metrics">${waterPane}${rainPane}</div>
+      <div class="trend-metrics${cols3 ? " cols-3" : ""}">${metricPanes}</div>
       <aside class="ostory-side">
         <h4>วิเคราะห์ / ความเห็น</h4>
         <div class="cm">${sideLocal}</div>
@@ -3193,7 +3396,41 @@ function overviewFocusImpacts(siteId, o){
   }
   return {focus, kind, hasLocalCfg: locals.length > 0};
 }
+/** ไม้บรรทัดย่อแบบหน้ารายละเอียด — ใช้ในแถวโฟกัส · tipItem = ข้อมูล popup แบบสเกลเขียว */
+function overviewMiniGauge({role, roleLabel, title, value, unit, th, gt, status, meta, tipItem}){
+  const st = status >= 0 ? status : -1;
+  const unitShort = unit === "ลบ.ม./วินาที" || unit === "ลบ.ม./วิ." ? ""
+    : (unit === "ม.รทก." ? "ม." : (/มม/.test(String(unit || "")) ? "มม." : (unit === "%" ? "%" : (unit || ""))));
+  const bands = th || [30, 70, 100];
+  const max = Math.max(bands[2] * 1.25, (typeof value === "number" ? value : 0) * 1.1, unit === "%" ? 120 : bands[2], /มม/.test(String(unit || "")) ? 40 : 0);
+  const allTip = tipItem ? impactScaleHtml(tipItem, {compact: true, tipOnly: true}) : "";
+  const gauge = flagGauge({
+    value: typeof value === "number" ? value : null, th: bands, max, unit: unitShort,
+    gt: Boolean(gt), status: st, compact: true,
+    /* มี popup รวมแล้ว — ไม่ซ้อน tip เกณฑ์เล็กบนธง */
+    bandLabels: allTip ? null : (role === "rain" ? shortCriteriaLabels(bands, "มม.", false) : null),
+  });
+  const valTxt = typeof value !== "number"
+    ? "–"
+    : (unitShort === "" ? fmtInt(value) : (/มม|%/.test(unitShort) || unit === "%" ? fmt1(value) : (Math.round(value * 100) / 100).toFixed(2)));
+  const uLab = unit === "ลบ.ม./วินาที" || unit === "ลบ.ม./วิ." ? "ลบ.ม./วิ." : (unit || "");
+  const roleCls = role === "rain" ? "rain" : (role === "flow" ? "flow" : "loc");
+  const roleIco = role === "rain" ? ICO.rain : (role === "flow" ? ICO.flow : ICO.pin);
+  const tipCls = allTip ? " has-tip" : "";
+  const tipAttr = allTip ? ` tabindex="0" title="ชี้เพื่อดูค่าทั้งหมด"` : "";
+  return `<div class="ov-gauge${tipCls}" data-s="${st}"${tipAttr}>
+    ${allTip}
+    <div class="og-lab"><span class="role-badge ${roleCls}">${roleIco}${esc(roleLabel || "")}</span></div>
+    <div class="og-title">${esc(title || "")}</div>
+    ${gauge}
+    <div class="og-val">${esc(valTxt)}${typeof value === "number" && uLab ? `<small>${esc(uLab)}</small>` : ""}</div>
+    ${meta ? `<div class="og-meta">${esc(meta)}</div>` : ""}
+  </div>`;
+}
+
+/** แถวกลาง: สีเขียว = แถบสเกลเดิม · เหลือง–แดง = ไม้บรรทัดทริกเกอร์แบบหน้ารายละเอียดย่อ */
 function overviewRowBody(siteId, o, st){
+  if(st >= 1) return overviewWatchBody(siteId, o, st);
   const {focus, kind, hasLocalCfg} = overviewFocusImpacts(siteId, o);
   const empty = kind === "pct"
     ? (hasLocalCfg ? "รอข้อมูล" : "ไม่มีจุดวัด % น้ำท่า")
@@ -3204,25 +3441,195 @@ function overviewRowBody(siteId, o, st){
   return `<span class="rbody">${statusLevelScale(st)}${lvHtml}</span>`;
 }
 
+function overviewUpstreamListHtml(siteId){
+  const ups = detailUpstreamRows(siteId, {want: 3});
+  if(!ups.length) return `<div class="om-empty">ยังไม่มีจุดน้ำเหนือเด่น</div>`;
+  return `<div class="ov-up-list">${ups.map(u => {
+    const unit = u.unit === "%" ? "%" : (u.unit === "ลบ.ม./วิ." || u.unit === "ลบ.ม./วินาที" ? " ลบ.ม./วิ." : (u.unit ? " " + u.unit : ""));
+    const val = typeof u.value === "number"
+      ? (u.unit === "%" || /มม|ม\.รทก/.test(String(u.unit || "")) ? fmt1(u.value) : fmtInt(u.value))
+      : "–";
+    const name = shortGaugeName(u.title, false);
+    return `<div class="ov-up" data-s="${u.status >= 0 ? u.status : -1}">
+      <span class="un"><span class="role-badge up">${ICO.flow}${u.upNo}</span>${esc(name)}</span>
+      <span class="uv">${esc(val)}${typeof u.value === "number" ? esc(unit) : ""}</span>
+      <span class="um">${u.lead ? `ถึงที่ตั้ง ${esc(u.lead)}` : "เฝ้าเท่านั้น"}${u.status >= 0 ? ` · ${STATUS_SHORT[u.status]}` : ""}</span>
+    </div>`;
+  }).join("")}</div>`;
+}
+function overviewRainAsideHtml(siteId, o){
+  const rain = rainReading(siteId);
+  const pts = seriesOf(siteId);
+  const lastR = [...pts].reverse().find(p => typeof p.rainMm === "number");
+  const rainMm = rain.mm != null ? rain.mm : (lastR ? lastR.rainMm : (o && Number.isFinite(o.total) ? o.total : null));
+  const rStatus = rainMm != null
+    ? (rain.accum3d !== false ? rain3dLevel(rainMm) : botRainLevel(rainMm))
+    : -1;
+  const rainSrc = rain.mm != null && rain.accum3d !== false ? "สะสม 3 วัน ณ ที่ตั้ง"
+    : (lastR ? "สะสม 3 วัน" : (rainMm != null ? "คาดการณ์ 3 วัน" : ""));
+  const rVal = rainMm != null ? `${fmt1(rainMm)} มม.` : "–";
+  return `<div class="ov-sec-h"><span class="role-badge rain">${ICO.rain}ฝนสะสม</span></div>
+    <div class="watch-rain-val"${rStatus >= 0 ? ` data-s="${rStatus}"` : ""}>${esc(rVal)}</div>
+    <div class="watch-rain-meta">${rainSrc ? esc(rainSrc) : "รอข้อมูล"}${rStatus >= 0 ? ` · ${STATUS_SHORT[rStatus]}` : ""}</div>`;
+}
+
+/** ทริกเกอร์ซ้าย · น้ำเหนือ+ฝนสะสมขวา — เฉพาะเหลือง/ส้ม/แดง
+ *  เรียงเหมือน สนญ.: ไหลผ่าน → ฝน/ชม. → ที่ตั้ง
+ *  ฝนรายชั่วโมง (rainHint) แสดงเสมอ — สนญ. เป็น local · ที่อื่นเป็น upstream (ไม่ดึงสี) */
+function overviewWatchBody(siteId, o, st){
+  const be = botEval(siteId);
+  const locals = be ? partitionImpact(be.ev, e => e.ind).locals : [];
+  const rainEv = be ? be.ev.filter(e => isRainInd(e.ind) && e.ind.rainHint) : [];
+  const panes = [];
+  const pushPane = (ind, e) => {
+    const v = e.r ? e.r.value : null;
+    const rain = isRainInd(ind);
+    const qty = isQtyInd(ind);
+    const title = shortGaugeName(ind.label, rain);
+    const tipItem = impactFromBotEv(siteId, e, o);
+    panes.push(overviewMiniGauge({
+      role: rain ? "rain" : (qty ? "flow" : "loc"),
+      roleLabel: rain ? "ฝน/ชม." : (qty ? "ไหลผ่าน" : "ที่ตั้ง"),
+      title,
+      value: v, unit: ind.unit, th: ind.th, gt: ind.gt, status: e.s,
+      meta: e.r && e.r.live ? "สด" : (e.r && e.r.manual ? "กรอก" : "เกณฑ์ ธปท."),
+      tipItem,
+    }));
+  };
+  /* ลำดับ: ปริมาณไหลผ่าน → ฝน → ที่ตั้ง (ระดับน้ำ/%) */
+  const ordered = [];
+  for(const x of locals){
+    if(isQtyInd(x.ind) && !isRainInd(x.ind)) ordered.push(x);
+  }
+  for(const e of rainEv) ordered.push({ind: e.ind, item: e});
+  for(const x of locals){
+    if(!isQtyInd(x.ind) && !isRainInd(x.ind)) ordered.push(x);
+  }
+  for(const x of ordered) pushPane(x.ind, x.item);
+  if(!panes.length){
+    const {focus} = overviewFocusImpacts(siteId, o);
+    if(focus){
+      panes.push(overviewMiniGauge({
+        role: focus.overviewRain || /มม/.test(String(focus.unit || "")) ? "rain" : (focus.qty ? "flow" : "loc"),
+        roleLabel: focus.overviewRain ? "ฝน" : (focus.qty ? "ไหลผ่าน" : "ที่ตั้ง"),
+        title: String(focus.label || "").replace(/^สถานี/, ""),
+        value: focus.cur, unit: focus.unit, th: focus.th, gt: focus.gt != null ? focus.gt : true, status: focus.status,
+        meta: focus.where || "",
+        tipItem: focus,
+      }));
+    }
+  }
+  const gauges = panes.length
+    ? panes.join("")
+    : `<span class="oscale empty">รอจุดทริกเกอร์</span>`;
+  return `<span class="rbody watch-main" aria-label="ทริกเกอร์และน้ำเหนือ">
+    <div class="watch-gauges">${gauges}</div>
+    <aside class="watch-side">
+      <div class="ov-sec">
+        <div class="ov-sec-h">น้ำเหนือ · 3 จุด</div>
+        ${overviewUpstreamListHtml(siteId)}
+      </div>
+    </aside>
+  </span>`;
+}
+
+/** แถวล่างโฟกัส: กราฟแนวโน้มน้ำ + ฝน เท่านั้น */
+function overviewFocusHtml(siteId, o, st){
+  if(st < 1) return "";
+  const pts = seriesOf(siteId);
+  const kind = overviewScaleKind(siteId);
+  const hasMsl = pts.some(p => typeof p.waterMsl === "number");
+  const hasPct = pts.some(p => typeof p.waterPct === "number");
+  const wKey = kind === "msl" ? (hasMsl ? "waterMsl" : (hasPct ? "waterPct" : "waterMsl"))
+    : (hasPct ? "waterPct" : (hasMsl ? "waterMsl" : "waterPct"));
+  const wUnit = wKey === "waterMsl" ? "ม.รทก." : "%";
+  const wLab = wKey === "waterMsl" ? "แนวโน้มน้ำ" : "แนวโน้ม % น้ำท่า";
+  const wT = seriesTrend(pts, wKey);
+  const lastW = [...pts].reverse().find(p => typeof p[wKey] === "number");
+  const focus = overviewFocusImpacts(siteId, o).focus;
+  const curW = lastW ? lastW[wKey] : (focus && typeof focus.cur === "number" ? focus.cur : null);
+  const wIcon = wT.dir === "up" ? "▲" : wT.dir === "down" ? "▼" : "●";
+  const wVal = curW != null ? `${fmt1(curW)}${wUnit === "%" ? "%" : " " + wUnit}` : "–";
+  const wLv = trendColorLv({trend: wT.dir, s: st, proj: st});
+  const wStroke = wLv >= 0 ? `var(--s${wLv})` : "var(--accent)";
+  const waterOpt = {w: 220, h: 34, p: 3, mini: true, stroke: wStroke, status: wLv};
+  const waterSpark = pts.some(p => typeof p[wKey] === "number")
+    ? sparkSvg(pts, wKey, waterOpt)
+    : (curW != null
+      ? sparkSvg([{[wKey]: curW, round: "ล่าสุด"}, {[wKey]: curW, round: "ล่าสุด"}], wKey, waterOpt)
+      : `<div class="om-empty">รอข้อมูลย้อนหลัง</div>`);
+
+  const rain = rainReading(siteId);
+  const lastR = [...pts].reverse().find(p => typeof p.rainMm === "number");
+  const rainMm = rain.mm != null ? rain.mm : (lastR ? lastR.rainMm : (o && Number.isFinite(o.total) ? o.total : null));
+  const rStatus = rainMm != null
+    ? (rain.accum3d !== false ? rain3dLevel(rainMm) : botRainLevel(rainMm))
+    : -1;
+  const rainSrc = rain.mm != null && rain.accum3d !== false ? "สะสม 3 วัน"
+    : (lastR ? "สะสม 3 วัน" : (rainMm != null ? "คาด 3 วัน" : ""));
+  const rT = seriesTrend(pts, "rainMm");
+  const rIcon = rT.dir === "up" ? "▲" : rT.dir === "down" ? "▼" : "●";
+  const rVal = rainMm != null ? `${fmt1(rainMm)} มม.` : "–";
+  const rStroke = rStatus >= 0 ? `var(--s${rStatus})` : "var(--water)";
+  const rainOpt = {w: 220, h: 34, p: 3, mini: true, stroke: rStroke, status: rStatus};
+  const rainSpark = pts.some(p => typeof p.rainMm === "number")
+    ? sparkSvg(pts, "rainMm", rainOpt)
+    : (rainMm != null
+      ? sparkSvg([{rainMm, round: "ล่าสุด"}, {rainMm, round: "ล่าสุด"}], "rainMm", rainOpt)
+      : `<div class="om-empty">รอข้อมูลย้อนหลัง</div>`);
+
+  return `<div class="ov-focus ov-graphs" aria-label="กราฟแนวโน้ม">
+    <div class="ov-mini">
+      <div class="om-h"><span>${esc(wLab)}</span><b class="dir ${wT.dir}"${wLv >= 0 ? ` data-s="${wLv}"` : ""}>${wIcon} ${esc(wVal)}</b></div>
+      ${waterSpark}
+    </div>
+    <div class="ov-mini">
+      <div class="om-h"><span>แนวโน้มฝน${rainSrc ? ` · ${esc(rainSrc)}` : ""}</span><b class="dir ${rT.dir}"${rStatus >= 0 ? ` data-s="${rStatus}"` : ""}>${rIcon} ${esc(rVal)}</b></div>
+      ${rainSpark}
+    </div>
+  </div>`;
+}
 function overviewGroupRows(items){
-  const risk = o => Math.max(o.s, o.proj);
-  return [...items].sort((a, b) =>
-    (risk(b.o) - risk(a.o)) || (b.o.s - a.o.s) || (a.s.no - b.s.no)
-  ).map((x, i) => {
+  return [...items].sort(sitePriorityCmp).map(x => {
     const {s, o} = x;
     const st = sOf(s.id);
-    const head = String(o.text || "").split(" — ")[0];
+    const icoS = st >= 0 ? ` data-s="${st}"` : "";
+    const raCore = `<span class="ra-top">
+        <span class="ra-ico"${icoS} aria-hidden="true">${siteAreaIcon(s)}</span>
+        <span class="ra-txt"><b>${esc(shortAbbr(s))}</b><small>${esc(s.prov)}</small></span>
+      </span>`;
+    if(st >= 1){
+      const stPill = st >= 0
+        ? `<span class="pill" data-s="${st}">${esc(STATUS[st])}</span>`
+        : `<span class="pill" data-s="-1">รอข้อมูล</span>`;
+      return `<button class="rrow" data-open="${s.id}" data-watch="${st}" title="${esc(o.text)}">
+        <div class="watch-card">
+          <div class="watch-card-main">
+            <span class="ra">
+              ${raCore}
+              <span class="ra-status" title="สีพื้นที่ · แถบวิเคราะห์">
+                ${stPill}
+                ${statusLevelScale(st)}
+              </span>
+            </span>
+            ${overviewWatchBody(s.id, o, st)}
+            ${overviewSideHtml(s.id, o, {rain: true})}
+          </div>
+          ${overviewFocusHtml(s.id, o, st)}
+        </div>
+      </button>`;
+    }
     return `<button class="rrow" data-open="${s.id}" title="${esc(o.text)}">
-      <span class="rank">${i + 1}</span>
-      <span class="ra"><b>${esc(shortAbbr(s))}</b><small>${esc(s.prov)}</small></span>
+      <span class="ra">${raCore}</span>
       ${overviewRowBody(s.id, o, st)}
-      ${outlHtml(o, ` title="${esc(head)}"`)}
+      ${overviewSideHtml(s.id, o)}
     </button>`;
   }).join("");
 }
 
 /* ---------- ภาพรวม: แยกกลุ่มสเกล ม.รทก. / % น้ำท่า ---------- */
 function renderExec(){
+  dismissAllScaleTips();
   const list = SITES.map(s => ({s, o: outlook(s.id)}));
   const worse = list.filter(x => x.o.trend === "up");
   const kpi = (lv, label) => {
@@ -3238,16 +3645,16 @@ function renderExec(){
         <svg class="bell" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/></svg>
         <div class="t">แย่ลงใน 72 ชม.</div><div class="n">${worse.length}</div><div class="who">${worse.map(x => esc(shortAbbr(x.s))).join(" ") || "–"}</div></button></div>
     <div class="risk">
-      <div class="risk-title">สนญ. · สพฐ. <small>สเกลระดับน้ำ ม.รทก.</small></div>
-      <div class="risk-h"><span>#</span><span>พื้นที่</span><span>แถบสี · ระดับน้ำโฟกัส</span><span>72 ชม.</span></div>
+      <div class="risk-title">สนญ. · สพฐ. <small>เรียงแดง → ส้ม → เหลือง · สเกล ม.รทก.</small></div>
+      <div class="risk-h"><span>พื้นที่</span><span>เขียว = แถบสเกล · โฟกัส = การ์ดเดียว</span><span>น้ำเหนือ · แนวโน้ม</span></div>
       ${overviewGroupRows(mslList)}
-      <div class="risk-legend"><span><i class="leg-flag"></i>แถบสีวิเคราะห์</span><span>ระดับน้ำ ม.รทก.</span><span>ฝน 1 ชม. ดูที่รายละเอียด สนญ.</span></div>
+      <div class="risk-legend"><span><i class="leg-flag"></i>แถบสีวิเคราะห์</span><span>โฟกัส = ชื่อ+ทริกเกอร์+น้ำเหนือ/ฝน+กราฟ ในใบเดียว</span><span>ขวา = น้ำเหนือ · แนวโน้ม 72 ชม.</span></div>
     </div>
     <div class="risk">
-      <div class="risk-title">สนภ. · ศูนย์จัดการธนบัตร <small>สเกล % ปริมาณน้ำท่า (Q/Qmax)</small></div>
-      <div class="risk-h"><span>#</span><span>พื้นที่</span><span>แถบสี · % น้ำท่า</span><span>72 ชม.</span></div>
+      <div class="risk-title">สนภ. · ศูนย์จัดการธนบัตร <small>เรียงแดง → ส้ม → เหลือง · % น้ำท่า</small></div>
+      <div class="risk-h"><span>พื้นที่</span><span>เขียว = แถบสเกล · โฟกัส = การ์ดเดียว</span><span>น้ำเหนือ · แนวโน้ม</span></div>
       ${overviewGroupRows(pctList)}
-      <div class="risk-legend"><span><i class="leg-flag"></i>แถบสีวิเคราะห์</span><span>% น้ำท่าที่ตั้ง</span><span>กดแถวเพื่อดูสายน้ำเหนือ</span></div>
+      <div class="risk-legend"><span><i class="leg-flag"></i>แถบสีวิเคราะห์</span><span>โฟกัส = ชื่อ+ทริกเกอร์+น้ำเหนือ/ฝน+กราฟ ในใบเดียว</span><span>กดแถวเพื่อดูรายละเอียด</span></div>
     </div>
     ${chgStrip()}
     ${natStrip()}`;
@@ -4564,9 +4971,8 @@ function select(id, push=true){
   renderRail(); renderSite();
 }
 
-/* popup สเกล — ลอย fixed ใน viewport ไม่ตัดการ์ดความเห็น/แถวสรุป */
-function clearScaleTip(wrap){
-  const tip = wrap && wrap.querySelector(".otip-all");
+/* popup สเกล — ย้ายไป body ตอนโชว์ กันการ์ด/overflow ตัดเนื้อหา */
+function resetTipStyles(tip){
   if(!tip) return;
   tip.classList.remove("is-fixed", "below");
   tip.style.left = "";
@@ -4575,13 +4981,43 @@ function clearScaleTip(wrap){
   tip.style.bottom = "";
   tip.style.transform = "";
   tip.style.maxWidth = "";
+  tip.style.width = "";
+}
+function clearScaleTip(wrap){
+  if(!wrap) return;
+  const tip = wrap._tipEl || wrap.querySelector(".otip-all");
+  if(!tip){ wrap._tipOn = false; return; }
+  resetTipStyles(tip);
+  if(wrap._tipHost && document.contains(wrap._tipHost)){
+    if(tip.parentNode !== wrap._tipHost) wrap._tipHost.appendChild(tip);
+  } else if(tip.parentNode === document.body){
+    tip.remove();
+  }
+  wrap._tipEl = null;
+  wrap._tipHost = null;
+  wrap._tipOn = false;
+}
+function dismissAllScaleTips(){
+  if(_scaleTipWrap) clearScaleTip(_scaleTipWrap);
+  _scaleTipWrap = null;
+  document.querySelectorAll("body > .otip.otip-all").forEach(el => el.remove());
+}
+function scaleTipAnchor(wrap){
+  return wrap.querySelector(".osbar") || wrap.querySelector(".gauge-box") || wrap;
 }
 function placeScaleTip(wrap){
-  const tip = wrap && wrap.querySelector(".otip-all");
+  if(!wrap) return;
+  let tip = wrap._tipEl || wrap.querySelector(".otip-all");
   if(!tip) return;
-  const bar = wrap.querySelector(".osbar") || wrap;
+  if(!wrap._tipHost) wrap._tipHost = tip.parentNode;
+  wrap._tipEl = tip;
+  /* ออกจากการ์ด — position:fixed ใน ancestor ที่มี overflow/transform ยังถูกตัดได้ */
+  if(tip.parentNode !== document.body) document.body.appendChild(tip);
+  const bar = scaleTipAnchor(wrap);
   const br = bar.getBoundingClientRect();
-  const frame = (wrap.closest(".risk") || wrap.closest(".wrap") || document.body).getBoundingClientRect();
+  const pad = 8;
+  const vw = window.innerWidth;
+  const vh = window.innerHeight;
   tip.classList.add("is-fixed");
   tip.classList.remove("below");
   tip.style.left = "0px";
@@ -4589,57 +5025,71 @@ function placeScaleTip(wrap){
   tip.style.right = "auto";
   tip.style.bottom = "auto";
   tip.style.transform = "none";
-  tip.style.maxWidth = Math.min(300, Math.max(200, frame.width - 16)).toFixed(0) + "px";
-  const tw = tip.offsetWidth || 200;
-  const th = tip.offsetHeight || 120;
-  const pad = 8;
-  const leftMin = Math.max(pad, frame.left + pad);
-  const leftMax = Math.min(window.innerWidth - pad, frame.right - pad) - tw;
+  const maxW = Math.max(160, Math.min(300, vw - pad * 2));
+  tip.style.maxWidth = maxW.toFixed(0) + "px";
+  tip.style.width = "max-content";
+  let tw = Math.min(tip.offsetWidth || 200, maxW);
+  let th = tip.offsetHeight || 120;
+  if(tip.offsetWidth > maxW){
+    tip.style.maxWidth = maxW.toFixed(0) + "px";
+    tw = tip.offsetWidth || maxW;
+    th = tip.offsetHeight || th;
+  }
   let left = br.left + br.width / 2 - tw / 2;
-  left = Math.max(leftMin, Math.min(left, Math.max(leftMin, leftMax)));
+  left = Math.min(Math.max(pad, left), Math.max(pad, vw - pad - tw));
   let top = br.top - th - 10;
-  if(top < Math.max(pad, frame.top + pad)){
+  if(top < pad){
     top = br.bottom + 10;
     tip.classList.add("below");
   }
-  const bottomLimit = Math.min(window.innerHeight - pad, frame.bottom - pad);
-  if(top + th > bottomLimit){
+  if(top + th > vh - pad){
     const above = br.top - th - 10;
-    if(above >= Math.max(pad, frame.top + pad)){
+    if(above >= pad){
       top = above;
       tip.classList.remove("below");
     } else {
-      top = Math.max(Math.max(pad, frame.top + pad), bottomLimit - th);
+      top = Math.max(pad, vh - pad - th);
     }
   }
   tip.style.left = left.toFixed(1) + "px";
   tip.style.top = top.toFixed(1) + "px";
 }
+const SCALE_TIP_SEL = ".osbar-wrap.has-tip, .ov-gauge.has-tip";
+let _scaleTipWrap = null;
 function onScaleTipEnter(e){
-  const wrap = e.target.closest(".osbar-wrap.has-tip");
+  const wrap = e.target.closest(SCALE_TIP_SEL);
   if(!wrap || wrap._tipOn) return;
+  if(_scaleTipWrap && _scaleTipWrap !== wrap) clearScaleTip(_scaleTipWrap);
   wrap._tipOn = true;
-  requestAnimationFrame(() => placeScaleTip(wrap));
+  _scaleTipWrap = wrap;
+  requestAnimationFrame(() => requestAnimationFrame(() => {
+    if(wrap._tipOn) placeScaleTip(wrap);
+  }));
 }
 function onScaleTipLeave(e){
-  const wrap = e.target.closest(".osbar-wrap.has-tip");
+  const wrap = e.target.closest(SCALE_TIP_SEL);
   if(!wrap) return;
   const to = e.relatedTarget;
   if(to && wrap.contains(to)) return;
-  wrap._tipOn = false;
+  if(_scaleTipWrap === wrap) _scaleTipWrap = null;
   clearScaleTip(wrap);
+}
+function onScaleTipReposition(){
+  if(_scaleTipWrap && _scaleTipWrap._tipOn) placeScaleTip(_scaleTipWrap);
 }
 document.addEventListener("mouseover", onScaleTipEnter);
 document.addEventListener("mouseout", onScaleTipLeave);
 document.addEventListener("focusin", onScaleTipEnter);
 document.addEventListener("focusout", e => {
-  const wrap = e.target.closest && e.target.closest(".osbar-wrap.has-tip");
+  const wrap = e.target.closest && e.target.closest(SCALE_TIP_SEL);
   if(!wrap) return;
   const to = e.relatedTarget;
   if(to && wrap.contains(to)) return;
-  wrap._tipOn = false;
+  if(_scaleTipWrap === wrap) _scaleTipWrap = null;
   clearScaleTip(wrap);
 });
+window.addEventListener("resize", onScaleTipReposition);
+window.addEventListener("scroll", onScaleTipReposition, true);
 
 document.addEventListener("click", e => {
   const t = e.target.closest("[data-tab],[data-kpi],[data-list],[data-nat],[data-st],[data-dam],[data-open],[data-goto],[data-cam],[data-flycam],[data-report],[data-round],[data-back-overview],[data-back-site],.dlg-x,.chip");

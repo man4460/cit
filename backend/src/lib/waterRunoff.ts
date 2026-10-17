@@ -141,12 +141,31 @@ export function enrichLevelsRunoff<T extends LevelLike>(levels: T[]): (T & { run
   return out;
 }
 
-/** อ่าน % น้ำท่าสำหรับเกณฑ์: ของสถานีเองก่อน แล้วค่อย proxy */
-export function runoffPctOf(l: (LevelLike & { runoffProxy?: RunoffProxy | null }) | null | undefined): number | null {
+/** ประมาณ % น้ำท่าจาก % ความจุตลิ่ง (Manning Q∝h^(5/3)) — เมื่อคลังไม่มีค่า Q */
+export function estRunoffFromStoragePct(storagePct: number | null | undefined): number | null {
+  if (storagePct == null || !Number.isFinite(storagePct)) return null;
+  return Math.round(Math.pow(Math.max(storagePct, 0) / 100, 5 / 3) * 1000) / 10;
+}
+
+/** อ่าน % น้ำท่าสำหรับเกณฑ์: ของสถานีเองก่อน แล้วค่อย proxy · opts.allowEstimate = ประมาณจาก % ตลิ่งเมื่อไม่มี Q */
+export function runoffPctOf(
+  l: (LevelLike & { runoffProxy?: RunoffProxy | null; storagePct?: number | null }) | null | undefined,
+  opts?: { allowEstimate?: boolean },
+): number | null {
   if (!l) return null;
   const own = runoffPctStrict(l);
   if (own != null) return own;
-  return l.runoffProxy?.qPct ?? null;
+  if (l.runoffProxy?.qPct != null) return l.runoffProxy.qPct;
+  if (opts?.allowEstimate) {
+    const stor =
+      typeof l.storagePct === "number" && Number.isFinite(l.storagePct)
+        ? l.storagePct
+        : l.q == null && l.qmax == null && typeof l.pct === "number"
+          ? l.pct
+          : null;
+    return estRunoffFromStoragePct(stor);
+  }
+  return null;
 }
 
 /** หาสถานีจากชื่อ/รหัส (+ proxy) */

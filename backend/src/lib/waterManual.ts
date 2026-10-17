@@ -18,6 +18,8 @@ export const MANUAL_KEYS = {
   phranakhon_rain: rainManual("hq", "ปริมาณน้ำฝนที่ตกในเขตพระนคร"),
   navy_msl: { site: "hq", label: "ระดับน้ำขึ้นสูงสุด ณ บก.ทร.", unit: "ม.รทก.", min: -1, max: 5, validH: 24, bands: [2.0, 2.2, 2.5] as [number, number, number] },
   nakhonchaisi_msl: { site: "ipd", label: "ระดับน้ำท่าจีน จุดวัดที่ว่าการอ.นครชัยศรี (T.1)", unit: "ม.รทก.", min: 0, max: 6, validH: 24, bands: [1.8, 2.0, 2.5] as [number, number, number] },
+  ipd_rain: rainManual("ipd", "ปริมาณน้ำฝนที่ตกในอ.นครชัยศรี"),
+  urt_rain: rainManual("urt", "ปริมาณน้ำฝนที่ตกในอ.เมืองสุราษฎร์ธานี"),
   /* local % ความจุลำน้ำ — ศูนย์/สำนักงานภาค */
   cnx_pct: { site: "cnx", label: "% ปริมาณน้ำท่าใกล้ที่ตั้ง (Q/Qmax)", unit: "%", min: 0, max: 200, validH: 6, bands: [30, 70, 100] as [number, number, number], gt: true },
   kkn_pct: { site: "kkn", label: "% ปริมาณน้ำท่าใกล้ที่ตั้ง (Q/Qmax)", unit: "%", min: 0, max: 200, validH: 6, bands: [30, 70, 100] as [number, number, number], gt: true },

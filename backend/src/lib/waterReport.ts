@@ -11,7 +11,7 @@ import {
   dbSaveReport,
   parseReportTime,
 } from "./waterRoundsStore.js";
-import { findLevelForRunoff, runoffPctOf as runoffPctStrictOf } from "./waterRunoff.js";
+import { estRunoffFromStoragePct, findLevelForRunoff, runoffPctOf as runoffPctStrictOf } from "./waterRunoff.js";
 
 /** ค่าที่เจ้าหน้าที่กรอก (จุดวัด ธปท. สนญ.) ของรอบที่กำลังสร้าง — ใช้เป็นหลักแทนสถานีแทน */
 let manualNow: Partial<Record<ManualKey, ManualEntry>> = {};
@@ -122,13 +122,14 @@ type News = { title: string; url: string; source: string; date: string };
 type Level = OnwrData["levels"][number];
 type Gauge = {
   name: string;
+  code?: string;
   amphoe: string;
   river: string;
   msl: number | null;
   prev: number | null;
   runPrev: number | null;
   bank: number | null;
-  /** % ปริมาณน้ำท่า (Q/Qmax) เป็นหลัก — ไม่มีแล้วใช้ % ความจุระดับน้ำ */
+  /** แสดงผล/แนวโน้ม: % น้ำท่า (Q/Qmax) หรือ % ตลิ่งเมื่อไม่มี Q */
   pct: number | null;
   q: number | null;
   qmax?: number | null;
@@ -317,7 +318,10 @@ type BotInd = {
   read: (o: OnwrData) => number | null;
 };
 /** % ปริมาณน้ำท่า (Q/Qmax ตาม EWI) — รวมค่าจากสถานี proxy ถ้ามี · ไม่ใช้ % ความจุระดับน้ำ */
-const runoffPctOf = (l: Parameters<typeof runoffPctStrictOf>[0]): number | null => runoffPctStrictOf(l);
+const runoffPctOf = (
+  l: Parameters<typeof runoffPctStrictOf>[0],
+  opts?: { allowEstimate?: boolean },
+): number | null => runoffPctStrictOf(l, opts);
 const regional = (
   station: string,
   code?: string,
@@ -329,7 +333,8 @@ const regional = (
   gt: true,
   impact: opts?.impact ?? "local",
   lead: opts?.lead,
-  read: (o) => runoffPctOf(findLevelForRunoff(o.levels, station, code)),
+  /* ลุ่มใต้/ท่าจีนมักไม่มี Q ในคลัง — ประมาณจาก % ตลิ่งเมื่อจำเป็น */
+  read: (o) => runoffPctOf(findLevelForRunoff(o.levels, station, code), { allowEstimate: true }),
 });
 const byCode = (o: OnwrData, code: string) => o.levels.find((l) => l.code === code);
 /** เกณฑ์ฝนรายชั่วโมง — ชุดเดียวกับ สนญ. · สพฐ. คัดเฉพาะอ.นครชัยศรี */
@@ -337,23 +342,30 @@ const rainHour = (
   id: string,
   label = "ฝน 1 ชม. ใกล้ที่ตั้ง",
   manual?: ManualKey,
-  opts?: { amphoe?: string; radiusKm?: number },
+  opts?: { amphoe?: string; radiusKm?: number; impact?: "local" | "upstream" },
 ): BotInd => ({
   label,
   unit: "มม./ชม.",
   th: [50, 80, 120],
+  impact: opts?.impact ?? "local",
   manual: manual ?? ((id === "hq" ? "phranakhon_rain" : `${id}_rain`) as ManualKey),
   read: (o) => {
     const radius = opts?.radiusKm ?? 10;
-    const h = (o.rain.near[id] ?? [])
-      .filter((r) => r.km <= radius && r.h1 != null)
-      .filter((r) => !opts?.amphoe || String(r.amphoe || "").includes(opts.amphoe))
-      .map((r) => r.h1 as number);
-    return h.length ? Math.max(...h) : null;
+    const near = (o.rain.near[id] ?? []).filter((r) => r.km <= radius && r.h1 != null);
+    const matched = opts?.amphoe
+      ? near.filter((r) => String(r.amphoe || "").includes(opts.amphoe!))
+      : near;
+    const list = matched.length ? matched : near;
+    return list.length ? Math.max(...list.map((r) => r.h1 as number)) : null;
   },
 });
-const withRain = (id: string, inds: BotInd[], label?: string, manual?: ManualKey, opts?: { amphoe?: string; radiusKm?: number }) =>
-  inds.some((i) => i.unit === "มม./ชม.") ? inds : [...inds, rainHour(id, label, manual, opts)];
+const withRain = (
+  id: string,
+  inds: BotInd[],
+  label?: string,
+  manual?: ManualKey,
+  opts?: { amphoe?: string; radiusKm?: number; impact?: "local" | "upstream" },
+) => (inds.some((i) => i.unit === "มม./ชม.") ? inds : [...inds, rainHour(id, label, manual, opts)]);
 const BOT_CRITERIA: Record<string, BotInd[]> = {
   hq: [
     {
@@ -383,18 +395,25 @@ const BOT_CRITERIA: Record<string, BotInd[]> = {
       },
     },
   ],
-  /* ฝนรายชั่วโมงเป็นทริกเกอร์เฉพาะ สนญ. — พื้นที่อื่นใช้เฉพาะจุดวัดน้ำ */
-  ipd: [
-    {
-      label: "ท่าจีน ที่ว่าการอ.นครชัยศรี (T.1)",
-      unit: "ม.รทก.",
-      th: [1.8, 2.0, 2.5],
-      read: (o) =>
-        o.levels.find((l) => l.name === "ที่ว่าการอ.นครชัยศรี")?.msl
-        ?? o.levels.find((l) => l.name === "สะพานนครชัยศรี")?.msl
-        ?? null,
-    },
-  ],
+  /* ฝนรายชั่วโมงทริกเกอร์สีเฉพาะ สนญ. — พื้นที่อื่นฝังค่าแสดง (upstream) */
+  ipd: withRain(
+    "ipd",
+    [
+      {
+        label: "ท่าจีน ที่ว่าการอ.นครชัยศรี (T.1)",
+        unit: "ม.รทก.",
+        th: [1.8, 2.0, 2.5],
+        manual: "nakhonchaisi_msl",
+        read: (o) =>
+          o.levels.find((l) => l.name === "ที่ว่าการอ.นครชัยศรี")?.msl
+          ?? o.levels.find((l) => l.name === "สะพานนครชัยศรี")?.msl
+          ?? null,
+      },
+    ],
+    "ฝน 1 ชม. อ.นครชัยศรี",
+    "ipd_rain",
+    { amphoe: "นครชัยศรี", radiusKm: 15, impact: "upstream" },
+  ),
   kkn: [
     regional("ลำน้ำพอง โรงเรียนลำน้ำพอง", "URTD02", { impact: "upstream", lead: "6–12 ชม." }),
     regional("บ้านกุดกว้าง", "E.16A", { impact: "local" }),
@@ -409,12 +428,18 @@ const BOT_CRITERIA: Record<string, BotInd[]> = {
     regional("บ้านบางศาลา", "X.90", { impact: "local" }),
     regional("บ้านคลองหวะ", "X.174", { impact: "local" }),
   ],
-  urt: [
-    regional("ท่าขนอม", "TPI004", { impact: "upstream", lead: "ประมาณ 1 วัน" }),
-    regional("บ้านย่านดินแดง", "X.37A", { impact: "upstream", lead: "2–3 วัน" }),
-    regional("บ้านเคียนซา", "X.217", { impact: "upstream", lead: "1–1.5 วัน" }),
-    regional("บ้านท่าข้าม", "X.5C", { impact: "local", lead: "6–12 ชม." }),
-  ],
+  urt: withRain(
+    "urt",
+    [
+      regional("ท่าขนอม", "TPI004", { impact: "upstream", lead: "ประมาณ 1 วัน" }),
+      regional("บ้านย่านดินแดง", "X.37A", { impact: "upstream", lead: "2–3 วัน" }),
+      regional("บ้านเคียนซา", "X.217", { impact: "upstream", lead: "1–1.5 วัน" }),
+      regional("บ้านท่าข้าม", "X.5C", { impact: "local", lead: "6–12 ชม." }),
+    ],
+    "ฝน 1 ชม. อ.เมืองสุราษฎร์ธานี",
+    "urt_rain",
+    { amphoe: "เมืองสุราษฎร์ธานี", radiusKm: 15, impact: "upstream" },
+  ),
   ryg: [
     regional("บ้านเขาโบสถ์", "Z.38", { impact: "local", lead: "คลองทับมา · ใกล้ที่ตั้ง" }),
     regional("บ้านเขาวังไทร", "Z.11", { impact: "upstream", lead: "ลุ่มประแสร์ · ไม่ไหลสู่ที่ตั้ง" }),
@@ -440,6 +465,21 @@ const BOT_CRITERIA: Record<string, BotInd[]> = {
     regional("สำนักเทคโนโลยีชีวภัณฑ์สัตว์", "M.89", { impact: "local" }),
   ],
 };
+
+/** ค่าทริกเกอร์จากคลังน้ำ — ฝังใน sites[id].bot ให้หน้าเว็บใช้ได้แม้ยังไม่มี onwr สด */
+function computedBotReadings(id: string, o: OnwrData): Record<string, { value: number; time: string; live: boolean }> {
+  const list = BOT_CRITERIA[id];
+  if (!list) return {};
+  const stamp = String(o.fetchedAt || bkkIso(Date.now()));
+  const out: Record<string, { value: number; time: string; live: boolean }> = {};
+  for (const ind of list) {
+    if (!ind.manual || manualNow[ind.manual]) continue;
+    const v = ind.read(o);
+    if (v == null || !Number.isFinite(v)) continue;
+    out[ind.manual] = { value: v, time: stamp, live: true };
+  }
+  return out;
+}
 
 function botStatus(id: string, o: OnwrData): { s: number; text: string } | null {
   const list = BOT_CRITERIA[id];
@@ -497,20 +537,24 @@ function botStatus(id: string, o: OnwrData): { s: number; text: string } | null 
 
 function gaugeOf(name: string, l: Level, prevRound: Gauge | undefined): Gauge {
   const qPct = runoffPctOf(l);
+  const storagePct = l.pct;
+  const displayPct = qPct ?? storagePct;
+  const levelPct = qPct ?? estRunoffFromStoragePct(storagePct);
   return {
     name,
+    code: l.code || "",
     amphoe: l.amphoe,
     river: l.river,
     msl: l.msl,
     prev: l.prev,
     runPrev: prevRound?.msl ?? null,
     bank: l.bank,
-    pct: qPct,
+    pct: displayPct,
     q: l.q,
     qmax: l.qmax,
     qPct,
-    storagePct: l.pct,
-    level: pctLevel(qPct),
+    storagePct,
+    level: pctLevel(levelPct),
     time: l.time,
   };
 }
@@ -523,7 +567,12 @@ function gaugeText(g: Gauge) {
   const move = d === null ? "" : Math.abs(d) < 0.02 ? " (ทรงตัว)" : ` (${cm(d)} จากรอบก่อน)`;
   const msl = g.msl != null ? `${fmt1(g.msl)} ม.รทก.` : "";
   const q = g.q != null ? ` · Q ${fmt1(g.q)} ลบ.ม./วิ.` : "";
-  const pct = g.pct != null ? ` · ${fmt1(g.pct)}% น้ำท่า` : "";
+  const pct =
+    g.qPct != null
+      ? ` · ${fmt1(g.qPct)}% น้ำท่า`
+      : g.storagePct != null
+        ? ` · ${fmt1(g.storagePct)}% ของตลิ่ง`
+        : "";
   return `${g.name} ${msl}${q}${pct}${move}`.replace(/\s+/g, " ").trim();
 }
 
@@ -773,9 +822,11 @@ async function buildReport(at: number, prev: Report | null): Promise<Report> {
   const sites: Record<string, SiteDoc> = {};
   for (const id of Object.keys(SITE_INFO)) {
     sites[id] = buildSite(id, onwr, fc[id] ?? [], rain3d[id], ewiRainBySite[id], newsBySite[id] ?? [], prev?.sites?.[id], updatedAt, label, ag, f72[id]);
-    const siteBot = Object.fromEntries(
+    const computed = computedBotReadings(id, onwr);
+    const fromManual = Object.fromEntries(
       Object.entries(manualBot(manualNow) ?? {}).filter(([k]) => MANUAL_KEYS[k as ManualKey]?.site === id),
     );
+    const siteBot = { ...computed, ...fromManual };
     if (Object.keys(siteBot).length) sites[id].bot = siteBot;
   }
   const { note, changes } = nationNote(onwr, sites, prev, label, ag);
