@@ -149,7 +149,7 @@ export function estRunoffFromStoragePct(storagePct: number | null | undefined): 
 
 /** อ่าน % น้ำท่าสำหรับเกณฑ์: ของสถานีเองก่อน แล้วค่อย proxy · opts.allowEstimate = ประมาณจาก % ตลิ่งเมื่อไม่มี Q */
 export function runoffPctOf(
-  l: (LevelLike & { runoffProxy?: RunoffProxy | null; storagePct?: number | null }) | null | undefined,
+  l: (LevelLike & { runoffProxy?: RunoffProxy | null; storagePct?: number | null; pct?: number | null }) | null | undefined,
   opts?: { allowEstimate?: boolean },
 ): number | null {
   if (!l) return null;
