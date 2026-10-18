@@ -70,6 +70,30 @@ function RefreshIcon({ className }: { className?: string }) {
   );
 }
 
+function ExpandFullscreenIcon({ className }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.85} aria-hidden>
+      <path
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        d="M3.75 3.75v4.5m0-4.5h4.5m-4.5 0L9 9M3.75 20.25v-4.5m0 4.5h4.5m-4.5 0L9 15M20.25 3.75h-4.5m4.5 0v4.5m0-4.5L15 9m5.25 11.25h-4.5m4.5 0v-4.5m0 4.5L15 15"
+      />
+    </svg>
+  );
+}
+
+function ExitFullscreenIcon({ className }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.85} aria-hidden>
+      <path
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        d="M9 9V4.5M9 9H4.5M9 9 3.75 3.75M9 15v4.5M9 15H4.5M9 15l-5.25 5.25M15 9h4.5M15 9V4.5M15 9l5.25-5.25M15 15h4.5M15 15v4.5m0-4.5 5.25 5.25"
+      />
+    </svg>
+  );
+}
+
 function HamburgerIcon({ open }: { open: boolean }) {
   return (
     <svg className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2} aria-hidden>
@@ -99,6 +123,7 @@ export function Shell() {
   const [moduleHeaderCollapsed, setModuleHeaderCollapsed] = useState(readModuleHeaderCollapsed);
   const [dataEpoch, setDataEpoch] = useState(0);
   const [refreshing, setRefreshing] = useState(false);
+  const [fullscreen, setFullscreen] = useState(false);
   const activeGroup = findGroupForPath(location.pathname, user);
   const pageLevel = levelForPath(user, location.pathname);
   /** สถานการณ์น้ำบนมือถือ — เนื้อหา/เมนูล่างชิดขอบจอ */
@@ -160,6 +185,22 @@ export function Shell() {
       window.removeEventListener("storage", sync);
     };
   }, []);
+
+  useEffect(() => {
+    const sync = () => setFullscreen(Boolean(document.fullscreenElement));
+    sync();
+    document.addEventListener("fullscreenchange", sync);
+    return () => document.removeEventListener("fullscreenchange", sync);
+  }, []);
+
+  const toggleFullscreen = async () => {
+    try {
+      if (document.fullscreenElement) await document.exitFullscreen();
+      else await document.documentElement.requestFullscreen();
+    } catch (e) {
+      alert(e instanceof Error ? e.message : "เปิดเต็มจอไม่สำเร็จ");
+    }
+  };
 
   const closeMobile = () => setMobileOpen(false);
   const toggleDesktop = () => setCollapsed((v) => !v);
@@ -287,6 +328,20 @@ export function Shell() {
             aria-label="รีเฟรชข้อมูล"
           >
             <RefreshIcon className={`h-[1.125rem] w-[1.125rem] ${refreshing ? "animate-spin" : ""}`} />
+          </button>
+          <button
+            type="button"
+            onClick={() => void toggleFullscreen()}
+            className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-[#0000BF]/20 bg-white/80 text-[#58547f] shadow-sm transition hover:border-[#0000BF]/35 hover:bg-white hover:text-[#0000BF]"
+            title={fullscreen ? "ออกจากเต็มจอ (Esc)" : "เต็มจอ — ซ่อนแถบเบราว์เซอร์"}
+            aria-label={fullscreen ? "ออกจากเต็มจอ" : "เต็มจอ"}
+            aria-pressed={fullscreen}
+          >
+            {fullscreen ? (
+              <ExitFullscreenIcon className="h-[1.125rem] w-[1.125rem]" />
+            ) : (
+              <ExpandFullscreenIcon className="h-[1.125rem] w-[1.125rem]" />
+            )}
           </button>
           <NavLink
             to="/profile"

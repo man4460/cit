@@ -21,32 +21,14 @@ function CriteriaGlyph({ className }: { className?: string }) {
   );
 }
 
-function ExpandGlyph({ className }: { className?: string }) {
-  return (
-    <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} aria-hidden>
-      <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 3.75v4.5m0-4.5h4.5m-4.5 0L9 9M3.75 20.25v-4.5m0 4.5h4.5m-4.5 0L9 15M20.25 3.75h-4.5m4.5 0v4.5m0-4.5L15 9m5.25 11.25h-4.5m4.5 0v-4.5m0 4.5L15 15" />
-    </svg>
-  );
-}
-
-function CompressGlyph({ className }: { className?: string }) {
-  return (
-    <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} aria-hidden>
-      <path strokeLinecap="round" strokeLinejoin="round" d="M9 9V4.5M9 9H4.5M9 9 3.75 3.75M9 15v4.5M9 15H4.5M9 15l-5.25 5.25M15 9h4.5M15 9V4.5M15 9l5.25-5.25M15 15h4.5M15 15v4.5m0-4.5 5.25 5.25" />
-    </svg>
-  );
-}
-
 const MONITOR_SRC = "/water-monitor/index.html";
 const AUTO_REFRESH_MS = 10 * 60_000;
 
 /** ศูนย์เฝ้าระวังน้ำ ธปท. — หน้าเดิมของผู้พัฒนา ค่าฝังเป็น iframe รับข้อมูลจาก API ผ่าน postMessage */
 export function WaterSituationPage() {
   const frameRef = useRef<HTMLIFrameElement>(null);
-  const stageRef = useRef<HTMLDivElement>(null);
   const [loading, setLoading] = useState(false);
   const [triggersOpen, setTriggersOpen] = useState(false);
-  const [fullscreen, setFullscreen] = useState(false);
 
   const send = useCallback((message: Record<string, unknown>) => {
     frameRef.current?.contentWindow?.postMessage({ ...message, apiBase: apiUrl("") }, window.location.origin);
@@ -112,35 +94,10 @@ export function WaterSituationPage() {
     return () => window.clearInterval(t);
   }, [load]);
 
-  useEffect(() => {
-    const sync = () => setFullscreen(document.fullscreenElement === stageRef.current);
-    document.addEventListener("fullscreenchange", sync);
-    return () => document.removeEventListener("fullscreenchange", sync);
-  }, []);
-
-  const toggleFullscreen = useCallback(async () => {
-    const el = stageRef.current;
-    if (!el) return;
-    try {
-      if (document.fullscreenElement === el) await document.exitFullscreen();
-      else await el.requestFullscreen();
-    } catch (e) {
-      alert(e instanceof Error ? e.message : "เปิดเต็มจอไม่สำเร็จ");
-    }
-  }, []);
-
   const tools = (
     <>
       <button type="button" onClick={() => void load()} disabled={loading} className={toolbarLinkBtnClass}>
         {loading ? "กำลังโหลด…" : "รีเฟรชข้อมูล"}
-      </button>
-      <button
-        type="button"
-        onClick={() => void toggleFullscreen()}
-        className={toolbarLinkBtnClass}
-        title={fullscreen ? "ออกจากเต็มจอ (Esc)" : "ขยายแสดงเต็มจอ"}
-      >
-        {fullscreen ? "ออกจากเต็มจอ" : "เต็มจอ"}
       </button>
       <button
         type="button"
@@ -183,15 +140,6 @@ export function WaterSituationPage() {
             </button>
             <button
               type="button"
-              onClick={() => void toggleFullscreen()}
-              className="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-600 shadow-sm transition active:scale-95"
-              title={fullscreen ? "ออกจากเต็มจอ (Esc)" : "ขยายแสดงเต็มจอ"}
-              aria-label={fullscreen ? "ออกจากเต็มจอ" : "เต็มจอ"}
-            >
-              {fullscreen ? <CompressGlyph className="h-4 w-4" /> : <ExpandGlyph className="h-4 w-4" />}
-            </button>
-            <button
-              type="button"
               onClick={() => setTriggersOpen(true)}
               className={`${toolbarPrimaryBtnClass} !h-9 !rounded-xl !px-3 !text-[12px]`}
               title="ดูเกณฑ์ทริกเกอร์ติดตามสถานการณ์น้ำของ ธปท."
@@ -204,38 +152,14 @@ export function WaterSituationPage() {
       </div>
 
       <BotWaterTriggersModal open={triggersOpen} onClose={() => setTriggersOpen(false)} />
-      <div
-        ref={stageRef}
-        className={`relative min-h-0 flex-1 bg-white max-md:flex max-md:flex-1 max-md:flex-col ${
-          fullscreen ? "flex h-full w-full flex-col" : ""
-        }`}
-      >
-        {fullscreen ? (
-          <div className="absolute right-3 top-3 z-10 flex gap-2">
-            <button
-              type="button"
-              onClick={() => void toggleFullscreen()}
-              className="inline-flex items-center gap-1.5 rounded-xl border border-slate-200 bg-white/95 px-3 py-1.5 text-xs font-bold text-slate-700 shadow-md backdrop-blur"
-              title="ออกจากเต็มจอ (Esc)"
-            >
-              <CompressGlyph className="h-3.5 w-3.5" />
-              ออกจากเต็มจอ
-            </button>
-          </div>
-        ) : null}
-        <iframe
-          ref={frameRef}
-          src={MONITOR_SRC}
-          title="ศูนย์เฝ้าระวังน้ำ ธปท."
-          allow="clipboard-write; fullscreen"
-          className={`block w-full bg-white ${
-            fullscreen
-              ? "h-full min-h-0 flex-1 rounded-none border-0"
-              : "h-[calc(100dvh-9rem)] min-h-[560px] rounded-xl border border-slate-200 max-md:h-[calc(100dvh-6.5rem)] max-md:min-h-0 max-md:flex-1 max-md:rounded-none max-md:border-x-0 max-md:border-b-0 max-md:border-t border-slate-200/70 max-md:shadow-none"
-          }`}
-          onLoad={() => void load()}
-        />
-      </div>
+      <iframe
+        ref={frameRef}
+        src={MONITOR_SRC}
+        title="ศูนย์เฝ้าระวังน้ำ ธปท."
+        allow="clipboard-write"
+        className="block h-[calc(100dvh-9rem)] min-h-[560px] w-full rounded-xl border border-slate-200 bg-white max-md:h-[calc(100dvh-6.5rem)] max-md:min-h-0 max-md:flex-1 max-md:rounded-none max-md:border-x-0 max-md:border-b-0 max-md:border-t border-slate-200/70 max-md:shadow-none"
+        onLoad={() => void load()}
+      />
     </div>
   );
 }
