@@ -1,5 +1,5 @@
 import path from "path";
-import { getOnwr, getRidSeries, SITE_POINTS, type OnwrData } from "../routes/waterOnwr.js";
+import { getOnwr, getRidSeries, refreshOnwr, seedOnwrFallbackFromSites, SITE_POINTS, type OnwrData } from "../routes/waterOnwr.js";
 import { agencies, type AgencyData, type AgencyStatus } from "./waterAgencies.js";
 import { forecastLoader, forecastSite, type SiteForecast } from "./waterForecast.js";
 import { activeManual, MANUAL_KEYS, type ManualEntry, type ManualKey } from "./waterManual.js";
@@ -607,13 +607,20 @@ function buildSite(
 ): SiteDoc {
   const info = SITE_INFO[id];
   const byName = new Map(onwr.levels.map((l) => [l.name, l]));
+  const byCodeMap = new Map(onwr.levels.filter((l) => l.code).map((l) => [l.code as string, l]));
   const pick = (names: string[], prevList: Gauge[] = []) =>
     names.flatMap((name) => {
-      const l = byName.get(name);
-      return l ? [gaugeOf(name, l, prevList.find((g) => g.name === name))] : [];
+      const prevG = prevList.find((g) => g.name === name);
+      const l = byName.get(name) || (prevG?.code ? byCodeMap.get(prevG.code) : undefined);
+      if (l) return [gaugeOf(name, l, prevG)];
+      /** สทนช. หลุดสถานี (พบบ่อยที่ สภต.) — คงค่าจากรอบก่อนไว้ก่อน */
+      if (prevG && (prevG.msl != null || prevG.pct != null || prevG.q != null)) {
+        return [{ ...prevG, time: prevG.time ? `${prevG.time} · ค่ารอบก่อน (สถานีหลุดจาก สทนช.)` : "ค่ารอบก่อน (สถานีหลุดจาก สทนช.)" }];
+      }
+      return [];
     });
-  const water = pick(info.gauges, prev?.water);
-  const upstream = pick(info.upstream, prev?.upstream);
+  const water = pick(info.gauges, prev?.water as Gauge[] | undefined);
+  const upstream = pick(info.upstream, prev?.upstream as Gauge[] | undefined);
 
   const near = onwr.rain.near[id] ?? [];
   /* รายสถานีใกล้ที่ตั้ง — ฝน 24 ชม. จาก สทนช. (อ้างอิง) · ค่าหลักใช้ฝนสะสม 3 วันด้านล่าง */
@@ -772,8 +779,29 @@ function nationNote(onwr: OnwrData, sites: Record<string, SiteDoc>, prev: Report
   return { note, changes };
 }
 
+async function seedFallbackFromHistory() {
+  try {
+    let cursor = await dbReadLatest();
+    for (let i = 0; i < 24 && cursor; i++) {
+      const hdy = cursor.sites?.hdy as { water?: unknown[] } | undefined;
+      if (Array.isArray(hdy?.water) && hdy.water.length >= 3) {
+        seedOnwrFallbackFromSites(cursor.sites as Parameters<typeof seedOnwrFallbackFromSites>[0]);
+        return;
+      }
+      const t = parseReportTime(cursor.meta?.updatedAt);
+      if (!Number.isFinite(t)) break;
+      cursor = await dbReadPrevious(new Date(t));
+    }
+  } catch {
+    /* ignore */
+  }
+}
+
 async function buildReport(at: number, prev: Report | null): Promise<Report> {
-  const onwr = await getOnwr();
+  await seedFallbackFromHistory();
+  if (prev?.sites) seedOnwrFallbackFromSites(prev.sites as Parameters<typeof seedOnwrFallbackFromSites>[0]);
+  /** ดึงใหม่ทุกครั้งที่สร้างรายงาน + ตรวจครบ/retry ใน refreshOnwr */
+  const onwr = await refreshOnwr().catch(() => getOnwr());
   const [weather, ewiRainBySite, newsBySite, ag] = await Promise.all([
     forecasts().catch((): { fc: Record<string, Forecast[]>; rain3d: Record<string, Rain3d> } => {
       const fc: Record<string, Forecast[]> = {};
@@ -832,8 +860,17 @@ async function buildReport(at: number, prev: Report | null): Promise<Report> {
   const { note, changes } = nationNote(onwr, sites, prev, label, ag);
   const stamp = bkkIso(Date.now()).slice(0, 16).replace("T", " ");
   const newsCount = Object.values(newsBySite).reduce((a, n) => a + n.length, 0);
+  const gapNote = onwr.gaps?.length
+    ? ` · ยังขาดจาก สทนช.: ${onwr.gaps.filter((g) => g.startsWith("level:") || g.startsWith("rain:")).slice(0, 8).join(", ")}`
+    : "";
+  const fillNote = onwr.filledFromCache?.length ? ` · เติมจากรอบที่เคยครบ ${onwr.filledFromCache.length} รายการ` : "";
   const agencyStatus: AgencyStatus[] = [
-    { name: "คลังข้อมูลน้ำแห่งชาติ (สทนช./สสน.)", what: `ระดับน้ำ ${onwr.levels.length} สถานี · ฝน ${onwr.rain.stations} สถานี · เขื่อน ${onwr.dams.length} แห่ง`, ok: onwr.levels.length > 0, at: stamp },
+    {
+      name: "คลังข้อมูลน้ำแห่งชาติ (สทนช./สสน.)",
+      what: `ระดับน้ำ ${onwr.levels.length} สถานี · ฝน ${onwr.rain.stations} สถานี · เขื่อน ${onwr.dams.length} แห่ง${onwr.complete ? " · ครบเกณฑ์" : " · ไม่ครบเกณฑ์"}${fillNote}${gapNote}`,
+      ok: onwr.levels.length > 0 && (onwr.complete || Boolean(onwr.filledFromCache?.length)),
+      at: stamp,
+    },
     { name: "กรมชลประทาน", what: `ระดับน้ำ/ปริมาณน้ำรายชั่วโมง เจ้าพระยาตอนล่าง ${onwr.rid.length} สถานี (สามโคก C.29B, สามเสน C.12)`, ok: onwr.rid.length > 0, at: stamp },
     ...ag.status,
     { name: "Open-Meteo", what: "ฝนสะสม 3 วัน + คาดการณ์ 3 วัน ณ พิกัดที่ตั้ง", ok: Object.values(fc).some((f) => f.length > 0) || Object.values(rain3d).some((r) => r.mm >= 0), at: stamp },
@@ -852,6 +889,9 @@ async function buildReport(at: number, prev: Report | null): Promise<Report> {
       warnings: ag.warnings,
       agencies: agencyStatus,
       sources: [...new Set(agencyStatus.filter((s) => s.ok).map((s) => s.name))],
+      onwrComplete: onwr.complete,
+      onwrGaps: onwr.gaps ?? [],
+      onwrFilled: onwr.filledFromCache ?? [],
     },
     sites,
   };

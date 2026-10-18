@@ -274,13 +274,111 @@ export async function stationGraph(stationId: number, days: number) {
   };
 }
 
-async function build() {
+/** สถานีระดับน้ำที่ต้องมีครบ — โดยเฉพาะ สภต./ศหญ. ที่ สทนช. มักหลุดเป็นช่วง ๆ */
+const REQUIRED_LEVEL_CODES = [
+  /* สภต./ศหญ. */
+  "X.173A",
+  "X.90",
+  "X.174",
+  "X.44",
+  "ONE037",
+  /* ศสร. */
+  "TPI004",
+  "X.37A",
+  "X.217",
+  "X.5C",
+  /* อื่น ๆ ที่ใช้ทริกเกอร์สี */
+  "P.1",
+  "P.103",
+  "P.67",
+  "E.16A",
+  "Z.38",
+  "N.5A",
+  "M.7",
+  "M.164",
+] as const;
+const REQUIRED_RAIN_CODES = ["SLA003", "NPCT", "TPI002"] as const;
+const MIN_LEVELS = 400;
+const MIN_RAIN = 500;
+const MIN_DAMS = 10;
+const FETCH_TRIES = 4;
+const FETCH_GAP_MS = 2000;
+
+function levelCodesOf(levels: { code?: string }[]) {
+  return new Set(levels.map((l) => l.code).filter(Boolean) as string[]);
+}
+
+/** รายการที่ขาดจากชุดบังคับ — ว่าง = ครบขั้นต่ำ */
+export function onwrGaps(body: {
+  levels: { code?: string }[];
+  rain: { stations: number; byCode?: Record<string, unknown> };
+  dams: unknown[];
+  rid: unknown[];
+}): string[] {
+  const codes = levelCodesOf(body.levels);
+  const gaps: string[] = [];
+  for (const c of REQUIRED_LEVEL_CODES) if (!codes.has(c)) gaps.push(`level:${c}`);
+  for (const c of REQUIRED_RAIN_CODES) if (!body.rain.byCode?.[c]) gaps.push(`rain:${c}`);
+  if (body.levels.length < MIN_LEVELS) gaps.push(`levels<${MIN_LEVELS}(${body.levels.length})`);
+  if (body.rain.stations < MIN_RAIN) gaps.push(`rain<${MIN_RAIN}(${body.rain.stations})`);
+  if (body.dams.length < MIN_DAMS) gaps.push(`dams<${MIN_DAMS}(${body.dams.length})`);
+  if (!body.rid.length) gaps.push("rid:empty");
+  return gaps;
+}
+
+function mergeLevels<T extends { code?: string; name?: string }>(fresh: T[], fallback: T[]): T[] {
+  if (!fallback.length) return fresh;
+  const have = levelCodesOf(fresh);
+  const names = new Set(fresh.map((l) => l.name).filter(Boolean));
+  const extra = fallback.filter((l) => (l.code && !have.has(l.code)) || (l.name && !names.has(l.name)));
+  return extra.length ? [...fresh, ...extra] : fresh;
+}
+
+function mergeRain(
+  fresh: ReturnType<typeof compactRain>,
+  fallback: ReturnType<typeof compactRain> | undefined,
+): ReturnType<typeof compactRain> {
+  if (!fallback) return fresh;
+  const byCode = { ...fallback.byCode, ...fresh.byCode };
+  const byName = { ...fallback.byName, ...fresh.byName };
+  const near = { ...fallback.near };
+  for (const [id, list] of Object.entries(fresh.near)) {
+    const prev = near[id] ?? [];
+    const codes = new Set(list.map((r) => r.code).filter(Boolean));
+    near[id] = [...list, ...prev.filter((r) => r.code && !codes.has(r.code))];
+  }
+  return {
+    ...fresh,
+    stations: Math.max(fresh.stations, fallback.stations),
+    byCode,
+    byName,
+    near,
+  };
+}
+
+type OnwrBody = Awaited<ReturnType<typeof buildOnce>>;
+let cache: { at: number; body: OnwrBody } | null = null;
+/** ชุดล่าสุดที่ผ่านเกณฑ์ครบ — ใช้เติมเมื่อ สทนช. ส่งมาไม่ครบ */
+let lastComplete: { at: number; body: OnwrBody } | null = null;
+let inflight: Promise<void> | null = null;
+
+async function buildOnce() {
   const [wl, nation, rid] = await Promise.all([
     getJson("/public/waterlevel_load"),
     getJson("/public/thailand"),
     ridLowerChaoPhraya().catch(() => []),
   ]);
-  const rawLevels = compactLevels(wl?.waterlevel_data?.data ?? nation?.waterlevel?.data?.data ?? []);
+  const fromLoad = wl?.waterlevel_data?.data ?? [];
+  const fromNation = nation?.waterlevel?.data?.data ?? [];
+  /** รวมสอง endpoint — บางรอบ waterlevel_load หลุดสถานี RID ภาคใต้ */
+  const byId = new Map<string, Json>();
+  for (const row of [...fromNation, ...fromLoad]) {
+    const id = String(row?.station?.id ?? row?.id ?? "");
+    const code = String(row?.station?.tele_station_oldcode ?? "");
+    const key = id || `c:${code}`;
+    if (key && key !== "c:") byId.set(key, row);
+  }
+  const rawLevels = compactLevels([...byId.values()]);
   /** เติม qPct = Q/Qmax เท่านั้น + proxy เมื่อไม่มีปริมาณน้ำท่า — ไม่ใช้ % ความจุระดับน้ำ */
   const levels = enrichLevelsRunoff(rawLevels);
   return {
@@ -291,16 +389,65 @@ async function build() {
     rain: compactRain(nation?.rain?.data?.data ?? []),
     dams: compactDams(nation?.dam?.data?.data ?? []),
     rid,
+    complete: true as boolean,
+    gaps: [] as string[],
+    filledFromCache: [] as string[],
   };
 }
 
-let cache: { at: number; body: Awaited<ReturnType<typeof build>> } | null = null;
-let inflight: Promise<void> | null = null;
+async function build() {
+  let lastErr: unknown;
+  let best: Awaited<ReturnType<typeof buildOnce>> | null = null;
+  let bestGaps = REQUIRED_LEVEL_CODES.length + REQUIRED_RAIN_CODES.length + 4;
+  for (let i = 0; i < FETCH_TRIES; i++) {
+    try {
+      const body = await buildOnce();
+      const gaps = onwrGaps(body);
+      body.gaps = gaps;
+      body.complete = gaps.length === 0;
+      if (!gaps.length) return body;
+      if (gaps.length < bestGaps) {
+        best = body;
+        bestGaps = gaps.length;
+      }
+      console.warn(`[water-onwr] รอบ ${i + 1}/${FETCH_TRIES} ข้อมูลไม่ครบ: ${gaps.join(", ")}`);
+    } catch (e) {
+      lastErr = e;
+      console.warn(`[water-onwr] รอบ ${i + 1}/${FETCH_TRIES} ล้มเหลว:`, e instanceof Error ? e.message : e);
+    }
+    if (i < FETCH_TRIES - 1) await new Promise((r) => setTimeout(r, FETCH_GAP_MS * (i + 1)));
+  }
+  if (!best) throw lastErr instanceof Error ? lastErr : new Error(String(lastErr ?? "ดึงข้อมูล สทนช. ไม่สำเร็จ"));
+  /** เติมสถานีที่ยังขาดจากชุดล่าสุดที่เคยครบ (เช่น สภต. X.173A/X.90/X.174) */
+  if (lastComplete?.body) {
+    const before = onwrGaps(best);
+    best.levels = enrichLevelsRunoff(mergeLevels(best.levels, lastComplete.body.levels));
+    best.rain = mergeRain(best.rain, lastComplete.body.rain);
+    if (!best.rid.length && lastComplete.body.rid.length) best.rid = lastComplete.body.rid;
+    if (best.dams.length < lastComplete.body.dams.length) best.dams = lastComplete.body.dams;
+    const after = onwrGaps(best);
+    best.filledFromCache = before.filter((g) => !after.includes(g));
+    best.gaps = after;
+    best.complete = after.length === 0;
+    if (best.filledFromCache.length) {
+      console.warn(`[water-onwr] เติมจากแคชที่เคยครบ: ${best.filledFromCache.join(", ")}`);
+    }
+  }
+  return best;
+}
 
-function refresh(): Promise<void> {
-  inflight ??= build()
+function remember(body: OnwrBody) {
+  cache = { at: Date.now(), body };
+  /** เก็บเฉพาะรอบที่ครบจาก API จริง — ไม่เก็บชุดที่เติมจากแคช (กันข้อมูลเก่าหมุนเวียน) */
+  if (body.complete && !body.filledFromCache.length) lastComplete = { at: Date.now(), body };
+}
+
+function refresh(force = false): Promise<void> {
+  if (inflight) return inflight;
+  if (!force && cache && Date.now() - cache.at < TTL_MS && cache.body.complete) return Promise.resolve();
+  inflight = build()
     .then((body) => {
-      cache = { at: Date.now(), body };
+      remember(body);
     })
     .finally(() => {
       inflight = null;
@@ -308,13 +455,92 @@ function refresh(): Promise<void> {
   return inflight;
 }
 
-export type OnwrData = Awaited<ReturnType<typeof build>>;
+export type OnwrData = OnwrBody;
 
-/** ข้อมูลสดล่าสุด (แคช 10 นาที — หมดอายุแล้วส่งของเดิมไปก่อนและดึงใหม่เบื้องหลัง) */
+/** ข้อมูลสดล่าสุด — ตรวจความครบทุกครั้ง ถ้าไม่ครบดึงใหม่จนกว่าจะครบหรือครบจำนวนครั้ง */
 export async function getOnwr(): Promise<OnwrData> {
-  if (!cache) await refresh();
-  else if (Date.now() - cache.at > TTL_MS) refresh().catch(() => undefined);
+  if (!cache) await refresh(true);
+  else if (!cache.body.complete || Date.now() - cache.at > TTL_MS) await refresh(true).catch(() => undefined);
+  else if (Date.now() - cache.at > TTL_MS / 2) refresh(false).catch(() => undefined);
   return cache!.body;
+}
+
+/** บังคับดึงใหม่และรอผล (ใช้ตอน rebuild รายงาน) */
+export async function refreshOnwr(): Promise<OnwrData> {
+  await refresh(true);
+  return cache!.body;
+}
+
+type GaugeSeed = {
+  name?: string;
+  code?: string | null;
+  amphoe?: string;
+  river?: string;
+  msl?: number | null;
+  prev?: number | null;
+  bank?: number | null;
+  pct?: number | null;
+  q?: number | null;
+  qmax?: number | null;
+  qPct?: number | null;
+  time?: string | null;
+};
+
+/**
+ * เติม lastComplete จากรอบรายงานใน DB ที่มีสถานี สภต. ครบ
+ * (หลังรีสตาร์ทยังเติมสถานีที่ สทนช. หลุดได้)
+ */
+export function seedOnwrFallbackFromSites(sites: Record<string, { water?: GaugeSeed[]; upstream?: GaugeSeed[] }>) {
+  if (lastComplete) return;
+  const levels: OnwrBody["levels"] = [];
+  const seen = new Set<string>();
+  for (const s of Object.values(sites)) {
+    for (const g of [...(s.water ?? []), ...(s.upstream ?? [])]) {
+      const code = g.code || "";
+      const key = code || g.name || "";
+      if (!key || seen.has(key)) continue;
+      seen.add(key);
+      levels.push({
+        id: null,
+        name: g.name || code,
+        code,
+        ground: null,
+        minBank: null,
+        river: g.river || "",
+        amphoe: g.amphoe || "",
+        prov: "",
+        area: "",
+        agency: "",
+        lat: null,
+        lon: null,
+        msl: g.msl ?? null,
+        prev: g.prev ?? null,
+        pct: g.pct ?? null,
+        q: g.q ?? null,
+        qmax: g.qmax ?? null,
+        qPct: g.qPct ?? null,
+        bank: g.bank ?? null,
+        time: g.time ?? null,
+      });
+    }
+  }
+  if (!levels.some((l) => l.code === "X.173A" || l.code === "X.90")) return;
+  const emptyRain = compactRain([]);
+  lastComplete = {
+    at: Date.now(),
+    body: {
+      source: "ค่ารอบก่อนในระบบ (สำรองเมื่อ สทนช. หลุดสถานี)",
+      sourceUrl: "https://nationalthaiwater.onwr.go.th/",
+      fetchedAt: new Date().toISOString(),
+      levels: enrichLevelsRunoff(levels),
+      rain: emptyRain,
+      dams: [],
+      rid: [],
+      complete: false,
+      gaps: onwrGaps({ levels, rain: emptyRain, dams: [], rid: [] }),
+      filledFromCache: [],
+    },
+  };
 }
 
 export const waterOnwrRouter = Router();
