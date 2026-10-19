@@ -10,7 +10,7 @@ const SEALEVEL = "https://tiwrm.hii.or.th/v3/sealevel";
 const UA = { "User-Agent": "CIT-water-monitor (BOT flood watch)" };
 
 export type TmdDay = { date: string; rainPct: number | null; desc: string; tMax: number | null };
-export type TmdWarning = { title: string; desc: string; at: string };
+export type TmdWarning = { title: string; desc: string; at: string; url?: string };
 export type TideStation = { code: string; name: string; high: number | null; highTime: string; low: number | null; lowTime: string };
 export type SeaObs = { code: string; name: string; time: string; value: number | null };
 export type AgencyStatus = { name: string; what: string; ok: boolean; at: string; note?: string };
@@ -50,19 +50,41 @@ export async function tmdForecast(): Promise<Record<string, TmdDay[]>> {
   return out;
 }
 
-/** ประกาศเตือนภัยสภาพอากาศ / พายุ */
+/** ประกาศเตือนภัยสภาพอากาศ / พายุ
+ *  รูปแบบ API มักเป็น { Warnings: {}, Warning: { TitleThai, HeadlineThai, ... } }
+ *  (Warning อยู่ระดับราก ไม่ได้อยู่ใน Warnings) — บางรอบอาจเป็นอาร์เรย์ */
 export async function tmdWarnings(): Promise<TmdWarning[]> {
   const j = (await (await get(`${TMD}/WeatherWarningNews/v2/?${TMD_KEY}&format=json`)).json()) as any;
-  const w = j?.Warnings ?? {};
-  const items = arr<any>(w.Warning ?? w.warning ?? (Array.isArray(w) ? w : Object.values(w)));
-  const pick = (o: any, re: RegExp) => {
-    const k = Object.keys(o ?? {}).find((x) => re.test(x) && /th/i.test(x)) ?? Object.keys(o ?? {}).find((x) => re.test(x));
-    const v = k ? o[k] : "";
-    return typeof v === "string" ? v.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim() : "";
+  const bag = j?.Warnings;
+  const nested =
+    bag && typeof bag === "object" && !Array.isArray(bag)
+      ? (bag.Warning ?? bag.warning ?? (Object.keys(bag).length ? Object.values(bag) : undefined))
+      : Array.isArray(bag)
+        ? bag
+        : undefined;
+  const root = j?.Warning ?? j?.warning;
+  const items = arr<any>(nested ?? root).filter((o) => o && typeof o === "object" && !Array.isArray(o));
+  const textOf = (v: unknown) => {
+    if (v == null) return "";
+    if (Array.isArray(v)) return textOf(v.find((x) => typeof x === "string" && x.trim()) ?? v[0]);
+    if (typeof v === "string") return v.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim();
+    return "";
+  };
+  const pick = (o: Record<string, unknown>, re: RegExp) => {
+    const keys = Object.keys(o ?? {});
+    const k = keys.find((x) => re.test(x) && /thai|_th$|Th$/i.test(x)) ?? keys.find((x) => re.test(x));
+    return k ? textOf(o[k]) : "";
   };
   return items
-    .filter((o) => o && typeof o === "object")
-    .map((o) => ({ title: pick(o, /title|headline|subject/i), desc: pick(o, /desc|detail|content/i).slice(0, 400), at: pick(o, /date|time/i) }))
+    .map((o) => {
+      const title = pick(o, /^Title|title|subject/i);
+      const headline = pick(o, /Headline|headline/i);
+      const descRaw = pick(o, /Description|desc|detail|content/i);
+      const desc = (descRaw || (headline !== title ? headline : "")).slice(0, 500);
+      const at = pick(o, /AnnounceDate|IssueDate|EffectStartDate/i) || pick(o, /date|time/i);
+      const url = pick(o, /WebUrlThai|WebUrl|url/i) || undefined;
+      return { title: title || headline, desc, at, ...(url ? { url } : {}) };
+    })
     .filter((x) => x.title || x.desc);
 }
 

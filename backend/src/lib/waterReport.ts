@@ -106,7 +106,16 @@ const SITE_INFO: Record<string, { name: string; prov: string; gauges: string[]; 
   },
 };
 
-type Forecast = { date: string; mm: number; maxHour: number };
+type Forecast = {
+  date: string;
+  mm: number;
+  maxHour: number;
+  tMax?: number | null;
+  tMin?: number | null;
+  weatherCode?: number | null;
+  rainPct?: number | null;
+};
+type HourlyFc = { time: string; mm: number; temp: number | null; wind: number | null };
 type Rain3d = { mm: number; days: { date: string; mm: number }[] };
 /** สถานีฝนตามรายงาน EWI (ศหญ./ศสร.) — ค่าหลัก = สะสม 3 วัน ณ พิกัดสถานี */
 const EWI_RAIN: Record<string, { code: string; name: string; altName?: string }[]> = {
@@ -162,24 +171,36 @@ const cm = (m: number) => `${m >= 0 ? "+" : "−"}${Math.round(Math.abs(m) * 100
 
 /* ---------- แหล่งข้อมูลเพิ่มเติม ---------- */
 
-/** พยากรณ์ฝน 3 วัน + ฝนสะสม 3 วันย้อนหลัง รายพื้นที่ (Open-Meteo — ไม่ต้องใช้คีย์) */
+/** พยากรณ์ฝน 7 วัน + ฝนสะสม 3 วันย้อนหลัง รายพื้นที่ (Open-Meteo — ไม่ต้องใช้คีย์) */
 type OmDaily = {
-  daily: { time: string[]; precipitation_sum: (number | null)[] };
-  hourly?: { time: string[]; precipitation: (number | null)[] };
+  daily: {
+    time: string[];
+    precipitation_sum: (number | null)[];
+    temperature_2m_max?: (number | null)[];
+    temperature_2m_min?: (number | null)[];
+    weather_code?: (number | null)[];
+    precipitation_probability_max?: (number | null)[];
+  };
+  hourly?: {
+    time: string[];
+    precipitation: (number | null)[];
+    temperature_2m?: (number | null)[];
+    wind_speed_10m?: (number | null)[];
+  };
 };
 
-async function openMeteoBatch(points: [number, number][], opts: { hourly: boolean }): Promise<OmDaily[]> {
+async function openMeteoBatch(points: [number, number][], opts: { hourly: boolean; forecastDays: number }): Promise<OmDaily[]> {
   if (!points.length) return [];
   const q = new URLSearchParams({
     latitude: points.map((p) => p[0]).join(","),
     longitude: points.map((p) => p[1]).join(","),
-    daily: "precipitation_sum",
+    daily: "precipitation_sum,temperature_2m_max,temperature_2m_min,weather_code,precipitation_probability_max",
     timezone: "Asia/Bangkok",
     past_days: "3",
-    forecast_days: opts.hourly ? "3" : "0",
+    forecast_days: String(opts.forecastDays),
   });
-  if (opts.hourly) q.set("hourly", "precipitation");
-  const r = await fetch(`https://api.open-meteo.com/v1/forecast?${q}`, { signal: AbortSignal.timeout(20_000) });
+  if (opts.hourly) q.set("hourly", "precipitation,temperature_2m,wind_speed_10m");
+  const r = await fetch(`https://api.open-meteo.com/v1/forecast?${q}`, { signal: AbortSignal.timeout(25_000) });
   if (!r.ok) throw new Error(`open-meteo ${r.status}`);
   const j = (await r.json()) as OmDaily | OmDaily[];
   return Array.isArray(j) ? j : [j];
@@ -191,19 +212,27 @@ function rain3dFromDaily(d: OmDaily, today: string): Rain3d {
   return { mm: round1(window.reduce((a, x) => a + x.mm, 0)), days: window };
 }
 
-async function forecasts(): Promise<{ fc: Record<string, Forecast[]>; rain3d: Record<string, Rain3d> }> {
+async function forecasts(): Promise<{
+  fc: Record<string, Forecast[]>;
+  rain3d: Record<string, Rain3d>;
+  hourly: Record<string, HourlyFc[]>;
+}> {
   const ids = Object.keys(SITE_POINTS);
   const j = await openMeteoBatch(
     ids.map((id) => SITE_POINTS[id]),
-    { hourly: true },
+    { hourly: true, forecastDays: 7 },
   );
-  const today = bkkIso(Date.now()).slice(0, 10);
+  const now = bkkIso(Date.now());
+  const today = now.slice(0, 10);
+  const hourFloor = now.slice(0, 13); // YYYY-MM-DDTHH
   const fc: Record<string, Forecast[]> = {};
   const rain3d: Record<string, Rain3d> = {};
+  const hourly: Record<string, HourlyFc[]> = {};
   ids.forEach((id, i) => {
     const d = j[i];
     if (!d?.daily) {
       fc[id] = [];
+      hourly[id] = [];
       return;
     }
     const daily = d.daily.time.map((date, k) => ({
@@ -212,11 +241,24 @@ async function forecasts(): Promise<{ fc: Record<string, Forecast[]>; rain3d: Re
       maxHour: round1(
         Math.max(0, ...((d.hourly?.time ?? []).flatMap((t, h) => (t.startsWith(date) ? [d.hourly!.precipitation[h] ?? 0] : [])))),
       ),
+      tMax: d.daily.temperature_2m_max?.[k] ?? null,
+      tMin: d.daily.temperature_2m_min?.[k] ?? null,
+      weatherCode: d.daily.weather_code?.[k] ?? null,
+      rainPct: d.daily.precipitation_probability_max?.[k] ?? null,
     }));
-    fc[id] = daily.filter((x) => x.date >= today).slice(0, 3);
+    fc[id] = daily.filter((x) => x.date >= today).slice(0, 7);
     rain3d[id] = rain3dFromDaily(d, today);
+    hourly[id] = (d.hourly?.time ?? [])
+      .map((t, h) => ({
+        time: t,
+        mm: round1(d.hourly!.precipitation[h] ?? 0),
+        temp: d.hourly!.temperature_2m?.[h] ?? null,
+        wind: d.hourly!.wind_speed_10m?.[h] ?? null,
+      }))
+      .filter((x) => x.time.replace(" ", "T").slice(0, 13) >= hourFloor)
+      .slice(0, 48);
   });
-  return { fc, rain3d };
+  return { fc, rain3d, hourly };
 }
 
 /** ฝนสะสม 3 วันรายสถานีตามรายงาน EWI (พิกัดจาก สทนช.) */
@@ -250,7 +292,7 @@ async function ewiRainRows(onwr: OnwrData): Promise<Record<string, EwiRainRow[]>
   try {
     om = await openMeteoBatch(
       pts.map((s) => [s.lat, s.lon]),
-      { hourly: false },
+      { hourly: false, forecastDays: 0 },
     );
   } catch {
     om = [];
@@ -670,12 +712,19 @@ function buildSite(
   }
   if (fc.length) {
     const peak = fc.reduce((m, f) => (f.mm > m.mm ? f : m));
-    parts.push(`คาดฝน 3 วัน ${fc.map((f) => fmt1(f.mm)).join(" / ")} มม.${peak.mm > 35 ? ` — ฝน${rainClass(peak.mm)}วันที่ ${Number(peak.date.slice(8))}` : ""}`);
+    const sum7 = round1(fc.reduce((a, f) => a + f.mm, 0));
+    parts.push(
+      `คาดฝน 7 วันรวม ${fmt1(sum7)} มม. (${fc
+        .slice(0, 3)
+        .map((f) => fmt1(f.mm))
+        .join(" / ")}${fc.length > 3 ? "…" : ""})${peak.mm > 35 ? ` — ฝน${rainClass(peak.mm)}วันที่ ${Number(peak.date.slice(8))}` : ""}`,
+    );
   }
-  const tmd = (ag.tmd[info.prov] ?? []).slice(0, 3);
+  const tmd = ag.tmd[info.prov] ?? [];
   if (tmd.length) {
-    const descs = [...new Set(tmd.map((d) => d.desc).filter(Boolean))];
-    parts.push(`กรมอุตุฯ: โอกาสฝน ${tmd.map((d) => `${d.rainPct ?? "–"}%`).join(" / ")}${descs.length ? ` (${descs.join(", ")})` : ""}`);
+    const head = tmd.slice(0, 3);
+    const descs = [...new Set(head.map((d) => d.desc).filter(Boolean))];
+    parts.push(`กรมอุตุฯ: โอกาสฝน ${head.map((d) => `${d.rainPct ?? "–"}%`).join(" / ")}${descs.length ? ` (${descs.join(", ")})` : ""}`);
   }
   const tide = id === "hq" ? tideAnalysis(ag, onwr) : null;
   if (tide) parts.push(tide.text);
@@ -803,14 +852,16 @@ async function buildReport(at: number, prev: Report | null): Promise<Report> {
   /** ดึงใหม่ทุกครั้งที่สร้างรายงาน + ตรวจครบ/retry ใน refreshOnwr */
   const onwr = await refreshOnwr().catch(() => getOnwr());
   const [weather, ewiRainBySite, newsBySite, ag] = await Promise.all([
-    forecasts().catch((): { fc: Record<string, Forecast[]>; rain3d: Record<string, Rain3d> } => {
+    forecasts().catch((): { fc: Record<string, Forecast[]>; rain3d: Record<string, Rain3d>; hourly: Record<string, HourlyFc[]> } => {
       const fc: Record<string, Forecast[]> = {};
       const rain3d: Record<string, Rain3d> = {};
+      const hourly: Record<string, HourlyFc[]> = {};
       for (const [id, s] of Object.entries(prev?.sites ?? {})) {
         fc[id] = (s.forecast as Forecast[]) ?? [];
         if (s.rain3d && typeof s.rain3d === "object") rain3d[id] = s.rain3d as Rain3d;
+        if (Array.isArray((s as { hourly?: HourlyFc[] }).hourly)) hourly[id] = (s as { hourly: HourlyFc[] }).hourly;
       }
-      return { fc, rain3d };
+      return { fc, rain3d, hourly };
     }),
     ewiRainRows(onwr).catch(() => {
       const out: Record<string, EwiRainRow[]> = {};
@@ -827,6 +878,7 @@ async function buildReport(at: number, prev: Report | null): Promise<Report> {
   ]);
   const fc = weather.fc;
   const rain3d = weather.rain3d;
+  const hourly = weather.hourly;
   manualNow = await activeManual().catch(() => ({}));
   const updatedAt = bkkIso(at);
   const label = roundLabel(at);
@@ -836,8 +888,8 @@ async function buildReport(at: number, prev: Report | null): Promise<Report> {
     await Promise.all(
       Object.entries(SITE_INFO).map(async ([id, info]) => {
         const ctx = {
-          fc: fc[id] ?? [],
-          tmd: ag.tmd[info.prov] ?? [],
+          fc: (fc[id] ?? []).slice(0, 3),
+          tmd: (ag.tmd[info.prov] ?? []).slice(0, 3),
           tide: id === "hq" && hqTide ? hqTide : null,
           site: SITE_POINTS[id],
           rainSta: onwr.rain.near[id] ?? [],
@@ -850,6 +902,7 @@ async function buildReport(at: number, prev: Report | null): Promise<Report> {
   const sites: Record<string, SiteDoc> = {};
   for (const id of Object.keys(SITE_INFO)) {
     sites[id] = buildSite(id, onwr, fc[id] ?? [], rain3d[id], ewiRainBySite[id], newsBySite[id] ?? [], prev?.sites?.[id], updatedAt, label, ag, f72[id]);
+    if (hourly[id]?.length) sites[id].hourly = hourly[id];
     const computed = computedBotReadings(id, onwr);
     const fromManual = Object.fromEntries(
       Object.entries(manualBot(manualNow) ?? {}).filter(([k]) => MANUAL_KEYS[k as ManualKey]?.site === id),
@@ -873,7 +926,7 @@ async function buildReport(at: number, prev: Report | null): Promise<Report> {
     },
     { name: "กรมชลประทาน", what: `ระดับน้ำ/ปริมาณน้ำรายชั่วโมง เจ้าพระยาตอนล่าง ${onwr.rid.length} สถานี (สามโคก C.29B, สามเสน C.12)`, ok: onwr.rid.length > 0, at: stamp },
     ...ag.status,
-    { name: "Open-Meteo", what: "ฝนสะสม 3 วัน + คาดการณ์ 3 วัน ณ พิกัดที่ตั้ง", ok: Object.values(fc).some((f) => f.length > 0) || Object.values(rain3d).some((r) => r.mm >= 0), at: stamp },
+    { name: "Open-Meteo", what: "ฝนสะสม 3 วัน + คาดการณ์ 7 วัน / รายชั่วโมง ณ พิกัดที่ตั้ง", ok: Object.values(fc).some((f) => f.length > 0) || Object.values(rain3d).some((r) => r.mm >= 0), at: stamp },
     { name: "Google News", what: `ข่าวน้ำท่วมรายจังหวัด ${newsCount} ข่าว`, ok: newsCount > 0, at: stamp },
   ];
   return {

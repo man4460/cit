@@ -40,7 +40,32 @@ export function WaterSituationPage() {
       .then((payload) => send({ type: "water-onwr", payload }))
       .catch((e) => send({ type: "water-onwr-error", message: e instanceof Error ? e.message : String(e) }));
     try {
-      const data = await apiJson<unknown>("/api/water-situation", { skipCache: true });
+      let data = await apiJson<{
+        sites?: Record<string, { forecast?: unknown[] }>;
+        meta?: { warnings?: unknown[] };
+      }>("/api/water-situation", { skipCache: true });
+      /* รอบเก่า: พยากรณ์สั้น หรือยังไม่มีประกาศกรมอุตุใน cache — คำนวณใหม่ (ครั้งเดียวต่อเซสชันถ้า warnings ว่าง) */
+      const maxFc = Math.max(
+        0,
+        ...Object.values(data.sites ?? {}).map((s) => (Array.isArray(s.forecast) ? s.forecast.length : 0)),
+      );
+      const warnN = Array.isArray(data.meta?.warnings) ? data.meta.warnings.length : 0;
+      let needRebuild = maxFc < 7;
+      if (!needRebuild && warnN === 0) {
+        try {
+          needRebuild = sessionStorage.getItem("cit-water-tmd-warn-v2") !== "1";
+        } catch {
+          needRebuild = true;
+        }
+      }
+      if (needRebuild) {
+        data = await apiJson("/api/water-situation/rebuild", { method: "POST", skipCache: true });
+        try {
+          sessionStorage.setItem("cit-water-tmd-warn-v2", "1");
+        } catch {
+          /* ignore */
+        }
+      }
       send({ type: "water-data", payload: data });
     } catch (e) {
       send({ type: "water-error", message: e instanceof Error ? e.message : String(e) });
