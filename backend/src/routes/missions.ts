@@ -1063,7 +1063,8 @@ missionsRouter.post("/:id/insurance-export", async (req, res, next) => {
           : "ภารกิจนี้ยังไม่มีรายชื่อบุคลากร",
       });
     const buf = buildInsuranceWorkbook(data, (req.body ?? {}) as InsuranceExportSettings);
-    const filename = `ประกัน_${data.mission.code ?? "ภารกิจ"}_${(req.body?.travelLabel || data.travelLabel).replace(/\s+/g, "_")}.xlsx`;
+    // ไม่ใส่รหัสภารกิจในชื่อไฟล์ — ส่งเอกชน
+    const filename = "แบบแจ้งรายชื่อผู้เอาประกันภัย.xlsx";
     res.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
     res.setHeader("Content-Disposition", `attachment; filename*=UTF-8''${encodeURIComponent(filename)}`);
     res.send(buf);

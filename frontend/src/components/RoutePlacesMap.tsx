@@ -3,6 +3,15 @@ import L from "leaflet";
 import "leaflet/dist/leaflet.css";
 import { createPortal } from "react-dom";
 import { apiFormJson, apiJson } from "../api/client";
+import {
+  bearingDeg,
+  distanceKm,
+  formatRouteKm,
+  placeAlongRoute,
+  snapToRoute,
+  type LatLng,
+  type RouteSnap,
+} from "../lib/routeNavigate";
 import { routeSegments, type GeoLocationCode } from "../lib/routeSegments";
 import type { RouteMaster, RoutePlace, RoutePlaceKind, RoutePlacePhoto } from "../types";
 import { ROUTE_PLACE_KINDS } from "./RoutePlacesPanel";
@@ -69,15 +78,17 @@ const esc = (s: string) => s.replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&
 
 const navUrl = (lat: number, lng: number) => `https://www.google.com/maps/dir/?api=1&destination=${lat},${lng}&travelmode=driving`;
 
-function distanceKm(a: [number, number], b: [number, number]) {
-  const toR = Math.PI / 180;
-  const dLat = (b[0] - a[0]) * toR;
-  const dLng = (b[1] - a[1]) * toR;
-  const h = Math.sin(dLat / 2) ** 2 + Math.cos(a[0] * toR) * Math.cos(b[0] * toR) * Math.sin(dLng / 2) ** 2;
-  return 12742 * Math.asin(Math.sqrt(h));
-}
+const fmtKm = formatRouteKm;
 
-const fmtKm = (km: number) => (km < 1 ? `${Math.round(km * 1000)} ม.` : `${km.toLocaleString("th-TH", { maximumFractionDigits: 1 })} กม.`);
+/** หมุดนำทาง — ลูกศรหมุนตาม heading (องศาจากเหนือ) */
+function headingIcon(heading: number) {
+  return L.divIcon({
+    className: "",
+    iconSize: [36, 36],
+    iconAnchor: [18, 18],
+    html: `<div style="width:36px;height:36px;display:flex;align-items:center;justify-content:center;transform:rotate(${heading}deg)"><div style="width:0;height:0;border-left:10px solid transparent;border-right:10px solid transparent;border-bottom:26px solid #0284c7;filter:drop-shadow(0 1px 3px rgba(0,0,0,.45));position:relative"><div style="position:absolute;left:-6px;top:8px;width:0;height:0;border-left:6px solid transparent;border-right:6px solid transparent;border-bottom:14px solid #fff"></div></div></div>`,
+  });
+}
 
 function pinIcon(p: RoutePlace) {
   const ring = p.isFavorite ? "#f59e0b" : "#ffffff";
@@ -338,24 +349,28 @@ function PhotoLightbox({ photos, index, onClose }: { photos: RoutePlacePhoto[]; 
   );
 }
 
-type MyPos = { lat: number; lng: number; accuracy: number };
+type MyPos = { lat: number; lng: number; accuracy: number; heading: number | null; speed: number | null };
 
-/** แผนที่เส้นทาง + จุดบริการระหว่างทาง + ตำแหน่งปัจจุบัน (Leaflet + OpenStreetMap) */
+/** แผนที่เส้นทาง + จุดบริการระหว่างทาง + นำทางด้วย GPS มือถือ (snap เข้าเส้นทาง) */
 export function RoutePlacesMap({
   route,
   places,
   locations,
+  autoStartNav = false,
 }: {
   route: RouteMaster;
   places: RoutePlace[];
   locations: GeoLocationCode[];
+  /** เปิดโหมดนำทางและเริ่มติดตามตำแหน่งทันที (จากภารกิจที่กำลังทำ) */
+  autoStartNav?: boolean;
 }) {
   const segments = useMemo(() => routeSegments(route), [route]);
   const [kinds, setKinds] = useState<Set<RoutePlaceKind>>(() => new Set(ROUTE_PLACE_KINDS.map((k) => k.id)));
   const [seg, setSeg] = useState("");
   const [favOnly, setFavOnly] = useState(false);
-  const [line, setLine] = useState<[number, number][]>([]);
+  const [line, setLine] = useState<LatLng[]>([]);
   const [tracking, setTracking] = useState(false);
+  const [navMode, setNavMode] = useState(autoStartNav);
   const [me, setMe] = useState<MyPos | null>(null);
   const [geoError, setGeoError] = useState("");
   const [nearOpen, setNearOpen] = useState(true);
@@ -368,6 +383,8 @@ export function RoutePlacesMap({
   const watchRef = useRef<number | null>(null);
   const centeredRef = useRef(false);
   const fittedRef = useRef(false);
+  const prevPosRef = useRef<LatLng | null>(null);
+  const autoStartedRef = useRef(false);
   const [openPopup, setOpenPopup] = useState<{ place: RoutePlace; el: HTMLElement; popup: L.Popup } | null>(null);
   const [lightbox, setLightbox] = useState<{ photos: RoutePlacePhoto[]; index: number } | null>(null);
   const resizePopup = useCallback(() => openPopup?.popup.update(), [openPopup]);
@@ -510,15 +527,63 @@ export function RoutePlacesMap({
     if (line.length) fittedRef.current = true;
   }, [line, shown]);
 
+  const routeSnap: RouteSnap | null = useMemo(() => {
+    if (!me || line.length < 2) return null;
+    return snapToRoute([me.lat, me.lng], line);
+  }, [me, line]);
+
+  const displayPos: LatLng | null = useMemo(() => {
+    if (!me) return null;
+    if (navMode && routeSnap && routeSnap.offsetKm < 0.8) return routeSnap.snapped;
+    return [me.lat, me.lng];
+  }, [me, navMode, routeSnap]);
+
+  const displayHeading = useMemo(() => {
+    if (!me) return 0;
+    if (me.heading != null && Number.isFinite(me.heading)) return me.heading;
+    if (navMode && routeSnap) return routeSnap.routeHeading;
+    if (prevPosRef.current && displayPos) {
+      const d = distanceKm(prevPosRef.current, displayPos);
+      if (d > 0.008) return bearingDeg(prevPosRef.current, displayPos);
+    }
+    return routeSnap?.routeHeading ?? 0;
+  }, [me, navMode, routeSnap, displayPos]);
+
+  const nextAlongPlace = useMemo(() => {
+    if (!routeSnap || line.length < 2) return null;
+    let best: { p: RoutePlace; aheadKm: number } | null = null;
+    for (const p of shown) {
+      const along = placeAlongRoute([p.lat!, p.lng!], line);
+      if (!along || along.offsetKm > 2) continue;
+      const aheadKm = along.alongKm - routeSnap.alongKm;
+      if (aheadKm < 0.05) continue;
+      if (!best || aheadKm < best.aheadKm) best = { p, aheadKm };
+    }
+    return best;
+  }, [routeSnap, line, shown]);
+
   useEffect(() => {
     const map = mapRef.current;
     const layer = meLayerRef.current;
     if (!map || !layer) return;
     layer.clearLayers();
-    if (!me) return;
-    L.circle([me.lat, me.lng], { radius: me.accuracy, color: "#0284c7", weight: 1, fillColor: "#38bdf8", fillOpacity: 0.15 }).addTo(layer);
-    L.marker([me.lat, me.lng], {
-      icon: L.divIcon({
+    if (!me || !displayPos) return;
+    L.circle([me.lat, me.lng], { radius: me.accuracy, color: "#0284c7", weight: 1, fillColor: "#38bdf8", fillOpacity: 0.12 }).addTo(layer);
+    if (navMode && routeSnap && routeSnap.offsetKm < 0.8) {
+      L.polyline(
+        [
+          [me.lat, me.lng],
+          routeSnap.snapped,
+        ],
+        { color: "#38bdf8", weight: 2, dashArray: "4 6", opacity: 0.7 },
+      ).addTo(layer);
+    }
+    const tip =
+      navMode && routeSnap
+        ? `นำทาง · คงเหลือ ${fmtKm(routeSnap.remainingKm)} (±${Math.round(me.accuracy)} ม.)`
+        : `ตำแหน่งของคุณ (±${Math.round(me.accuracy)} ม.)`;
+    L.marker(displayPos, {
+      icon: navMode || me.heading != null ? headingIcon(displayHeading) : L.divIcon({
         className: "",
         iconSize: [22, 22],
         iconAnchor: [11, 11],
@@ -526,13 +591,15 @@ export function RoutePlacesMap({
       }),
       zIndexOffset: 2000,
     })
-      .bindTooltip(`ตำแหน่งของคุณ (±${Math.round(me.accuracy)} ม.)`)
+      .bindTooltip(tip)
       .addTo(layer);
     if (!centeredRef.current) {
       centeredRef.current = true;
-      map.setView([me.lat, me.lng], Math.max(map.getZoom(), 13));
+      map.setView(displayPos, Math.max(map.getZoom(), navMode ? 15 : 13));
+    } else if (navMode) {
+      map.panTo(displayPos, { animate: true, duration: 0.4 });
     }
-  }, [me]);
+  }, [me, displayPos, displayHeading, navMode, routeSnap]);
 
   function startTracking() {
     setGeoError("");
@@ -547,12 +614,24 @@ export function RoutePlacesMap({
     centeredRef.current = false;
     setTracking(true);
     watchRef.current = navigator.geolocation.watchPosition(
-      (pos) => setMe({ lat: pos.coords.latitude, lng: pos.coords.longitude, accuracy: pos.coords.accuracy }),
+      (pos) => {
+        const next: MyPos = {
+          lat: pos.coords.latitude,
+          lng: pos.coords.longitude,
+          accuracy: pos.coords.accuracy,
+          heading: pos.coords.heading != null && Number.isFinite(pos.coords.heading) ? pos.coords.heading : null,
+          speed: pos.coords.speed != null && Number.isFinite(pos.coords.speed) ? pos.coords.speed : null,
+        };
+        setMe((prev) => {
+          if (prev) prevPosRef.current = [prev.lat, prev.lng];
+          return next;
+        });
+      },
       (err) => {
         setGeoError(err.code === err.PERMISSION_DENIED ? "ไม่ได้รับอนุญาตให้ใช้ตำแหน่ง — เปิดสิทธิ์ตำแหน่งในเบราว์เซอร์แล้วลองใหม่" : "หาตำแหน่งไม่ได้ ลองใหม่อีกครั้ง");
         stopTracking();
       },
-      { enableHighAccuracy: true, maximumAge: 10000, timeout: 20000 },
+      { enableHighAccuracy: true, maximumAge: 5000, timeout: 20000 },
     );
   }
 
@@ -561,6 +640,22 @@ export function RoutePlacesMap({
     watchRef.current = null;
     setTracking(false);
   }
+
+  function startNav() {
+    setNavMode(true);
+    if (!tracking) startTracking();
+  }
+
+  function stopNav() {
+    setNavMode(false);
+  }
+
+  useEffect(() => {
+    if (!autoStartNav || autoStartedRef.current) return;
+    autoStartedRef.current = true;
+    startNav();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [autoStartNav]);
 
   const nearest = useMemo(() => {
     if (!me) return [];
@@ -658,7 +753,46 @@ export function RoutePlacesMap({
             )
           : null}
 
-        <div className="absolute right-3 top-3 z-[1000] flex flex-col items-end gap-2">
+        {navMode && routeSnap ? (
+          <div className="absolute left-3 right-3 top-3 z-[1000] mx-auto max-w-md rounded-xl bg-[#0f172a]/92 px-3.5 py-2.5 text-white shadow-xl backdrop-blur sm:left-auto sm:right-3 sm:mx-0">
+            <div className="flex items-start justify-between gap-2">
+              <div className="min-w-0">
+                <p className="text-[10px] font-bold uppercase tracking-wide text-sky-300">นำทางตามเส้นทางภารกิจ</p>
+                <p className="text-lg font-black tabular-nums leading-tight">
+                  คงเหลือ {fmtKm(routeSnap.remainingKm)}
+                </p>
+                {nextAlongPlace ? (
+                  <p className="mt-0.5 truncate text-[12px] text-white/85">
+                    ถัดไป · {placeIcon(nextAlongPlace.p)} {nextAlongPlace.p.name} · {fmtKm(nextAlongPlace.aheadKm)}
+                  </p>
+                ) : (
+                  <p className="mt-0.5 text-[12px] text-white/70">ปลายทาง · {route.endLocation || "จุดหมาย"}</p>
+                )}
+                {routeSnap.offsetKm >= 0.15 ? (
+                  <p className="mt-0.5 text-[11px] text-amber-300">ห่างจากเส้นทาง ~{fmtKm(routeSnap.offsetKm)} — แสดงจุดฉายเข้าเส้น</p>
+                ) : null}
+              </div>
+              <button
+                type="button"
+                onClick={stopNav}
+                className="shrink-0 rounded-lg bg-white/10 px-2 py-1 text-[11px] font-semibold hover:bg-white/20"
+              >
+                ปิดนำทาง
+              </button>
+            </div>
+          </div>
+        ) : null}
+
+        <div className={`absolute right-3 z-[1000] flex flex-col items-end gap-2 ${navMode && routeSnap ? "top-[7.5rem]" : "top-3"}`}>
+          <button
+            type="button"
+            onClick={() => (navMode ? stopNav() : startNav())}
+            className={`rounded-full px-3.5 py-2 text-xs font-bold shadow-lg transition ${
+              navMode ? "bg-emerald-600 text-white" : "bg-white text-emerald-800 ring-1 ring-emerald-200 hover:bg-emerald-50"
+            }`}
+          >
+            {navMode ? "🧭 กำลังนำทาง" : "🧭 เริ่มนำทาง"}
+          </button>
           <button
             type="button"
             onClick={() => (tracking ? stopTracking() : startTracking())}
@@ -666,12 +800,16 @@ export function RoutePlacesMap({
               tracking ? "bg-sky-600 text-white" : "bg-white text-sky-700 ring-1 ring-sky-200 hover:bg-sky-50"
             }`}
           >
-            {tracking ? (me ? "📍 กำลังติดตามตำแหน่ง · หยุด" : "📍 กำลังหาตำแหน่ง…") : "📍 ตำแหน่งของฉัน"}
+            {tracking ? (me ? "📍 กำลังติดตาม · หยุด" : "📍 กำลังหาตำแหน่ง…") : "📍 ตำแหน่งของฉัน"}
           </button>
-          {me ? (
+          {displayPos ? (
             <button
               type="button"
-              onClick={() => mapRef.current?.setView([me.lat, me.lng], Math.max(mapRef.current.getZoom(), 14))}
+              onClick={() => {
+                centeredRef.current = false;
+                mapRef.current?.setView(displayPos, Math.max(mapRef.current.getZoom(), 15));
+                centeredRef.current = true;
+              }}
               className="rounded-full bg-white px-3 py-1.5 text-[11px] font-semibold text-sky-700 shadow ring-1 ring-sky-200 hover:bg-sky-50"
             >
               กลับมาที่ตำแหน่งฉัน

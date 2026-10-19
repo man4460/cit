@@ -156,9 +156,10 @@ export function MissionInsuranceExportModal({ missionId, onClose }: { missionId:
         {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ ...s, travelLabel: travel, routeLabel: route, tax: tax === "" ? null : Number(tax) }),
+          // ไม่ส่ง routeLabel — ไฟล์ Excel ไม่ใส่เส้นทาง/รหัสภารกิจ (ความลับ)
+          body: JSON.stringify({ ...s, travelLabel: travel, tax: tax === "" ? null : Number(tax) }),
         },
-        `ประกัน_${preview.code ?? "ภารกิจ"}.xlsx`,
+        "แบบแจ้งรายชื่อผู้เอาประกันภัย.xlsx",
       );
     } catch (e) {
       alert(e instanceof Error ? e.message : "ส่งออกไม่สำเร็จ");
@@ -178,14 +179,17 @@ export function MissionInsuranceExportModal({ missionId, onClose }: { missionId:
               <p className="text-sm font-bold text-[#1e1b4b]">
                 {[preview.code, preview.title].filter(Boolean).join(" — ") || "ภารกิจ"}
               </p>
+              <p className="text-[11.5px] text-slate-500">
+                ไฟล์ Excel ไม่ใส่รหัสภารกิจและเส้นทาง — จำนวนวัน/วันเดินทางไม่รวมวันโหลด (ใช้จำนวนวันของเส้นทาง)
+              </p>
               <div className="grid gap-3 sm:grid-cols-2">
                 <label className="block">
-                  <span className={labelClass}>วันเดินทาง</span>
+                  <span className={labelClass}>วันเดินทาง (ในไฟล์)</span>
                   <input className={inputClass} value={travel} onChange={(e) => setTravel(e.target.value)} />
                 </label>
                 <label className="block">
-                  <span className={labelClass}>เส้นทาง</span>
-                  <input className={inputClass} value={route} onChange={(e) => setRoute(e.target.value)} />
+                  <span className={labelClass}>เส้นทาง (ไม่ใส่ในไฟล์)</span>
+                  <input className={inputClass} value={route} onChange={(e) => setRoute(e.target.value)} readOnly />
                 </label>
               </div>
               <div className="flex flex-wrap gap-2 text-[12.5px]">

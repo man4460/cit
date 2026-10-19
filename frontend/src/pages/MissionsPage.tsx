@@ -296,6 +296,14 @@ export function MissionsPage() {
                       >
                         สรุป
                       </button>
+                      {m.status === "IN_PROGRESS" && m.route?.id ? (
+                        <MissionRouteMapButton
+                          routeId={m.route.id}
+                          autoStartNav
+                          label="🧭 นำทาง"
+                          className="rounded-lg border border-emerald-300 bg-emerald-600 px-2.5 py-1 text-xs font-bold text-white shadow-sm hover:bg-emerald-700 disabled:opacity-60"
+                        />
+                      ) : null}
                       <MissionRouteMapButton
                         routeId={m.route?.id}
                         className="rounded-lg border border-sky-200 bg-sky-50 px-2.5 py-1 text-xs font-medium text-sky-700 hover:bg-sky-100 disabled:opacity-60"

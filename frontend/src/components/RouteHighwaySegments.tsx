@@ -202,15 +202,18 @@ export function RouteSegmentsEditor({
   );
 }
 
-/** แผนที่เส้นทางแบบเต็มจอ (Google Maps) */
+/** แผนที่เส้นทางแบบเต็มจอ (จุดบริการ / Google Maps) */
 export function RouteMapViewer({
   route,
   locations,
   onClose,
+  autoStartNav = false,
 }: {
   route: RouteMaster | null;
   locations: GeoLocationCode[];
   onClose: () => void;
+  /** เปิดโหมดนำทาง GPS มือถือทันที */
+  autoStartNav?: boolean;
 }) {
   const stops = useMemo(() => (route ? routeMapStops(route, locations) : null), [route, locations]);
   const [tab, setTab] = useState<"route" | "places">("places");
@@ -290,7 +293,7 @@ export function RouteMapViewer({
         </button>
       </div>
       {tab === "places" ? (
-        <RoutePlacesMap route={route} places={places} locations={locations} />
+        <RoutePlacesMap route={route} places={places} locations={locations} autoStartNav={autoStartNav} />
       ) : (
         <iframe title={`แผนที่ ${title}`} src={googleMapsEmbedUrl(stops)} className="min-h-0 w-full flex-1 border-0 bg-white" loading="lazy" />
       )}

@@ -78,6 +78,12 @@ export function travelDays(start: Date | null, end: Date | null) {
   return Math.max(1, dayNumber(end ?? start) - dayNumber(start) + 1);
 }
 
+/** เลื่อนวันที่ตามปฏิทินไทย (Asia/Bangkok) */
+function addBkkDays(d: Date, n: number): Date {
+  const p = bkkParts(d);
+  return new Date(Date.UTC(p.y, p.m - 1, p.d + n, 12, 0, 0));
+}
+
 export function travelLabel(start: Date | null, end: Date | null) {
   if (!start) return "";
   const a = bkkParts(start);
@@ -88,6 +94,40 @@ export function travelLabel(start: Date | null, end: Date | null) {
     return a.d === b.d ? `วันที่ ${a.d} ${TH_MONTHS[a.m - 1]} ${yA}` : `วันที่ ${a.d}-${b.d} ${TH_MONTHS[a.m - 1]} ${yA}`;
   if (a.y === b.y) return `วันที่ ${a.d} ${TH_MONTHS[a.m - 1]} - ${b.d} ${TH_MONTHS[b.m - 1]} ${yA}`;
   return `วันที่ ${a.d} ${TH_MONTHS[a.m - 1]} ${yA} - ${b.d} ${TH_MONTHS[b.m - 1]} ${yB}`;
+}
+
+/**
+ * วันเดินทางสำหรับประกัน = ไม่รวมวันแรก (วันโหลด)
+ * จำนวนวันใช้ missionDays ของเส้นทาง ถ้าไม่มีใช้ช่วงปฏิทินหักวันโหลด
+ */
+export function insuranceTravelWindow(
+  start: Date | null,
+  end: Date | null,
+  missionDays: number | null | undefined,
+) {
+  if (!start && !end) return { days: 1, travelStart: null as Date | null, travelEnd: null as Date | null, travelLabel: "" };
+  const load = start;
+  const ret = end ?? start!;
+  const calendarInclusive = travelDays(load, ret);
+  const days =
+    missionDays != null && missionDays > 0 ? missionDays : Math.max(1, calendarInclusive - (load && dayNumber(ret) > dayNumber(load) ? 1 : 0));
+
+  let travelStart: Date;
+  if (load && dayNumber(ret) > dayNumber(load)) {
+    // ย้อนจากวันกลับตามจำนวนวันเส้นทาง — แล้วไม่ให้ทับวันโหลด
+    travelStart = addBkkDays(ret, -(days - 1));
+    if (dayNumber(travelStart) <= dayNumber(load)) travelStart = addBkkDays(load, 1);
+    if (dayNumber(travelStart) > dayNumber(ret)) travelStart = ret;
+  } else {
+    travelStart = load ?? ret;
+  }
+
+  return {
+    days,
+    travelStart,
+    travelEnd: ret,
+    travelLabel: travelLabel(travelStart, ret),
+  };
 }
 
 function thaiShortDate(d: Date | null) {
@@ -157,6 +197,7 @@ export async function loadInsuranceMission(missionId: string) {
 
   const start = m.plannedStart;
   const end = m.plannedEnd;
+  const window = insuranceTravelWindow(start, end, m.route?.missionDays);
   const locations = await loadLocationCodes();
   const stops = [m.route?.startLocation, ...m.destinations.map((d) => d.address), m.route?.endLocation]
     .flatMap((s) => locationTextToProvinces(s ?? "", locations).split(" / "))
@@ -174,7 +215,8 @@ export async function loadInsuranceMission(missionId: string) {
         a.fullName.localeCompare(b.fullName, "th"),
     );
 
-  const lastDay = dayNumber(end ?? start ?? new Date());
+  /** ตรวจประกันรายปีถึงวันสิ้นสุดการเดินทางจริง (ไม่ใช่วันโหลด) */
+  const lastDay = dayNumber(window.travelEnd ?? end ?? start ?? new Date());
   const coveredByAnnual = (p: (typeof assigned)[number]) =>
     p.annualTravelInsurance && (!p.insuranceExpiry || dayNumber(p.insuranceExpiry) >= lastDay);
   const annualCovered = assigned.filter(coveredByAnnual).map((p) => ({
@@ -194,7 +236,7 @@ export async function loadInsuranceMission(missionId: string) {
     return {
       ...name,
       birthDate: p.birthDate,
-      age: ageAt(p.birthDate, start ?? new Date()),
+      age: ageAt(p.birthDate, window.travelStart ?? start ?? new Date()),
       idNumber: formatThaiId(p.idNumber),
       unit: UNIT_BY_CATEGORY[cat] ?? (p.position?.trim() || cat),
       bens: p.beneficiaries.slice(0, 2).map((b) => splitThaiName(b.fullName)),
@@ -205,8 +247,9 @@ export async function loadInsuranceMission(missionId: string) {
 
   return {
     mission: m,
-    days: travelDays(start, end),
-    travelLabel: travelLabel(start, end),
+    days: window.days,
+    travelLabel: window.travelLabel,
+    /** ใช้ในหน้าพรีวิวเท่านั้น — ไม่ใส่ในไฟล์ Excel (ความลับหน่วยงาน) */
     routeLabel: stops.join(" - "),
     people,
     annualCovered,
@@ -295,7 +338,6 @@ export function buildInsuranceWorkbook(
   const grand = net != null ? net + (Number.isFinite(tax) && tax != null ? tax : 0) : null;
 
   const title = style({ bold: true, sz: 20, color: C.white, fill: C.blue, h: "center" });
-  const subtitle = style({ bold: true, sz: 15, color: C.navy, fill: C.band, h: "center" });
   const boxHead = style({ bold: true, sz: 15, color: C.white, fill: C.navy, border: true });
   const label = style({ bold: true, color: C.label, fill: C.soft, border: true });
   const value = style({ color: C.navy, border: true });
@@ -305,11 +347,8 @@ export function buildInsuranceWorkbook(
   let r = 0;
   sh.block(r, 0, COLS - 1, "แบบแจ้งรายชื่อผู้เอาประกันภัยอุบัติเหตุการเดินทาง", title);
   sh.height(r, 34);
-  r += 1;
-  const missionName = [data.mission.code, data.mission.title].filter(Boolean).join(" — ");
-  sh.block(r, 0, COLS - 1, missionName ? `ภารกิจ ${missionName}` : "ภารกิจขนส่งธนบัตร", subtitle);
-  sh.height(r, 24);
   r += 2;
+  // ไม่ใส่รหัสภารกิจ / เส้นทาง / ช่วงวันภารกิจในส่วนหัว — ไฟล์ส่งเอกชน (ความลับ)
 
   // กล่องซ้าย A:H (label A:B, value C:H) — กล่องขวา I:O (label I:J, value K:O)
   const twoBoxes = (
@@ -381,7 +420,7 @@ export function buildInsuranceWorkbook(
       ["ทุนประกัน", s.sumInsured],
       ["ค่ารักษาพยาบาล", s.medicalExpense],
       ["วันเดินทาง", s.travelLabel || data.travelLabel, valueBold],
-      ["เส้นทาง", s.routeLabel || data.routeLabel],
+      // ไม่ใส่เส้นทางภารกิจในไฟล์ส่งบริษัทประกัน
       ["จำนวนวัน", `${data.days} วัน`],
       ["จำนวนผู้เดินทาง", `${count} คน`],
     ],

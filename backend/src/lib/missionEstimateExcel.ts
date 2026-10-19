@@ -186,12 +186,27 @@ export function buildEstimateWorkbook(payload: EstimateExportPayload): Buffer {
   const headerRow = row;
   row++;
 
+  const groupTotals = new Map(
+    totals.groupSubtotals.map((g) => [g.groupCode, g] as const),
+  );
+
   for (const line of payload.lines) {
     const isGroup = line.kind === "GROUP";
     const isItem = line.kind === "ITEM";
-    const current = line.includeInTotal === false ? "" : lineAmount(line);
-    const previousRaw = line.includeInTotal === false ? "" : num(line.previousAmount);
-    const previous = previousRaw === "" ? "" : Number(previousRaw);
+    const groupTotal = isGroup ? groupTotals.get(line.groupCode ?? "") : undefined;
+    let current: number | "";
+    let previous: number | "";
+    if (isGroup && groupTotal) {
+      current = groupTotal.current;
+      previous = groupTotal.previous;
+    } else if (line.includeInTotal === false) {
+      current = "";
+      previous = "";
+    } else {
+      current = lineAmount(line);
+      const previousRaw = num(line.previousAmount);
+      previous = previousRaw === "" ? "" : Number(previousRaw);
+    }
     const delta =
       typeof current === "number" && typeof previous === "number" ? current - previous : "";
 
@@ -250,7 +265,7 @@ export function buildEstimateWorkbook(payload: EstimateExportPayload): Buffer {
       current === "" ? "" : current,
       moneyStyle({
         fill: { fgColor: { rgb: rowFill } },
-        font: { bold: !isGroup, sz: 10 },
+        font: { bold: true, sz: 10, color: { rgb: isGroup ? C.blue : C.dark } },
       }),
     );
     setCell(
@@ -260,7 +275,7 @@ export function buildEstimateWorkbook(payload: EstimateExportPayload): Buffer {
       previous === "" ? "" : previous,
       moneyStyle({
         fill: { fgColor: { rgb: rowFill } },
-        font: { sz: 10, color: { rgb: C.slate } },
+        font: { bold: isGroup, sz: 10, color: { rgb: C.slate } },
       }),
     );
 
@@ -268,7 +283,7 @@ export function buildEstimateWorkbook(payload: EstimateExportPayload): Buffer {
       fill: { fgColor: { rgb: rowFill } },
       font: {
         sz: 10,
-        bold: typeof delta === "number" && delta !== 0,
+        bold: isGroup || (typeof delta === "number" && delta !== 0),
         color: {
           rgb:
             typeof delta === "number" && delta > 0

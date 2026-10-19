@@ -217,6 +217,14 @@ export function MissionSummaryPage() {
         ) : null}
 
         <div className="mt-4 flex flex-wrap gap-2 border-t border-slate-100 pt-4">
+          {status === "IN_PROGRESS" && summary.route?.id ? (
+            <MissionRouteMapButton
+              routeId={summary.route.id}
+              autoStartNav
+              label="🧭 นำทางตามเส้นทาง"
+              className="rounded-full border border-emerald-300 bg-emerald-600 px-3.5 py-1.5 text-xs font-bold text-white shadow-sm hover:bg-emerald-700 disabled:opacity-60 sm:text-sm"
+            />
+          ) : null}
           <MissionRouteMapButton
             routeId={summary.route?.id}
             label="แผนที่เส้นทาง"
