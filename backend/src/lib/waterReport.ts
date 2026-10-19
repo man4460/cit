@@ -859,7 +859,8 @@ async function buildReport(at: number, prev: Report | null): Promise<Report> {
       for (const [id, s] of Object.entries(prev?.sites ?? {})) {
         fc[id] = (s.forecast as Forecast[]) ?? [];
         if (s.rain3d && typeof s.rain3d === "object") rain3d[id] = s.rain3d as Rain3d;
-        if (Array.isArray((s as { hourly?: HourlyFc[] }).hourly)) hourly[id] = (s as { hourly: HourlyFc[] }).hourly;
+        const prevHourly = (s as { hourly?: HourlyFc[] }).hourly;
+        if (Array.isArray(prevHourly)) hourly[id] = prevHourly;
       }
       return { fc, rain3d, hourly };
     }),
