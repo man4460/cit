@@ -213,11 +213,12 @@ function renumber(rows: string[][]) {
   return rows.map((r, i) => [String(i + 1), ...r.slice(1)]);
 }
 
-function sortConvoyRows(rows: string[][]) {
+function sortConvoyRows(rows: string[][], leg: "go" | "return" = "go") {
   return [...rows].sort((a, b) =>
     compareConvoyOrder(
       { roleName: a[1] ?? "", callSign: a[2] ?? "" },
       { roleName: b[1] ?? "", callSign: b[2] ?? "" },
+      leg,
     ),
   );
 }
@@ -628,10 +629,10 @@ export function MissionTravelPlanMemoPage() {
     }
 
     const convoyGo = renumber(
-      sortConvoyRows(seatsToConvoyRows(goBuilt.seats, goBuilt.unseated, settings)),
+      sortConvoyRows(seatsToConvoyRows(goBuilt.seats, goBuilt.unseated, settings), "go"),
     );
     const convoyBack = renumber(
-      sortConvoyRows(seatsToConvoyRows(returnBuilt.seats, returnBuilt.unseated, settings)),
+      sortConvoyRows(seatsToConvoyRows(returnBuilt.seats, returnBuilt.unseated, settings), "return"),
     );
     const missingVehicleAssign = people.filter((p) => {
       if (personTab(p) === "driver") return false;

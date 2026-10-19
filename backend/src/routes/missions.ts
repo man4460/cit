@@ -1050,6 +1050,7 @@ missionsRouter.get("/:id/insurance-preview", async (req, res, next) => {
       travelLabel: data.travelLabel,
       routeLabel: data.routeLabel,
       purgedCount: data.purgedCount,
+      excludedCargoDrivers: data.excludedCargoDrivers,
       annualCovered: data.annualCovered,
       people: data.people.map((p) => ({
         name: [p.title, p.first, p.last].filter(Boolean).join(" "),

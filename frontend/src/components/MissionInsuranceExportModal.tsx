@@ -10,6 +10,7 @@ type Preview = {
   travelLabel: string;
   routeLabel: string;
   purgedCount: number;
+  excludedCargoDrivers?: { name: string }[];
   annualCovered: { name: string; company: string | null; policyNumber: string | null; expiry: string | null }[];
   people: { name: string; unit: string; missing: string[]; annualExpired: string | null }[];
 };
@@ -215,6 +216,18 @@ export function MissionInsuranceExportModal({ missionId, onClose }: { missionId:
                   <Link to="/personnel" className="mt-1 inline-block font-bold text-[#0000BF] hover:underline">
                     ไปเติมข้อมูลที่หน้าบุคลากร ›
                   </Link>
+                </div>
+              ) : null}
+              {(preview.excludedCargoDrivers?.length ?? 0) > 0 ? (
+                <div className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-[12.5px] text-slate-700">
+                  <p className="font-bold">
+                    ไม่รวมขับรถสินค้า {preview.excludedCargoDrivers!.length} คน — จ้างเหมาบริษัทรถบรรทุกแล้ว ไม่ทำประกันรายครั้ง
+                  </p>
+                  <ul className="mt-1 max-h-28 list-disc overflow-y-auto pl-5">
+                    {preview.excludedCargoDrivers!.map((p) => (
+                      <li key={p.name}>{p.name}</li>
+                    ))}
+                  </ul>
                 </div>
               ) : null}
               {preview.annualCovered.length ? (

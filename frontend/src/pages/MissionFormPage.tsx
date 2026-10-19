@@ -450,12 +450,34 @@ export function MissionFormPage() {
 
   const missionVehicleIds = useMemo(() => new Set(vRows.map((r) => r.vehicleId).filter(Boolean)), [vRows]);
 
+  /** ป้ายทะเบียน + (นามเรียกขาน) จากขั้นยานพาหนะ */
+  const missionVehicleLabelById = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const r of vRows) {
+      if (!r.vehicleId) continue;
+      const v = vehicles.find((x) => x.id === r.vehicleId);
+      const plate = v?.licensePlate?.trim() || "—";
+      const cs = r.callSign?.trim() || "";
+      map.set(r.vehicleId, cs ? `${plate}(${cs})` : plate);
+    }
+    return map;
+  }, [vRows, vehicles]);
+
   /** รถในภารกิจขึ้นก่อน — เลือกรถนอกรายการจะถูกเพิ่มเข้าขั้นยานพาหนะให้อัตโนมัติ */
   const crewVehicleOptions = useMemo(() => {
-    const inMission = vehicleSearchOptions.filter((o) => missionVehicleIds.has(o.value));
+    const withMissionLabel = (o: (typeof vehicleSearchOptions)[number]) => {
+      const labeled = missionVehicleLabelById.get(o.value);
+      if (!labeled) return o;
+      return {
+        ...o,
+        label: labeled,
+        keywords: `${o.keywords} ${labeled}`,
+      };
+    };
+    const inMission = vehicleSearchOptions.filter((o) => missionVehicleIds.has(o.value)).map(withMissionLabel);
     const others = vehicleSearchOptions.filter((o) => !missionVehicleIds.has(o.value));
     return [...inMission, ...others];
-  }, [vehicleSearchOptions, missionVehicleIds]);
+  }, [vehicleSearchOptions, missionVehicleIds, missionVehicleLabelById]);
 
   const crewByVehicle = useMemo(() => {
     const map = new Map<string, string[]>();
@@ -1748,8 +1770,8 @@ export function MissionFormPage() {
                   </label>
                 </div>
                 <p className="text-[11px] text-slate-500">
-                  เรียงอัตโนมัติตามรูปขบวน: ส่วนล่วงหน้า → นำขบวน → ประสานท้องที่ → คุ้มกันหน้า → สินค้า 1… →
-                  คุ้มกันหลัง → ปิดท้าย → หัวลากสำรอง (นามเรียกขานสินค้าใช้เลข เช่น สินค้า 1)
+                  เรียงอัตโนมัติตามรูปขบวน (ขาไป): ส่วนล่วงหน้า → นำขบวน → ประสานท้องที่ → คุ้มกันหน้า → สินค้า 1… →
+                  คุ้มกันหลัง → ปิดท้าย → หัวลากสำรอง · ขากลับส่วนล่วงหน้า (เช่น อินทรี) อยู่หลังคุ้มกันหลัง (เช่น อัลฟ่า 2)
                 </p>
                 <div className="overflow-x-auto rounded-lg border border-slate-200 pr-1">
                   <div className="hidden min-w-[63rem] grid-cols-[minmax(0,1.15fr)_minmax(6rem,0.75fr)_7rem_5rem_5rem_minmax(8rem,0.9fr)_2.75rem] gap-2 border-b border-slate-200 bg-slate-50 px-3 py-1.5 text-[10px] font-bold uppercase tracking-wide text-slate-600 sm:grid">

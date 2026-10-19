@@ -178,6 +178,17 @@ function premiumFor(days: number, rates: { days: number; rate: number }[]) {
   return (tiers.find((t) => t.days >= days) ?? tiers[tiers.length - 1]).rate;
 }
 
+/** คนในแท็บ «ขับรถสินค้า» — จ้างเหมาบริษัทรถบรรทุกแล้ว ไม่ทำประกันรายครั้ง */
+function isCargoTruckDriver(mp: {
+  personnelRole?: { name: string } | null;
+  personnel: { personnelCategory?: { name: string } | null };
+}) {
+  const cat = mp.personnel.personnelCategory?.name?.trim() ?? "";
+  if (cat === "ขับรถสินค้า") return true;
+  const role = mp.personnelRole?.name?.trim() ?? "";
+  return /พนักงานขับรถสินค้า|ขับรถสินค้า/.test(role);
+}
+
 export async function loadInsuranceMission(missionId: string) {
   const m = await prisma.mission.findUnique({
     where: { id: missionId },
@@ -186,6 +197,7 @@ export async function loadInsuranceMission(missionId: string) {
       destinations: { orderBy: { sortOrder: "asc" } },
       personnel: {
         include: {
+          personnelRole: true,
           personnel: {
             include: { personnelCategory: true, beneficiaries: { orderBy: { sortOrder: "asc" } } },
           },
@@ -205,9 +217,10 @@ export async function loadInsuranceMission(missionId: string) {
     .filter(Boolean)
     .filter((s, i, arr) => arr.indexOf(s) === i);
 
+  const cargoDrivers = m.personnel.filter((mp) => !mp.personnel.purgedAt && isCargoTruckDriver(mp));
   const assigned = m.personnel
+    .filter((mp) => !mp.personnel.purgedAt && !isCargoTruckDriver(mp))
     .map((mp) => mp.personnel)
-    .filter((p) => !p.purgedAt)
     .sort(
       (a, b) =>
         (a.personnelCategory?.sortOrder ?? 999) - (b.personnelCategory?.sortOrder ?? 999) ||
@@ -253,7 +266,11 @@ export async function loadInsuranceMission(missionId: string) {
     routeLabel: stops.join(" - "),
     people,
     annualCovered,
-    purgedCount: m.personnel.length - assigned.length,
+    /** คนขับรถสินค้าที่ตัดออก — จ้างเหมาบริษัทรถบรรทุกแล้ว */
+    excludedCargoDrivers: cargoDrivers.map((mp) => ({
+      name: [mp.personnel.rank, mp.personnel.fullName].filter(Boolean).join(" "),
+    })),
+    purgedCount: m.personnel.filter((mp) => mp.personnel.purgedAt).length,
   };
 }
 
