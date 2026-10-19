@@ -1009,6 +1009,8 @@ export interface MissionDetail {
     personnelRoleId: string;
     compensationRate: string;
     assignedVehicleId?: string | null;
+    returnVehicleSameAsGo?: boolean;
+    assignedVehicleReturnId?: string | null;
   }>;
   vehicles: Array<{
     id: string;
@@ -1079,6 +1081,8 @@ export interface MissionSummary {
     roleName: string;
     compensationRate: string;
     assignedVehicleId?: string | null;
+    returnVehicleSameAsGo?: boolean;
+    assignedVehicleReturnId?: string | null;
   }>;
   policeStations?: Array<{
     policeStationId: string;
@@ -1098,6 +1102,7 @@ export interface MissionSummary {
     currentMileage?: string | null;
     photoUrl?: string | null;
     crew?: Array<{ name: string; roleName: string }>;
+    crewReturn?: Array<{ name: string; roleName: string }>;
     roleName: string;
     callSign?: string | null;
     fuelLiters: string | null;

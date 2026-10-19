@@ -57,9 +57,17 @@ type PRow = {
   personnelRoleId: string;
   compensationRate: string;
   tabKey: MissionPersonnelTabKey;
-  /** รถที่ประจำ — ต้องอยู่ในรายการยานพาหนะของภารกิจ */
+  /** รถประจำขาไป — ต้องอยู่ในรายการยานพาหนะของภารกิจ */
   assignedVehicleId?: string;
+  /** ขากลับโดยสารคันเดียวกับขาไป */
+  returnVehicleSameAsGo?: boolean;
+  /** รถประจำขากลับ — ใช้เมื่อไม่ติ๊กเหมือนขาไป */
+  assignedVehicleReturnId?: string;
 };
+
+function tabUsesGoReturnVehicles(tab: MissionPersonnelTabKey) {
+  return tab === "bot" || tab === "crime" || tab === "highway" || tab === "special";
+}
 
 function botAutoCompensationRate(
   person: Personnel | undefined,
@@ -477,8 +485,7 @@ export function MissionFormPage() {
     [personnel, personnelRoleMasters],
   );
 
-  const assignCrewVehicle = (idx: number, vehicleId: string) => {
-    setPRows((prev) => prev.map((r, i) => (i === idx ? { ...r, assignedVehicleId: vehicleId } : r)));
+  const ensureVehicleInMission = (vehicleId: string) => {
     if (!vehicleId || missionVehicleIds.has(vehicleId)) return;
     setVRows((prev) => {
       const blank = prev.findIndex((r) => !r.vehicleId);
@@ -493,6 +500,31 @@ export function MissionFormPage() {
         blank >= 0 ? prev.map((r, i) => (i === blank ? { ...r, ...row, fuelAmount: r.fuelAmount } : r)) : [...prev, row];
       return orderVehicleRows(next);
     });
+  };
+
+  const assignCrewVehicle = (idx: number, vehicleId: string, leg: "go" | "return" = "go") => {
+    setPRows((prev) =>
+      prev.map((r, i) => {
+        if (i !== idx) return r;
+        if (leg === "return") return { ...r, assignedVehicleReturnId: vehicleId, returnVehicleSameAsGo: false };
+        return { ...r, assignedVehicleId: vehicleId };
+      }),
+    );
+    ensureVehicleInMission(vehicleId);
+  };
+
+  const setReturnSameAsGo = (idx: number, same: boolean) => {
+    setPRows((prev) =>
+      prev.map((r, i) =>
+        i !== idx
+          ? r
+          : {
+              ...r,
+              returnVehicleSameAsGo: same,
+              assignedVehicleReturnId: same ? "" : r.assignedVehicleReturnId || r.assignedVehicleId || "",
+            },
+      ),
+    );
   };
 
   const onFuelPriceChange = (type: "GASOLINE" | "DIESEL", raw: string) => {
@@ -626,6 +658,8 @@ export function MissionFormPage() {
                   compensationRate: String(p.compensationRate ?? "0"),
                   tabKey,
                   assignedVehicleId: p.assignedVehicleId ?? "",
+                  returnVehicleSameAsGo: p.returnVehicleSameAsGo !== false,
+                  assignedVehicleReturnId: p.assignedVehicleReturnId ?? "",
                 };
               }),
               personnel,
@@ -780,13 +814,23 @@ export function MissionFormPage() {
       routeId: routeId || null,
       plannedStart: plannedStart || null,
       plannedEnd: plannedEnd || null,
-      personnel: personnelPayload.map((r) => ({
-        personnelId: r.personnelId,
-        personnelRoleId: r.personnelRoleId,
-        compensationRate: r.compensationRate === "" ? 0 : Number(r.compensationRate) || 0,
-        assignedVehicleId:
-          r.assignedVehicleId && vehiclesById.has(r.assignedVehicleId) ? r.assignedVehicleId : null,
-      })),
+      personnel: personnelPayload.map((r) => {
+        const go =
+          r.assignedVehicleId && vehiclesById.has(r.assignedVehicleId) ? r.assignedVehicleId : null;
+        const same = tabUsesGoReturnVehicles(r.tabKey) ? r.returnVehicleSameAsGo !== false : true;
+        const ret =
+          !same && r.assignedVehicleReturnId && vehiclesById.has(r.assignedVehicleReturnId)
+            ? r.assignedVehicleReturnId
+            : null;
+        return {
+          personnelId: r.personnelId,
+          personnelRoleId: r.personnelRoleId,
+          compensationRate: r.compensationRate === "" ? 0 : Number(r.compensationRate) || 0,
+          assignedVehicleId: go,
+          returnVehicleSameAsGo: same,
+          assignedVehicleReturnId: ret,
+        };
+      }),
       vehicles: vehiclesPayload.map((r) => ({
         vehicleId: r.vehicleId,
         vehicleRoleId: r.vehicleRoleId,
@@ -1258,34 +1302,74 @@ export function MissionFormPage() {
                     แถบนี้เรียงตามยศอัตโนมัติ (สูง→ต่ำ) เมื่อเลือกบุคลากร
                   </p>
                 )}
+                {tabUsesGoReturnVehicles(personnelTab) && (
+                  <p className="text-[11px] text-slate-500">
+                    ระบุประจำรถขาไปและขากลับแยกกันได้ — ติ๊ก «เหมือนขาไป» หากโดยสารคันเดิม (ลิงก์ไปแผนเดินทางอัตโนมัติหลังบันทึก)
+                  </p>
+                )}
 
                 <div className="overflow-x-auto rounded-lg border border-slate-200">
-                  <div className="hidden min-w-[48rem] grid-cols-[minmax(0,1.3fr)_minmax(7rem,0.8fr)_minmax(9rem,1fr)_5.5rem_2.5rem] gap-1.5 border-b border-slate-200 bg-slate-50 px-2 py-1.5 text-[10px] font-bold uppercase tracking-wide text-slate-600 sm:grid">
-                    <span>บุคลากร</span>
-                    <span>บทบาท</span>
-                    <span className="flex items-center justify-between gap-1">
-                      ประจำรถ
-                      <button
-                        type="button"
-                        className="normal-case tracking-normal text-[#0000BF] hover:underline"
-                        onClick={() => setStep(4)}
-                      >
-                        ไปยานพาหนะ →
-                      </button>
-                    </span>
-                    <span>ค่าตอบแทน</span>
-                    <span className="sr-only">ลบ</span>
-                  </div>
-                  <ul className="min-w-[48rem] divide-y divide-slate-100">
+                  {tabUsesGoReturnVehicles(personnelTab) ? (
+                    <div className="hidden min-w-[56rem] grid-cols-[minmax(0,1.2fr)_minmax(6.5rem,0.7fr)_minmax(8rem,1fr)_auto_minmax(8rem,1fr)_5.5rem_2.5rem] gap-1.5 border-b border-slate-200 bg-slate-50 px-2 py-1.5 text-[10px] font-bold uppercase tracking-wide text-slate-600 sm:grid">
+                      <span>บุคลากร</span>
+                      <span>บทบาท</span>
+                      <span className="flex items-center justify-between gap-1">
+                        ประจำรถขาไป
+                        <button
+                          type="button"
+                          className="normal-case tracking-normal text-[#0000BF] hover:underline"
+                          onClick={() => setStep(4)}
+                        >
+                          ไปยานพาหนะ →
+                        </button>
+                      </span>
+                      <span className="text-center normal-case tracking-normal">เหมือนขาไป</span>
+                      <span>ประจำรถขากลับ</span>
+                      <span>ค่าตอบแทน</span>
+                      <span className="sr-only">ลบ</span>
+                    </div>
+                  ) : (
+                    <div className="hidden min-w-[48rem] grid-cols-[minmax(0,1.3fr)_minmax(7rem,0.8fr)_minmax(9rem,1fr)_5.5rem_2.5rem] gap-1.5 border-b border-slate-200 bg-slate-50 px-2 py-1.5 text-[10px] font-bold uppercase tracking-wide text-slate-600 sm:grid">
+                      <span>บุคลากร</span>
+                      <span>บทบาท</span>
+                      <span className="flex items-center justify-between gap-1">
+                        ประจำรถ
+                        <button
+                          type="button"
+                          className="normal-case tracking-normal text-[#0000BF] hover:underline"
+                          onClick={() => setStep(4)}
+                        >
+                          ไปยานพาหนะ →
+                        </button>
+                      </span>
+                      <span>ค่าตอบแทน</span>
+                      <span className="sr-only">ลบ</span>
+                    </div>
+                  )}
+                  <ul
+                    className={`divide-y divide-slate-100 ${
+                      tabUsesGoReturnVehicles(personnelTab) ? "min-w-[56rem]" : "min-w-[48rem]"
+                    }`}
+                  >
                     {pRowsInActiveTab.length === 0 ? (
                       <li className="px-3 py-4 text-center text-xs text-slate-500">
                         ยังไม่มีรายชื่อในแถบนี้ — กด «+ เพิ่มบุคลากร»
                       </li>
                     ) : (
-                      pRowsInActiveTab.map(({ row, index: idx }) => (
+                      pRowsInActiveTab.map(({ row, index: idx }) => {
+                        const dual = tabUsesGoReturnVehicles(row.tabKey);
+                        const sameReturn = row.returnVehicleSameAsGo !== false;
+                        const returnVehicleId = sameReturn
+                          ? row.assignedVehicleId ?? ""
+                          : row.assignedVehicleReturnId ?? "";
+                        return (
                         <li
                           key={`${row.tabKey}-${idx}`}
-                          className="grid grid-cols-[minmax(0,1.3fr)_minmax(7rem,0.8fr)_minmax(9rem,1fr)_5.5rem_2.5rem] items-center gap-1.5 px-2 py-1"
+                          className={
+                            dual
+                              ? "grid grid-cols-[minmax(0,1.2fr)_minmax(6.5rem,0.7fr)_minmax(8rem,1fr)_auto_minmax(8rem,1fr)_5.5rem_2.5rem] items-center gap-1.5 px-2 py-1"
+                              : "grid grid-cols-[minmax(0,1.3fr)_minmax(7rem,0.8fr)_minmax(9rem,1fr)_5.5rem_2.5rem] items-center gap-1.5 px-2 py-1"
+                          }
                         >
                           <SearchableSelect
                             value={row.personnelId}
@@ -1330,17 +1414,49 @@ export function MissionFormPage() {
                           </select>
                           <SearchableSelect
                             value={row.assignedVehicleId ?? ""}
-                            onChange={(v) => assignCrewVehicle(idx, v)}
+                            onChange={(v) => assignCrewVehicle(idx, v, "go")}
                             options={crewVehicleOptions}
                             emptyLabel="— ไม่ระบุ —"
                             allowEmpty
-                            aria-label={`ประจำรถแถว ${idx + 1}`}
+                            aria-label={dual ? `ประจำรถขาไปแถว ${idx + 1}` : `ประจำรถแถว ${idx + 1}`}
                             inputClassName={`w-full rounded-md border bg-white px-2 py-1 text-sm text-slate-900 ${
                               row.assignedVehicleId && !missionVehicleIds.has(row.assignedVehicleId)
                                 ? "border-rose-300"
                                 : "border-slate-200"
                             }`}
                           />
+                          {dual ? (
+                            <>
+                              <label
+                                className="flex cursor-pointer items-center justify-center gap-1 px-1"
+                                title="ติ๊กหากโดยสารขากลับคันเดียวกับขาไป"
+                              >
+                                <input
+                                  type="checkbox"
+                                  className="h-3.5 w-3.5 rounded border-slate-300 text-[#0000BF]"
+                                  checked={sameReturn}
+                                  onChange={(e) => setReturnSameAsGo(idx, e.target.checked)}
+                                  aria-label={`ขากลับเหมือนขาไปแถว ${idx + 1}`}
+                                />
+                              </label>
+                              <SearchableSelect
+                                value={returnVehicleId}
+                                onChange={(v) => assignCrewVehicle(idx, v, "return")}
+                                options={crewVehicleOptions}
+                                emptyLabel="— ไม่ระบุ —"
+                                allowEmpty
+                                disabled={sameReturn}
+                                aria-label={`ประจำรถขากลับแถว ${idx + 1}`}
+                                inputClassName={`w-full rounded-md border bg-white px-2 py-1 text-sm text-slate-900 ${
+                                  sameReturn
+                                    ? "border-slate-100 bg-slate-50 text-slate-500"
+                                    : returnVehicleId && !missionVehicleIds.has(returnVehicleId)
+                                      ? "border-rose-300"
+                                      : "border-slate-200"
+                                }`}
+                              />
+                            </>
+                          ) : null}
                           <CommaNumberInput
                             aria-label={`ค่าตอบแทนแถว ${idx + 1}`}
                             className={`w-full rounded-md border border-slate-200 bg-white px-2 py-1 text-sm tabular-nums text-slate-900 ${
@@ -1375,7 +1491,8 @@ export function MissionFormPage() {
                             ลบ
                           </button>
                         </li>
-                      ))
+                        );
+                      })
                     )}
                   </ul>
                 </div>
@@ -1390,6 +1507,8 @@ export function MissionFormPage() {
                         personnelRoleId: defaultMissionRoleIdForTab(personnelTab, personnelRoleMasters),
                         compensationRate: "0",
                         tabKey: personnelTab,
+                        returnVehicleSameAsGo: true,
+                        assignedVehicleReturnId: "",
                       },
                     ])
                   }

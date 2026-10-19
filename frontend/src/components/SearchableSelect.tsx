@@ -38,6 +38,7 @@ type SearchableSelectProps = {
   className?: string;
   inputClassName?: string;
   id?: string;
+  disabled?: boolean;
   "aria-label"?: string;
 };
 
@@ -51,6 +52,7 @@ export function SearchableSelect({
   className = "",
   inputClassName = "mt-1 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-slate-900",
   id,
+  disabled = false,
   "aria-label": ariaLabel,
 }: SearchableSelectProps) {
   const [open, setOpen] = useState(false);
@@ -196,18 +198,24 @@ export function SearchableSelect({
         id={id}
         type="text"
         autoComplete="off"
+        disabled={disabled}
         aria-label={ariaLabel}
         aria-expanded={open}
         aria-haspopup="listbox"
+        aria-disabled={disabled || undefined}
         role="combobox"
-        className={`${inputClassName}${showSelectedThumb ? " !pl-10" : ""}`}
+        className={`${inputClassName}${showSelectedThumb ? " !pl-10" : ""}${
+          disabled ? " cursor-not-allowed opacity-70" : ""
+        }`}
         placeholder={selected ? placeholder : emptyLabel}
         value={inputDisplay}
         onFocus={() => {
+          if (disabled) return;
           setOpen(true);
           setFilterText("");
         }}
         onChange={(e) => {
+          if (disabled) return;
           setFilterText(e.target.value);
           setOpen(true);
         }}

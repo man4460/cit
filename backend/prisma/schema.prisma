@@ -235,6 +235,7 @@ model Vehicle {
   fuelLogs          FuelConsumptionLog[]
   missionVehicles   MissionVehicle[]
   missionCrew       MissionPersonnel[] @relation("MissionPersonnelVehicle")
+  missionCrewReturn MissionPersonnel[] @relation("MissionPersonnelVehicleReturn")
   weeklyInspections VehicleWeeklyInspection[]
   dispositionLogs   VehicleDispositionLog[]
 }
@@ -993,9 +994,16 @@ model MissionPersonnel {
   /// อัตราค่าตอบแทน (บาท) ต่อคนในภารกิจนี้ — ใช้รวมเข้าหมวดค่าตอบแทนในค่าใช้จ่าย
   compensationRate Decimal @default(0)
 
-  /// รถที่ประจำในภารกิจนี้ (ต้องเป็นรถที่อยู่ในรายการยานพาหนะของภารกิจ)
+  /// รถที่ประจำขาไป (ต้องเป็นรถที่อยู่ในรายการยานพาหนะของภารกิจ)
   assignedVehicleId String?
   assignedVehicle   Vehicle? @relation("MissionPersonnelVehicle", fields: [assignedVehicleId], references: [id], onDelete: SetNull)
+
+  /// true = ขากลับโดยสารคันเดียวกับขาไป (ไม่ใช้ assignedVehicleReturnId)
+  returnVehicleSameAsGo Boolean @default(true)
+
+  /// รถที่ประจำขากลับ — ใช้เมื่อ returnVehicleSameAsGo = false
+  assignedVehicleReturnId String?
+  assignedVehicleReturn   Vehicle? @relation("MissionPersonnelVehicleReturn", fields: [assignedVehicleReturnId], references: [id], onDelete: SetNull)
 
   @@unique([missionId, personnelId])
 }

@@ -251,6 +251,8 @@ async function missionSummary(missionId: string) {
       roleName: p.personnelRole.name,
       compensationRate: p.compensationRate.toString(),
       assignedVehicleId: p.assignedVehicleId ?? null,
+      returnVehicleSameAsGo: p.returnVehicleSameAsGo !== false,
+      assignedVehicleReturnId: p.assignedVehicleReturnId ?? null,
     })),
     policeStations: mission.policeStations.map((s) => ({
       policeStationId: s.policeStationId,
@@ -272,6 +274,16 @@ async function missionSummary(missionId: string) {
       photoUrl: v.vehicle.documents[0]?.fileUrl ?? null,
       crew: mission.personnel
         .filter((p) => p.assignedVehicleId === v.vehicleId)
+        .map((p) => ({
+          name: [p.personnel.rank, p.personnel.fullName].filter(Boolean).join(" "),
+          roleName: p.personnelRole.name,
+        })),
+      crewReturn: mission.personnel
+        .filter((p) => {
+          const same = p.returnVehicleSameAsGo !== false;
+          const rid = same ? p.assignedVehicleId : p.assignedVehicleReturnId;
+          return rid === v.vehicleId;
+        })
         .map((p) => ({
           name: [p.personnel.rank, p.personnel.fullName].filter(Boolean).join(" "),
           roleName: p.personnelRole.name,
@@ -1318,12 +1330,27 @@ type PersonnelIn = {
   personnelRoleId: string;
   compensationRate?: string | number;
   assignedVehicleId?: string | null;
+  returnVehicleSameAsGo?: boolean | null;
+  assignedVehicleReturnId?: string | null;
 };
 
 /** ประจำรถได้เฉพาะรถที่อยู่ในรายการยานพาหนะของภารกิจ */
-function assignedVehicleOf(p: PersonnelIn, vehicles: VehicleIn[]): string | null {
-  const id = p.assignedVehicleId ? String(p.assignedVehicleId) : "";
+function assignedVehicleOf(
+  vehicleId: string | null | undefined,
+  vehicles: VehicleIn[],
+): string | null {
+  const id = vehicleId ? String(vehicleId) : "";
   return id && vehicles.some((v) => v.vehicleId === id) ? id : null;
+}
+
+function personnelVehicleFields(p: PersonnelIn, vehicles: VehicleIn[]) {
+  const go = assignedVehicleOf(p.assignedVehicleId, vehicles);
+  const same = p.returnVehicleSameAsGo !== false;
+  return {
+    assignedVehicleId: go,
+    returnVehicleSameAsGo: same,
+    assignedVehicleReturnId: same ? null : assignedVehicleOf(p.assignedVehicleReturnId, vehicles),
+  };
 }
 type VehicleIn = {
   vehicleId: string;
@@ -1431,7 +1458,7 @@ missionsRouter.post("/", async (req, res, next) => {
             personnelId: p.personnelId,
             personnelRoleId: p.personnelRoleId,
             compensationRate: dec(p.compensationRate) ?? new Prisma.Decimal(0),
-            assignedVehicleId: assignedVehicleOf(p, vehiclesArr),
+            ...personnelVehicleFields(p, vehiclesArr),
           })),
         },
         vehicles: {
@@ -1585,7 +1612,7 @@ missionsRouter.put("/:id", async (req, res, next) => {
               personnelId: p.personnelId,
               personnelRoleId: p.personnelRoleId,
               compensationRate: dec(p.compensationRate) ?? new Prisma.Decimal(0),
-              assignedVehicleId: assignedVehicleOf(p, vehiclesArr),
+              ...personnelVehicleFields(p, vehiclesArr),
             })),
           },
           vehicles: {
