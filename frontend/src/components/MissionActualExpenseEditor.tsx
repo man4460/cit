@@ -658,15 +658,36 @@ export const MissionActualExpenseEditor = forwardRef<
       const itemCount = cur.filter((l) => l.kind === "ITEM" && l.groupCode === groupCode).length;
       const n = itemCount + 1;
 
+      const item: MissionEstimateLine = {
+        sortOrder: 0,
+        kind: "ITEM",
+        groupCode,
+        itemCode: `9.${n}`,
+        name: "รายละเอียด",
+        payoutMethod: "บิลเรียกเก็บ",
+        quantity: null,
+        unitPrice: null,
+        amount: "0",
+        previousAmount: null,
+        qtyEditable: false,
+        rateEditable: false,
+        amountEditable: true,
+        includeInTotal: true,
+        isReserve: false,
+        expenseTypeName: "ค่าเงินช่วยเหลือ",
+      };
+
       const nextLines = [...cur];
       if (!hasGroup) {
-        nextLines.push({
-          sortOrder: nextLines.length,
+        const truckIdx = nextLines.findIndex((l) => l.groupCode === "10");
+        const insertAt = truckIdx >= 0 ? truckIdx : nextLines.length;
+        nextLines.splice(insertAt, 0, {
+          sortOrder: 0,
           kind: "GROUP",
           groupCode,
           itemCode: null,
-          name: "ข้อ 9 (รายการอื่นๆ)",
-          payoutMethod: "บิลเรียกเก็บ",
+          name: "อื่นๆ",
+          payoutMethod: null,
           quantity: null,
           unitPrice: null,
           amount: "0",
@@ -680,26 +701,17 @@ export const MissionActualExpenseEditor = forwardRef<
         });
       }
 
-      nextLines.push({
-        sortOrder: nextLines.length,
-        kind: "ITEM",
-        groupCode,
-        itemCode: `9.${n}`,
-        name: "รายการอื่นๆ",
-        payoutMethod: "บิลเรียกเก็บ",
-        quantity: null,
-        unitPrice: null,
-        amount: "0",
-        previousAmount: null,
-        qtyEditable: false,
-        rateEditable: false,
-        amountEditable: true,
-        includeInTotal: true,
-        isReserve: false,
-        expenseTypeName: "ค่าเงินช่วยเหลือ",
-      });
-
-      return nextLines;
+      let insertAt = nextLines.length;
+      for (let i = nextLines.length - 1; i >= 0; i--) {
+        if (nextLines[i].groupCode === "9") {
+          insertAt = i + 1;
+          break;
+        }
+      }
+      const truckIdx = nextLines.findIndex((l) => l.groupCode === "10");
+      if (truckIdx >= 0 && insertAt > truckIdx) insertAt = truckIdx;
+      nextLines.splice(insertAt, 0, item);
+      return nextLines.map((line, i) => ({ ...line, sortOrder: i }));
     });
   }
 
@@ -708,10 +720,16 @@ export const MissionActualExpenseEditor = forwardRef<
       const target = cur[index];
       if (!target || target.kind !== "ITEM" || target.groupCode !== "9") return cur;
 
-      const next = cur.filter((_, i) => i !== index);
-      const hasAnyItem = next.some((l) => l.kind === "ITEM" && l.groupCode === "9");
-      if (hasAnyItem) return next;
-      return next.filter((l) => !(l.kind === "GROUP" && l.groupCode === "9"));
+      let n = 0;
+      return cur
+        .filter((_, i) => i !== index)
+        .map((line, i) => {
+          if (line.kind === "ITEM" && line.groupCode === "9") {
+            n += 1;
+            return { ...line, itemCode: `9.${n}`, sortOrder: i };
+          }
+          return { ...line, sortOrder: i };
+        });
     });
   }
 
@@ -870,7 +888,7 @@ export const MissionActualExpenseEditor = forwardRef<
               const isItem = isEstimateItemLine(line);
               const groupTotal = totals.groupSubtotals.get(line.groupCode ?? "");
               const nextMain = mainLineRows[rowPos + 1]?.line;
-              const isLastGroup8 = line.groupCode === "8" && nextMain?.groupCode !== "8";
+              const isLastGroup9 = line.groupCode === "9" && nextMain?.groupCode !== "9";
 
               return (
                 <Fragment key={`${line.kind}-${line.itemCode ?? line.groupCode}-${idx}`}>
@@ -890,6 +908,7 @@ export const MissionActualExpenseEditor = forwardRef<
                           className="w-full min-w-0 rounded border border-slate-200 bg-white/80 px-1 py-0.5 text-[11px] text-slate-800 outline-none focus:border-slate-300"
                           value={line.name}
                           onChange={(e) => patchLine(idx, { name: e.target.value })}
+                          placeholder="รายละเอียด…"
                         />
                       ) : (
                         <span className="truncate">{line.name}</span>
@@ -953,7 +972,7 @@ export const MissionActualExpenseEditor = forwardRef<
                     {Number.isFinite(delta) ? formatBaht(delta) : ""}
                   </td>
                 </tr>
-                {isLastGroup8 ? (
+                {isLastGroup9 ? (
                   <tr>
                     <td colSpan={5} className="border-b border-slate-100 px-2 py-2 text-right">
                       <button
@@ -961,7 +980,7 @@ export const MissionActualExpenseEditor = forwardRef<
                         className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-[#4d47b6] hover:bg-slate-50"
                         onClick={addQuestion9Line}
                       >
-                        + เพิ่มข้อ 9
+                        + เพิ่มรายการย่อยข้อ 9
                       </button>
                     </td>
                   </tr>

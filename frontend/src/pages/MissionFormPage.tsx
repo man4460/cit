@@ -26,6 +26,7 @@ import {
   isBotPersonnelCategory,
   missionInclusiveDays,
 } from "../lib/botAllowancePrint";
+import { sortMissionVehicleRows } from "../lib/missionConvoyOrder";
 import {
   MISSION_PERSONNEL_TABS,
   defaultMissionRoleIdForTab,
@@ -118,25 +119,43 @@ type PsRow = { policeStationId: string; amount: string; estimateItemCode: string
 
 const LOADED_MARK = "__loaded__";
 
-/** ธปท./คนขับ: ตามลำดับบทบาท (ผอ.เดินทาง → … → สื่อสาร) แล้วชั้นสูงก่อน · ตำรวจ: ยศสูงก่อน แล้วนำขบวน → ปิดท้าย */
+const PERSONNEL_TAB_ORDER: MissionPersonnelTabKey[] = ["bot", "crime", "highway", "special", "driver"];
+
+/** เรียงทีละแท็บ: ตำรวจ (กองปราบ/ทางหลวง/ปฏิบัติการพิเศษ) = ยศสูง→ต่ำ · ธปท./คนขับ = บทบาทแล้วชั้น */
 function sortMissionPersonnelRows(rows: PRow[], personnel: Personnel[], roles: NameMasterRow[]): PRow[] {
   const roleOrder = new Map(roles.map((r) => [r.id, r.sortOrder]));
   const byId = new Map(personnel.map((p) => [p.id, p]));
   const roleOf = (r: PRow) => roleOrder.get(r.personnelRoleId) ?? Number.MAX_SAFE_INTEGER;
-  return rows
-    .map((row, i) => ({ row, i, person: byId.get(row.personnelId) }))
-    .sort((a, b) => {
-      const police = a.row.tabKey !== "bot" && a.row.tabKey !== "driver";
-      const byRole = roleOf(a.row) - roleOf(b.row);
-      const byRank = policeRankIndex(a.person?.rank ?? "") - policeRankIndex(b.person?.rank ?? "");
-      const byGrade = gradeSortValue(b.person?.gradeLevel) - gradeSortValue(a.person?.gradeLevel);
-      return (
-        (police ? byRank || byRole : byRole || (Number.isNaN(byGrade) ? 0 : byGrade)) ||
-        (a.person?.fullName ?? "").localeCompare(b.person?.fullName ?? "", "th") ||
-        a.i - b.i
-      );
-    })
-    .map(({ row }) => row);
+
+  const sortTab = (tabRows: PRow[], tabKey: MissionPersonnelTabKey) => {
+    const police = tabKey === "crime" || tabKey === "highway" || tabKey === "special";
+    const filled = tabRows.filter((r) => r.personnelId);
+    const blank = tabRows.filter((r) => !r.personnelId);
+    filled.sort((a, b) => {
+      const pa = byId.get(a.personnelId);
+      const pb = byId.get(b.personnelId);
+      const byRank = policeRankIndex(pa?.rank ?? "") - policeRankIndex(pb?.rank ?? "");
+      const byRole = roleOf(a) - roleOf(b);
+      const byGrade = gradeSortValue(pb?.gradeLevel) - gradeSortValue(pa?.gradeLevel);
+      const byName = (pa?.fullName ?? "").localeCompare(pb?.fullName ?? "", "th");
+      if (police) return byRank || byRole || byName;
+      return byRole || (Number.isFinite(byGrade) ? byGrade : 0) || byName;
+    });
+    return [...filled, ...blank];
+  };
+
+  const byTab = new Map<MissionPersonnelTabKey, PRow[]>();
+  for (const row of rows) {
+    const t = row.tabKey ?? "bot";
+    byTab.set(t, [...(byTab.get(t) ?? []), row]);
+  }
+  const out: PRow[] = [];
+  for (const t of PERSONNEL_TAB_ORDER) {
+    out.push(...sortTab(byTab.get(t) ?? [], t));
+    byTab.delete(t);
+  }
+  for (const [t, group] of byTab) out.push(...sortTab(group, t));
+  return out;
 }
 const SPECIAL_OPS_NOTE_RE = /^split:2\.6=([\d.]+);2\.7=([\d.]+)$/;
 
@@ -441,6 +460,23 @@ export function MissionFormPage() {
     return map;
   }, [pRows, personnel]);
 
+  const vehicleRoleName = useCallback(
+    (roleId: string) => vehicleRoleMasters.find((r) => r.id === roleId)?.name ?? "",
+    [vehicleRoleMasters],
+  );
+
+  /** เรียงยานพาหนะตามลำดับรูปขบวน (ส่วนล่วงหน้า → … → สินค้า → คุ้มกันหลัง → ปิดท้าย → หัวลาก) */
+  const orderVehicleRows = useCallback(
+    (rows: VRow[]) => sortMissionVehicleRows(rows, vehicleRoleName),
+    [vehicleRoleName],
+  );
+
+  /** เรียงบุคลากร — แท็บตำรวจเรียงยศสูง→ต่ำ */
+  const orderPersonnelRows = useCallback(
+    (rows: PRow[]) => sortMissionPersonnelRows(rows, personnel, personnelRoleMasters),
+    [personnel, personnelRoleMasters],
+  );
+
   const assignCrewVehicle = (idx: number, vehicleId: string) => {
     setPRows((prev) => prev.map((r, i) => (i === idx ? { ...r, assignedVehicleId: vehicleId } : r)));
     if (!vehicleId || missionVehicleIds.has(vehicleId)) return;
@@ -453,8 +489,9 @@ export function MissionFormPage() {
         fuelType: "",
         fuelAmount: "",
       };
-      if (blank >= 0) return prev.map((r, i) => (i === blank ? { ...r, ...row, fuelAmount: r.fuelAmount } : r));
-      return [...prev, row];
+      const next =
+        blank >= 0 ? prev.map((r, i) => (i === blank ? { ...r, ...row, fuelAmount: r.fuelAmount } : r)) : [...prev, row];
+      return orderVehicleRows(next);
     });
   };
 
@@ -622,7 +659,7 @@ export function MissionFormPage() {
               fuelAmount: "",
             },
           ];
-      setVRows(loadedVRows);
+      setVRows(orderVehicleRows(loadedVRows));
       setFuelPrices({ GASOLINE: "", DIESEL: "" });
       setDRows(
         sortedDest.length
@@ -644,7 +681,7 @@ export function MissionFormPage() {
         : [{ policeStationId: "", amount: "0", estimateItemCode: "2.4" }];
       setPsRows(expandSpecialOpsStationRows(mappedStations, policeStationMasters));
     },
-    [personnel, personnelRoleMasters, vehicleRoleMasters, policeStationMasters],
+    [personnel, personnelRoleMasters, vehicleRoleMasters, policeStationMasters, orderVehicleRows],
   );
 
   useEffect(() => {
@@ -692,9 +729,13 @@ export function MissionFormPage() {
       }
       return out;
     })();
-    const vehiclesRaw = vRows.filter((r) => r.vehicleId && r.vehicleRoleId);
-    const vehiclesById = new Map(vehiclesRaw.map((r) => [r.vehicleId, r]));
+    const vehiclesOrdered = orderVehicleRows(vRows).filter((r) => r.vehicleId && r.vehicleRoleId);
+    const vehiclesById = new Map<string, VRow>();
+    for (const r of vehiclesOrdered) {
+      if (!vehiclesById.has(r.vehicleId)) vehiclesById.set(r.vehicleId, r);
+    }
     const vehiclesPayload = [...vehiclesById.values()];
+    const vehiclesRaw = vehiclesOrdered;
     const destPayload = dRows.filter((r) => r.address.trim());
     const expPayload = actualExpenseRef.current?.buildMissionExpensePayload(expenseTypeMasters) ?? [];
     const policeRaw = psRows.filter((r) => r.policeStationId);
@@ -1212,6 +1253,12 @@ export function MissionFormPage() {
                   })}
                 </div>
 
+                {(personnelTab === "crime" || personnelTab === "highway" || personnelTab === "special") && (
+                  <p className="text-[11px] text-slate-500">
+                    แถบนี้เรียงตามยศอัตโนมัติ (สูง→ต่ำ) เมื่อเลือกบุคลากร
+                  </p>
+                )}
+
                 <div className="overflow-x-auto rounded-lg border border-slate-200">
                   <div className="hidden min-w-[48rem] grid-cols-[minmax(0,1.3fr)_minmax(7rem,0.8fr)_minmax(9rem,1fr)_5.5rem_2.5rem] gap-1.5 border-b border-slate-200 bg-slate-50 px-2 py-1.5 text-[10px] font-bold uppercase tracking-wide text-slate-600 sm:grid">
                     <span>บุคลากร</span>
@@ -1256,7 +1303,7 @@ export function MissionFormPage() {
                                 personnelId: v,
                                 compensationRate: auto ?? (v ? row.compensationRate : "0"),
                               };
-                              setPRows(next);
+                              setPRows(orderPersonnelRows(next));
                             }}
                             options={personnelOptionsByTab[personnelTab] ?? []}
                             emptyLabel="— เลือก —"
@@ -1271,7 +1318,7 @@ export function MissionFormPage() {
                             onChange={(e) => {
                               const next = [...pRows];
                               next[idx] = { ...row, personnelRoleId: e.target.value };
-                              setPRows(next);
+                              setPRows(orderPersonnelRows(next));
                             }}
                           >
                             <option value="">—</option>
@@ -1581,6 +1628,10 @@ export function MissionFormPage() {
                     />
                   </label>
                 </div>
+                <p className="text-[11px] text-slate-500">
+                  เรียงอัตโนมัติตามรูปขบวน: ส่วนล่วงหน้า → นำขบวน → ประสานท้องที่ → คุ้มกันหน้า → สินค้า 1… →
+                  คุ้มกันหลัง → ปิดท้าย → หัวลากสำรอง (นามเรียกขานสินค้าใช้เลข เช่น สินค้า 1)
+                </p>
                 <div className="overflow-x-auto rounded-lg border border-slate-200 pr-1">
                   <div className="hidden min-w-[63rem] grid-cols-[minmax(0,1.15fr)_minmax(6rem,0.75fr)_7rem_5rem_5rem_minmax(8rem,0.9fr)_2.75rem] gap-2 border-b border-slate-200 bg-slate-50 px-3 py-1.5 text-[10px] font-bold uppercase tracking-wide text-slate-600 sm:grid">
                     <span>ยานพาหนะ</span>
@@ -1602,7 +1653,7 @@ export function MissionFormPage() {
                           onChange={(v) => {
                             const next = [...vRows];
                             next[idx] = { ...row, vehicleId: v };
-                            setVRows(next);
+                            setVRows(orderVehicleRows(next));
                           }}
                           options={vehicleSearchOptions}
                           emptyLabel="— เลือก —"
@@ -1617,7 +1668,7 @@ export function MissionFormPage() {
                           onChange={(e) => {
                             const next = [...vRows];
                             next[idx] = { ...row, vehicleRoleId: e.target.value };
-                            setVRows(next);
+                            setVRows(orderVehicleRows(next));
                           }}
                         >
                           <option value="">—</option>
@@ -1638,6 +1689,7 @@ export function MissionFormPage() {
                             next[idx] = { ...row, callSign: e.target.value };
                             setVRows(next);
                           }}
+                          onBlur={() => setVRows((prev) => orderVehicleRows(prev))}
                         />
                         <CommaNumberInput
                           aria-label={`ลิตรแถว ${idx + 1}`}

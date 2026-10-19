@@ -474,7 +474,7 @@ export function defaultEstimateTemplate(): EstimateTemplate {
       groupCode: "3",
       name: "ค่าธรรมเนียมอื่นๆ (ค่าทางด่วน)",
       amount: 0,
-      payoutMethod: BILL,
+      payoutMethod: ADVANCE,
       expenseTypeName: "ค่าธรรมเนียมอื่นๆ",
     }),
     leafGroup({
@@ -549,19 +549,11 @@ export function defaultEstimateTemplate(): EstimateTemplate {
       payoutMethod: BILL,
       expenseTypeName: "ประกันภัย",
     }),
-    leafGroup({
-      sortOrder: 75,
-      groupCode: "10",
-      name: "รถบรรทุกสินค้า",
-      amount: 0,
-      payoutMethod: BILL,
-      expenseTypeName: "ค่าจ้างรถบรรทุก",
-    }),
     groupHeader({
       sortOrder: 80,
       groupCode: "8",
       name: "เงินช่วยเหลืออื่นๆ",
-      payoutMethod: BILL,
+      // ไม่ใส่วิธีจ่ายที่หัวข้อ — อยู่ที่รายการย่อย 8.1 / 8.2
       expenseTypeName: "ค่าเงินช่วยเหลือ",
     }),
     item({
@@ -583,7 +575,7 @@ export function defaultEstimateTemplate(): EstimateTemplate {
       groupCode: "8",
       itemCode: "8.2",
       name: "เงินสำรองค่าใช้จ่าย",
-      payoutMethod: BILL,
+      payoutMethod: ADVANCE,
       quantity: null,
       unitPrice: null,
       amount: 10000,
@@ -592,6 +584,20 @@ export function defaultEstimateTemplate(): EstimateTemplate {
       amountEditable: true,
       isReserve: true,
       expenseTypeName: "ค่าเงินช่วยเหลือ",
+    }),
+    groupHeader({
+      sortOrder: 90,
+      groupCode: "9",
+      name: "อื่นๆ",
+      expenseTypeName: "ค่าเงินช่วยเหลือ",
+    }),
+    leafGroup({
+      sortOrder: 100,
+      groupCode: "10",
+      name: "รถบรรทุกสินค้า",
+      amount: 0,
+      payoutMethod: BILL,
+      expenseTypeName: "ค่าจ้างรถบรรทุก",
     }),
   ];
 
@@ -618,4 +624,33 @@ export const ESTIMATE_EXPENSE_TYPE_NAMES = [
 export function lineKey(line: { kind: string; groupCode?: string | null; itemCode?: string | null }): string {
   if (line.itemCode) return line.itemCode;
   return `g:${line.groupCode ?? line.kind}`;
+}
+
+/** ปรับวิธีจ่ายตามกฎล่าสุด — ใช้กับเทมเพลตใหม่และประมาณการที่บันทึกไว้แล้ว */
+export function normalizeEstimatePayoutMethods<T extends EstimateLineInput>(lines: T[]): T[] {
+  return lines.map((line) => {
+    const name = line.name ?? "";
+    const group = line.groupCode ?? "";
+    const code = line.itemCode ?? "";
+
+    // ค่าทางด่วน → ยืมเงินทดรองจ่าย
+    if (line.kind === "GROUP" && (group === "3" || /ค่าทางด่วน|ค่าธรรมเนียมอื่นๆ/.test(name))) {
+      return { ...line, payoutMethod: ADVANCE };
+    }
+
+    // หัวข้อเงินช่วยเหลืออื่นๆ / อื่นๆ — ไม่ใส่บิลเรียกเก็บ (วิธีจ่ายอยู่ที่รายการย่อย)
+    if (line.kind === "GROUP" && group === "8" && /เงินช่วยเหลืออื่นๆ/.test(name)) {
+      return { ...line, payoutMethod: null };
+    }
+    if (line.kind === "GROUP" && group === "9") {
+      return { ...line, payoutMethod: null, name: name.trim() || "อื่นๆ" };
+    }
+
+    // เงินสำรองค่าใช้จ่าย → ยืมเงินทดรองจ่าย
+    if (code === "8.2" || (Boolean(line.isReserve) && /เงินสำรอง/.test(name))) {
+      return { ...line, payoutMethod: ADVANCE };
+    }
+
+    return line;
+  });
 }

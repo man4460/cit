@@ -394,7 +394,73 @@ export function mergeLegacyEnlistedEstimateLines(lines: MissionEstimateLine[]): 
   return ensureCargoTruckExpenseLine(merged);
 }
 
-/** แถว «รถบรรทุกสินค้า» (กลุ่ม 10) — แทรกให้ข้อมูลเก่าที่ยังไม่มี */
+/** หัวข้อข้อ 9 «อื่นๆ» — ให้ลำดับ 1…8,9 แล้วตามด้วยรถบรรทุก */
+export function ensureOtherExpenseGroup(lines: MissionEstimateLine[]): MissionEstimateLine[] {
+  const header: MissionEstimateLine = {
+    sortOrder: 0,
+    kind: "GROUP",
+    groupCode: "9",
+    itemCode: null,
+    name: "อื่นๆ",
+    payoutMethod: null,
+    quantity: null,
+    unitPrice: null,
+    amount: "0",
+    previousAmount: null,
+    qtyEditable: false,
+    rateEditable: false,
+    amountEditable: false,
+    includeInTotal: false,
+    isReserve: false,
+    expenseTypeName: "ค่าเงินช่วยเหลือ",
+  };
+
+  const normalized = lines.map((line) => {
+    if (line.kind === "GROUP" && line.groupCode === "9") {
+      return {
+        ...line,
+        name: "อื่นๆ",
+        payoutMethod: null,
+        includeInTotal: false,
+        amountEditable: false,
+        qtyEditable: false,
+        rateEditable: false,
+        expenseTypeName: line.expenseTypeName?.trim() || "ค่าเงินช่วยเหลือ",
+      };
+    }
+    return line;
+  });
+
+  if (normalized.some((l) => l.kind === "GROUP" && l.groupCode === "9")) {
+    return normalized;
+  }
+
+  // แทรกหลังบล็อกข้อ 8 (หรือก่อนรถบรรทุก / ท้ายสุด)
+  let insertAt = normalized.length;
+  for (let i = normalized.length - 1; i >= 0; i--) {
+    if (normalized[i].groupCode === "8") {
+      insertAt = i + 1;
+      break;
+    }
+  }
+  const truckIdx = normalized.findIndex(isCargoTruckExpenseLine);
+  if (truckIdx >= 0 && truckIdx < insertAt) insertAt = truckIdx;
+
+  const next = [...normalized];
+  next.splice(insertAt, 0, header);
+  return next;
+}
+
+function renumberOtherExpenseItems(lines: MissionEstimateLine[]): MissionEstimateLine[] {
+  let n = 0;
+  return lines.map((line) => {
+    if (line.kind !== "ITEM" || line.groupCode !== "9") return line;
+    n += 1;
+    return { ...line, itemCode: `9.${n}` };
+  });
+}
+
+/** แถว «รถบรรทุกสินค้า» (กลุ่ม 10) — บังคับอยู่ท้ายสุด + มีข้อ 9 อื่นๆ */
 export function ensureCargoTruckExpenseLine(
   lines: MissionEstimateLine[],
   opts?: { seedAmount?: number },
@@ -404,12 +470,13 @@ export function ensureCargoTruckExpenseLine(
       ? opts.seedAmount
       : null;
 
-  const isTruckLine = isCargoTruckExpenseLine;
-
   const normalizeTruck = (line: MissionEstimateLine): MissionEstimateLine => {
     const cur = lineCurrentAmount(line);
     return {
       ...line,
+      kind: "GROUP",
+      groupCode: "10",
+      itemCode: null,
       name: line.name?.trim() ? line.name : "รถบรรทุกสินค้า",
       expenseTypeName: line.expenseTypeName?.trim() || "ค่าจ้างรถบรรทุก",
       includeInTotal: true,
@@ -422,40 +489,39 @@ export function ensureCargoTruckExpenseLine(
     };
   };
 
-  if (lines.some(isTruckLine)) {
-    return lines.map((line) => (isTruckLine(line) ? normalizeTruck(line) : line));
+  const trucks = lines.filter(isCargoTruckExpenseLine).map(normalizeTruck);
+  const withoutTruck = lines.filter((line) => !isCargoTruckExpenseLine(line));
+  const withGroup9 = ensureOtherExpenseGroup(withoutTruck);
+  const renumbered = renumberOtherExpenseItems(withGroup9);
+
+  const truckLine: MissionEstimateLine =
+    trucks[0] ??
+    normalizeTruck({
+      sortOrder: 0,
+      kind: "GROUP",
+      groupCode: "10",
+      itemCode: null,
+      name: "รถบรรทุกสินค้า",
+      payoutMethod: "บิลเรียกเก็บ",
+      quantity: null,
+      unitPrice: null,
+      amount: "0",
+      previousAmount: null,
+      qtyEditable: false,
+      rateEditable: false,
+      amountEditable: true,
+      includeInTotal: true,
+      isReserve: false,
+      expenseTypeName: "ค่าจ้างรถบรรทุก",
+    });
+
+  // รวม truck หลายแถวเก่าเป็นแถวเดียว (คงยอดรวม)
+  if (trucks.length > 1) {
+    const sum = trucks.reduce((s, t) => s + lineCurrentAmount(t), 0);
+    truckLine.amount = String(sum);
   }
 
-  const truckLine: MissionEstimateLine = normalizeTruck({
-    sortOrder: 0,
-    kind: "GROUP",
-    groupCode: "10",
-    itemCode: null,
-    name: "รถบรรทุกสินค้า",
-    payoutMethod: "บิลเรียกเก็บ",
-    quantity: null,
-    unitPrice: null,
-    amount: "0",
-    previousAmount: null,
-    qtyEditable: false,
-    rateEditable: false,
-    amountEditable: true,
-    includeInTotal: true,
-    isReserve: false,
-    expenseTypeName: "ค่าจ้างรถบรรทุก",
-  });
-
-  const insertAt = (() => {
-    const idx8 = lines.findIndex((l) => l.kind === "GROUP" && l.groupCode === "8");
-    if (idx8 >= 0) return idx8;
-    const idx9 = lines.findIndex((l) => l.kind === "GROUP" && l.groupCode === "9");
-    if (idx9 >= 0) return idx9;
-    return lines.length;
-  })();
-
-  const next = [...lines];
-  next.splice(insertAt, 0, truckLine);
-  return next.map((line, i) => ({ ...line, sortOrder: i }));
+  return [...renumbered, truckLine].map((line, i) => ({ ...line, sortOrder: i }));
 }
 
 const TH_MONTHS = [

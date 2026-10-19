@@ -19,6 +19,8 @@ import {
   toNumber,
   type LocationCode,
 } from "../lib/centralMemo";
+import { policeRankIndex } from "../lib/allowanceDocs";
+import { cargoSequenceNum, compareConvoyOrder } from "../lib/missionConvoyOrder";
 import {
   MISSION_PERSONNEL_TABS,
   missionPersonnelTabByCategory,
@@ -214,34 +216,13 @@ function renumber(rows: string[][]) {
   return rows.map((r, i) => [String(i + 1), ...r.slice(1)]);
 }
 
-/**
- * ลำดับรูปขบวนขาไป:
- * ส่วนล่วงหน้า → นำขบวน → ประสานท้องที่ → คุ้มกันหน้า → สินค้า 1..n → คุ้มกันหลัง → ปิดท้าย → หัวลากสำรอง
- */
-function convoyFormationRank(formation: string): [number, number] {
-  const f = formation.replace(/^รถ/, "").trim();
-  if (/ส่วนล่วงหน้า/.test(f)) return [10, 0];
-  if (/นำขบวน/.test(f)) return [20, 0];
-  if (/ประสาน/.test(f)) return [30, 0];
-  if (/คุ้มกันหน้า|กำกับ/.test(f) && !/หลัง/.test(f)) return [40, 0];
-  if (/สินค้า/.test(f) && !/หัวลาก/.test(f)) {
-    const n = Number(f.match(/(\d+)/)?.[1] ?? 0);
-    return [50, n];
-  }
-  if (/คุ้มกันหลัง/.test(f)) return [60, 0];
-  if (/ปิดท้าย/.test(f)) return [70, 0];
-  if (/หัวลาก/.test(f)) return [80, 0];
-  if (/ยังไม่ระบุ/.test(f)) return [95, 0];
-  // อื่นๆ (เช่น วิทยุ) — หลังคุ้มกันหน้า ก่อนสินค้า
-  return [45, 0];
-}
-
 function sortConvoyRows(rows: string[][]) {
-  return [...rows].sort((a, b) => {
-    const [ga, sa] = convoyFormationRank(a[1] ?? "");
-    const [gb, sb] = convoyFormationRank(b[1] ?? "");
-    return ga - gb || sa - sb || (a[1] ?? "").localeCompare(b[1] ?? "", "th");
-  });
+  return [...rows].sort((a, b) =>
+    compareConvoyOrder(
+      { roleName: a[1] ?? "", callSign: a[2] ?? "" },
+      { roleName: b[1] ?? "", callSign: b[2] ?? "" },
+    ),
+  );
 }
 
 function sumCol(rows: string[][], col: number) {
@@ -280,6 +261,20 @@ function tabLabel(key: MissionPersonnelTabKey) {
   return MISSION_PERSONNEL_TABS.find((t) => t.key === key)?.label ?? key;
 }
 
+/** เรียงยศสูง→ต่ำ (กองปราบ / ทางหลวง / ปฏิบัติการพิเศษ) */
+function byPoliceRank(a: MemoPerson, b: MemoPerson) {
+  return (
+    policeRankIndex(a.rank ?? "") - policeRankIndex(b.rank ?? "") ||
+    personName(a).localeCompare(personName(b), "th")
+  );
+}
+
+function sortPeopleForTab(people: MemoPerson[], key: MissionPersonnelTabKey) {
+  const list = people.slice();
+  if (key === "crime" || key === "highway" || key === "special") return list.sort(byPoliceRank);
+  return list.sort((a, b) => personName(a).localeCompare(personName(b), "th"));
+}
+
 /** ลายนิ้วมือจากคน/หน้าที่/ประจำรถ/ยานพาหนะ ที่บันทึกในภารกิจ */
 function missionCrewSig(s: MissionSummary) {
   const people = (s.personnel ?? [])
@@ -293,7 +288,7 @@ function missionCrewSig(s: MissionSummary) {
     .map((v) => `${v.vehicleId}|${v.roleName}|${v.callSign ?? ""}|${v.licensePlate}`)
     .sort()
     .join(";");
-  return `v5:${people}#${vehicles}`;
+  return `v7:${people}#${vehicles}`;
 }
 
 /** ขยายชื่อหน้าที่สั้นให้ตรงรูปแบบบันทึก — นอกนั้นใช้ชื่อหน้าที่ที่บันทึกในภารกิจ */
@@ -335,7 +330,8 @@ function buildConvoySeats(opts: {
   truckLabel: string;
 }): { seats: ConvoySeat[]; seatOf: Map<string, ConvoySeat>; unseated: MemoPerson[] } {
   const { people, vehicles, totalContainers, spare, truckLabel } = opts;
-  const cargoVehicles = vehicles.filter((v) => isCargoVehicleRole(v.roleName));
+  const goodsVehicles = vehicles.filter((v) => /สินค้า/.test(v.roleName) && !/หัวลาก/.test(v.roleName));
+  const spareVehicles = vehicles.filter((v) => /หัวลาก/.test(v.roleName));
   const escortVehicles = vehicles.filter((v) => !isCargoVehicleRole(v.roleName));
 
   const seats: ConvoySeat[] = escortVehicles.map((v) => ({
@@ -348,18 +344,25 @@ function buildConvoySeats(opts: {
     people: [],
   }));
 
-  if (cargoVehicles.length) {
-    for (const v of cargoVehicles) {
+  // รถสินค้าจากภารกิจ — เรียงตามเลขในนามเรียกขาน แล้วตั้งรูปขบวนเป็น สินค้า 1..n
+  if (goodsVehicles.length) {
+    const ordered = [...goodsVehicles].sort((a, b) => {
+      const na = cargoSequenceNum(a.callSign ?? "", a.roleName) ?? Number.POSITIVE_INFINITY;
+      const nb = cargoSequenceNum(b.callSign ?? "", b.roleName) ?? Number.POSITIVE_INFINITY;
+      if (na !== nb) return na - nb;
+      return (a.callSign || a.licensePlate || "").localeCompare(b.callSign || b.licensePlate || "", "th");
+    });
+    ordered.forEach((v, i) => {
       seats.push({
         key: v.vehicleId,
-        formation: v.roleName.replace(/^รถ/, "") || "สินค้า",
+        formation: `สินค้า ${i + 1}`,
         callSign: v.callSign?.trim() || v.licensePlate || "",
         vehicleRole: v.roleName,
         defaultUnit: truckLabel,
         isCargo: true,
         people: [],
       });
-    }
+    });
   } else {
     for (let i = 1; i <= totalContainers; i++) {
       seats.push({
@@ -372,6 +375,25 @@ function buildConvoySeats(opts: {
         people: [],
       });
     }
+  }
+
+  if (spareVehicles.length) {
+    const orderedSpare = [...spareVehicles].sort((a, b) =>
+      (a.callSign || a.licensePlate || "").localeCompare(b.callSign || b.licensePlate || "", "th"),
+    );
+    orderedSpare.forEach((v, i) => {
+      seats.push({
+        key: v.vehicleId,
+        formation: orderedSpare.length > 1 ? `หัวลากสำรอง ${i + 1}` : "หัวลากสำรอง",
+        callSign: v.callSign?.trim() || v.licensePlate || "",
+        vehicleRole: v.roleName,
+        defaultUnit: truckLabel,
+        isCargo: true,
+        people: [],
+      });
+    });
+  } else if (!goodsVehicles.length || spare > 0) {
+    // ไม่มีรถหัวลากในรายการยานพาหนะ — สร้างแถวตามจำนวนหัวลากสำรองในฟอร์ม
     for (let i = 1; i <= spare; i++) {
       seats.push({
         key: `spare-${i}`,
@@ -543,7 +565,8 @@ export function MissionTravelPlanMemoPage() {
     }
 
     const convoyRows: string[][] = seats.map((s) => {
-      const names = s.people.map((p) => personName(p));
+      const crew = s.people.slice().sort(byPoliceRank);
+      const names = crew.map((p) => personName(p));
       // แถวสินค้า: ใช้ชื่อจากแท็บขับรถสินค้า — ถ้ายังไม่มีรายชื่อ คงรูปแบบเดิมคันละ 2 คน (B&W)
       if (s.isCargo && !names.length) {
         return ["", s.formation, s.callSign, settings.truckLabel, "2", ""];
@@ -553,7 +576,7 @@ export function MissionTravelPlanMemoPage() {
         "",
         s.formation,
         s.callSign,
-        s.isCargo ? settings.truckLabel : unitForCrew(s.people, s.defaultUnit),
+        s.isCargo ? settings.truckLabel : unitForCrew(crew, s.defaultUnit),
         count ? String(count) : "",
         names.join("\n"),
       ];
@@ -568,11 +591,12 @@ export function MissionTravelPlanMemoPage() {
     for (const key of ["bot", "crime", "highway", "special", "driver"] as MissionPersonnelTabKey[]) {
       const group = leftoverByTab.get(key);
       if (!group?.length) continue;
+      const ordered = sortPeopleForTab(group, key);
       const unit =
         key === "bot" ? "ฝรภ." : key === "driver" ? settings.truckLabel : tabLabel(key);
       const formation =
         key === "bot" ? "ฝรภ. (ยังไม่ระบุคัน)" : key === "driver" ? "ขับรถสินค้า (ยังไม่ระบุคัน)" : tabLabel(key);
-      convoyRows.push(["", formation, "", unit, String(group.length), group.map((p) => personName(p)).join("\n")]);
+      convoyRows.push(["", formation, "", unit, String(ordered.length), ordered.map((p) => personName(p)).join("\n")]);
     }
 
     const convoyGo = renumber(sortConvoyRows(convoyRows));

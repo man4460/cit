@@ -6,6 +6,7 @@ import {
   computeEstimateTotals,
   lineCurrentAmount,
   lineKey,
+  normalizeEstimatePayoutMethods,
   POLICE_COUNT_AMOUNT_ITEM_CODES,
   type EstimateLineInput,
 } from "./missionEstimateTemplate.js";
@@ -31,28 +32,30 @@ function toNumStr(v: Prisma.Decimal | number | string | null | undefined): strin
 
 export function parseEstimateLines(raw: unknown): EstimateLineInput[] {
   if (!Array.isArray(raw)) return [];
-  return raw.map((row, i) => {
-    const r = row as EstimateLineInput;
-    return asPoliceCountAmountLine({
-      kind: r.kind === "GROUP" ? "GROUP" : "ITEM",
-      groupCode: r.groupCode ?? null,
-      itemCode: r.itemCode ?? null,
-      name: String(r.name ?? "").trim() || `รายการ ${i + 1}`,
-      payoutMethod: r.payoutMethod ?? null,
-      quantity: r.quantity ?? null,
-      unitPrice: r.unitPrice ?? null,
-      amount: r.amount ?? 0,
-      previousAmount: r.previousAmount ?? null,
-      qtyEditable: Boolean(r.qtyEditable),
-      rateEditable: Boolean(r.rateEditable),
-      amountEditable: r.amountEditable !== false,
-      includeInTotal: r.includeInTotal !== false,
-      isReserve: Boolean(r.isReserve),
-      expenseTypeName: r.expenseTypeName ?? null,
-      lineNote: typeof r.lineNote === "string" && r.lineNote.trim() ? r.lineNote.trim() : null,
-      sortOrder: typeof r.sortOrder === "number" ? r.sortOrder : i,
-    } satisfies EstimateLineInput);
-  });
+  return normalizeEstimatePayoutMethods(
+    raw.map((row, i) => {
+      const r = row as EstimateLineInput;
+      return asPoliceCountAmountLine({
+        kind: r.kind === "GROUP" ? "GROUP" : "ITEM",
+        groupCode: r.groupCode ?? null,
+        itemCode: r.itemCode ?? null,
+        name: String(r.name ?? "").trim() || `รายการ ${i + 1}`,
+        payoutMethod: r.payoutMethod ?? null,
+        quantity: r.quantity ?? null,
+        unitPrice: r.unitPrice ?? null,
+        amount: r.amount ?? 0,
+        previousAmount: r.previousAmount ?? null,
+        qtyEditable: Boolean(r.qtyEditable),
+        rateEditable: Boolean(r.rateEditable),
+        amountEditable: r.amountEditable !== false,
+        includeInTotal: r.includeInTotal !== false,
+        isReserve: Boolean(r.isReserve),
+        expenseTypeName: r.expenseTypeName ?? null,
+        lineNote: typeof r.lineNote === "string" && r.lineNote.trim() ? r.lineNote.trim() : null,
+        sortOrder: typeof r.sortOrder === "number" ? r.sortOrder : i,
+      } satisfies EstimateLineInput);
+    }),
+  );
 }
 
 function totalsFromLines(lines: EstimateLineInput[]) {
@@ -170,7 +173,7 @@ export function serializeEstimate(row: {
     approvalTotal: toNumStr(row.approvalTotal),
     createdAt: row.createdAt.toISOString(),
     updatedAt: row.updatedAt.toISOString(),
-    lines: row.lines.map(serializeLine),
+    lines: normalizeEstimatePayoutMethods(row.lines.map(serializeLine)),
     mission: row.mission
       ? {
           id: row.mission.id,
