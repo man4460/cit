@@ -207,10 +207,41 @@ function rowsHtml(rows: string[][], centerCols: number[]) {
     .join("");
 }
 
-const isCargoRow = (row: string[]) => /สินค้า|หัวลาก/.test(row[1] ?? "");
+/** แถวสินค้า (ตู้) — ใช้ตัดออกตอนขากลับ หัวลากสำรองยังอยู่ */
+const isGoodsCargoRow = (row: string[]) => /สินค้า/.test(row[1] ?? "") && !/หัวลาก/.test(row[1] ?? "");
 
 function renumber(rows: string[][]) {
   return rows.map((r, i) => [String(i + 1), ...r.slice(1)]);
+}
+
+/**
+ * ลำดับรูปขบวนขาไป:
+ * ส่วนล่วงหน้า → นำขบวน → ประสานท้องที่ → คุ้มกันหน้า → สินค้า 1..n → คุ้มกันหลัง → ปิดท้าย → หัวลากสำรอง
+ */
+function convoyFormationRank(formation: string): [number, number] {
+  const f = formation.replace(/^รถ/, "").trim();
+  if (/ส่วนล่วงหน้า/.test(f)) return [10, 0];
+  if (/นำขบวน/.test(f)) return [20, 0];
+  if (/ประสาน/.test(f)) return [30, 0];
+  if (/คุ้มกันหน้า|กำกับ/.test(f) && !/หลัง/.test(f)) return [40, 0];
+  if (/สินค้า/.test(f) && !/หัวลาก/.test(f)) {
+    const n = Number(f.match(/(\d+)/)?.[1] ?? 0);
+    return [50, n];
+  }
+  if (/คุ้มกันหลัง/.test(f)) return [60, 0];
+  if (/ปิดท้าย/.test(f)) return [70, 0];
+  if (/หัวลาก/.test(f)) return [80, 0];
+  if (/ยังไม่ระบุ/.test(f)) return [95, 0];
+  // อื่นๆ (เช่น วิทยุ) — หลังคุ้มกันหน้า ก่อนสินค้า
+  return [45, 0];
+}
+
+function sortConvoyRows(rows: string[][]) {
+  return [...rows].sort((a, b) => {
+    const [ga, sa] = convoyFormationRank(a[1] ?? "");
+    const [gb, sb] = convoyFormationRank(b[1] ?? "");
+    return ga - gb || sa - sb || (a[1] ?? "").localeCompare(b[1] ?? "", "th");
+  });
 }
 
 function sumCol(rows: string[][], col: number) {
@@ -262,7 +293,7 @@ function missionCrewSig(s: MissionSummary) {
     .map((v) => `${v.vehicleId}|${v.roleName}|${v.callSign ?? ""}|${v.licensePlate}`)
     .sort()
     .join(";");
-  return `v4:${people}#${vehicles}`;
+  return `v5:${people}#${vehicles}`;
 }
 
 /** ขยายชื่อหน้าที่สั้นให้ตรงรูปแบบบันทึก — นอกนั้นใช้ชื่อหน้าที่ที่บันทึกในภารกิจ */
@@ -544,7 +575,7 @@ export function MissionTravelPlanMemoPage() {
       convoyRows.push(["", formation, "", unit, String(group.length), group.map((p) => personName(p)).join("\n")]);
     }
 
-    const convoyGo = renumber(convoyRows);
+    const convoyGo = renumber(sortConvoyRows(convoyRows));
     const missingVehicleAssign = people.filter((p) => personTab(p) !== "driver" && !p.assignedVehicleId).length;
     const driverCount = people.filter((p) => personTab(p) === "driver").length;
 
@@ -626,7 +657,8 @@ export function MissionTravelPlanMemoPage() {
     setSettings((s) => ({ ...s, [k]: e.target.value }));
 
   const convoyGo = gen.convoyGo;
-  const convoyBack = renumber(convoyGo.filter((r) => !isCargoRow(r)));
+  // ขากลับ: ลำดับเดิม แต่ตัดเฉพาะแถวสินค้า (หัวลากสำรองยังอยู่)
+  const convoyBack = renumber(sortConvoyRows(convoyGo.filter((r) => !isGoodsCargoRow(r))));
   const staff = gen.staffRows;
   const external = gen.extRows;
 
