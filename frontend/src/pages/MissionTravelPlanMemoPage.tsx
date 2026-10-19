@@ -277,7 +277,6 @@ export function MissionTravelPlanMemoPage() {
           spareTractors: spare,
           returnLeader: director ? personName(director) : "",
           times: DEFAULT_TIMES,
-          overrides: {},
           ...(saved ?? {}),
           overrides,
           dataSig,
