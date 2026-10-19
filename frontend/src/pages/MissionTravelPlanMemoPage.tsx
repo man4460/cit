@@ -209,8 +209,11 @@ function rowsHtml(rows: string[][], centerCols: number[]) {
     .join("");
 }
 
-/** แถวสินค้า (ตู้) — ใช้ตัดออกตอนขากลับ หัวลากสำรองยังอยู่ */
+/** แถวสินค้า (ตู้) — ตัดออกตอนขากลับ */
 const isGoodsCargoRow = (row: string[]) => /สินค้า/.test(row[1] ?? "") && !/หัวลาก/.test(row[1] ?? "");
+
+/** แถวหัวลากสำรอง — ตัดออกตอนขากลับด้วย */
+const isSpareTractorRow = (row: string[]) => /หัวลาก/.test(row[1] ?? "");
 
 function renumber(rows: string[][]) {
   return rows.map((r, i) => [String(i + 1), ...r.slice(1)]);
@@ -681,8 +684,10 @@ export function MissionTravelPlanMemoPage() {
     setSettings((s) => ({ ...s, [k]: e.target.value }));
 
   const convoyGo = gen.convoyGo;
-  // ขากลับ: ลำดับเดิม แต่ตัดเฉพาะแถวสินค้า (หัวลากสำรองยังอยู่)
-  const convoyBack = renumber(sortConvoyRows(convoyGo.filter((r) => !isGoodsCargoRow(r))));
+  // ขากลับ: ลำดับเดิม แต่ตัดแถวสินค้าและหัวลากสำรอง
+  const convoyBack = renumber(
+    sortConvoyRows(convoyGo.filter((r) => !isGoodsCargoRow(r) && !isSpareTractorRow(r))),
+  );
   const staff = gen.staffRows;
   const external = gen.extRows;
 
