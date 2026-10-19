@@ -89,7 +89,7 @@ function serializeLine(line: {
 }) {
   return {
     sortOrder: line.sortOrder,
-    kind: line.kind,
+    kind: (line.kind === "GROUP" ? "GROUP" : "ITEM") as EstimateLineInput["kind"],
     groupCode: line.groupCode,
     itemCode: line.itemCode,
     name: line.name,
