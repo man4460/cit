@@ -30,11 +30,16 @@ import {
 } from "../lib/botAllowancePrint";
 import {
   blankCargoTruck,
+  cargoAssignId,
+  cargoAssignValue,
   cargoRowHasDocumentData,
   cargoSeatKey,
   cargoTruckCallSign,
   cargoTruckFilled,
+  cargoTruckSeatOptions,
+  findAssignedCargoTruck,
   isCargoDocImported,
+  isCargoVehicleRoleName,
   matchCargoDriverId,
   matchCargoRoleId,
   matchTractorVehicleId,
@@ -77,9 +82,9 @@ type PRow = {
   personnelRoleId: string;
   compensationRate: string;
   tabKey: MissionPersonnelTabKey;
-  /** รถประจำขาไป — ต้องอยู่ในรายการยานพาหนะของภารกิจ */
+  /** รถคุ้มกันขาไป — ต้องอยู่ในรายการยานพาหนะของภารกิจ ไม่ใช้กับรถสินค้า */
   assignedVehicleId?: string;
-  /** รถสินค้าจ้างเหมาขาไป (แท็บปฏิบัติการพิเศษ) */
+  /** รถสินค้าจ้างเหมาขาไป — ลิงก์จากขั้นข้อมูลรถสินค้าเท่านั้น */
   assignedCargoTruckId?: string;
   /** ขากลับโดยสารคันเดียวกับขาไป */
   returnVehicleSameAsGo?: boolean;
@@ -538,7 +543,12 @@ export function MissionFormPage() {
     return map;
   }, [vRows, vehicles]);
 
-  /** รถในภารกิจขึ้นก่อน — เลือกรถนอกรายการจะถูกเพิ่มเข้าขั้นยานพาหนะให้อัตโนมัติ */
+  const cargoTractorIds = useMemo(
+    () => new Set(cargoTruckRows.map((r) => r.tractorVehicleId).filter(Boolean)),
+    [cargoTruckRows],
+  );
+
+  /** รถคุ้มกันในภารกิจขึ้นก่อน — ไม่รวมหัวลากสินค้า (ลิงก์จากขั้นข้อมูลรถสินค้า) */
   const crewVehicleOptions = useMemo(() => {
     const withMissionLabel = (o: (typeof vehicleSearchOptions)[number]) => {
       const labeled = missionVehicleLabelById.get(o.value);
@@ -549,15 +559,27 @@ export function MissionFormPage() {
         keywords: `${o.keywords} ${labeled}`,
       };
     };
-    const inMission = vehicleSearchOptions.filter((o) => missionVehicleIds.has(o.value)).map(withMissionLabel);
-    const others = vehicleSearchOptions.filter((o) => !missionVehicleIds.has(o.value));
+    const escort = vehicleSearchOptions.filter((o) => !cargoTractorIds.has(o.value));
+    const inMission = escort.filter((o) => missionVehicleIds.has(o.value)).map(withMissionLabel);
+    const others = escort.filter((o) => !missionVehicleIds.has(o.value));
     return [...inMission, ...others];
-  }, [vehicleSearchOptions, missionVehicleIds, missionVehicleLabelById]);
+  }, [vehicleSearchOptions, missionVehicleIds, missionVehicleLabelById, cargoTractorIds]);
 
-  const cargoTractorIds = useMemo(
-    () => new Set(cargoTruckRows.map((r) => r.tractorVehicleId).filter(Boolean)),
-    [cargoTruckRows],
-  );
+  const cargoGoOptions = useMemo(() => {
+    const photoByVehicleId = new Map(
+      vehicleSearchOptions.flatMap((o) => (o.imageUrl ? [[o.value, o.imageUrl] as const] : [])),
+    );
+    return cargoTruckSeatOptions(cargoTruckRows).map((o) => {
+      const truck = cargoTruckRows.find((t) => cargoAssignValue(t.id) === o.value);
+      const photo = truck?.tractorVehicleId ? photoByVehicleId.get(truck.tractorVehicleId) : undefined;
+      return {
+        value: o.value,
+        label: o.label,
+        keywords: `${o.label} รถสินค้า`,
+        ...(photo ? { imageUrl: photo } : {}),
+      };
+    });
+  }, [cargoTruckRows, vehicleSearchOptions]);
 
   const crewByVehicle = useMemo(() => {
     const map = new Map<string, { go: string[]; ret: string[] }>();
@@ -571,24 +593,20 @@ export function MissionFormPage() {
       if (!r.personnelId) continue;
       const p = personnel.find((x) => x.id === r.personnelId);
       const name = p ? `${p.rank ? `${p.rank} ` : ""}${p.fullName}` : "—";
-      if (r.assignedVehicleId) add(r.assignedVehicleId, "go", name);
-      const onCargo = Boolean(r.assignedVehicleId && cargoTractorIds.has(r.assignedVehicleId));
+      const onCargo = Boolean(findAssignedCargoTruck(cargoTruckRows, r.assignedCargoTruckId, r.assignedVehicleId));
+      if (!onCargo && r.assignedVehicleId) add(r.assignedVehicleId, "go", name);
       const same = onCargo ? false : r.returnVehicleSameAsGo !== false;
       const retId = same ? r.assignedVehicleId ?? "" : r.assignedVehicleReturnId ?? "";
-      if (retId) add(retId, "ret", name);
+      if (retId && !cargoTractorIds.has(retId)) add(retId, "ret", name);
     }
     return map;
-  }, [pRows, personnel, cargoTractorIds]);
+  }, [pRows, personnel, cargoTractorIds, cargoTruckRows]);
 
   const crewByCargoTruck = useMemo(() => {
     const map = new Map<string, CargoCrewInfo[]>();
     for (const r of pRows) {
       if (!r.personnelId) continue;
-      const truck = cargoTruckRows.find(
-        (t) =>
-          (r.assignedVehicleId && t.tractorVehicleId === r.assignedVehicleId) ||
-          (r.assignedCargoTruckId && t.id === r.assignedCargoTruckId),
-      );
+      const truck = findAssignedCargoTruck(cargoTruckRows, r.assignedCargoTruckId, r.assignedVehicleId);
       if (!truck) continue;
       const p = personnel.find((x) => x.id === r.personnelId);
       const info: CargoCrewInfo = {
@@ -613,6 +631,12 @@ export function MissionFormPage() {
     [vehicleRoleMasters],
   );
 
+  const escortVehicleRoleMasters = useMemo(
+    () => vehicleRoleMasters.filter((r) => !isCargoVehicleRoleName(r.name)),
+    [vehicleRoleMasters],
+  );
+  const defaultEscortVehicleRoleId = escortVehicleRoleMasters[0]?.id ?? "";
+
   /** เรียงยานพาหนะตามลำดับรูปขบวน (ส่วนล่วงหน้า → … → สินค้า → คุ้มกันหลัง → ปิดท้าย → หัวลาก) */
   const orderVehicleRows = useCallback(
     (rows: VRow[]) => sortMissionVehicleRows(rows, vehicleRoleName),
@@ -632,14 +656,16 @@ export function MissionFormPage() {
       let next = prev;
       let changed = false;
       for (const item of items) {
-        if (!item.vehicleId || next.some((r) => r.vehicleId === item.vehicleId)) continue;
+        if (!item.vehicleId || cargoTractorIds.has(item.vehicleId)) continue;
+        if (isCargoVehicleRoleName(vehicleRoleName(item.vehicleRoleId ?? ""))) continue;
+        if (next.some((r) => r.vehicleId === item.vehicleId)) continue;
         const blank = next.findIndex((r) => !r.vehicleId);
         const row: VRow = {
           vehicleId: item.vehicleId,
           vehicleRoleId:
             item.vehicleRoleId ||
             (blank >= 0 ? next[blank].vehicleRoleId : "") ||
-            vehicleRoleMasters[0]?.id ||
+            defaultEscortVehicleRoleId ||
             "",
           fuelLiters: "",
           fuelType: "",
@@ -663,23 +689,55 @@ export function MissionFormPage() {
     ensureVehiclesInMission([{ vehicleId, ...extras }]);
   };
 
+  useEffect(() => {
+    setVRows((prev) => {
+      const next = prev.filter(
+        (r) =>
+          !r.vehicleId ||
+          (!cargoTractorIds.has(r.vehicleId) && !isCargoVehicleRoleName(vehicleRoleName(r.vehicleRoleId))),
+      );
+      if (next.length === prev.length) return prev;
+      return next.length
+        ? next
+        : [
+            {
+              vehicleId: "",
+              vehicleRoleId: defaultEscortVehicleRoleId,
+              fuelLiters: "",
+              fuelType: "",
+              fuelAmount: "",
+            },
+          ];
+    });
+  }, [cargoTractorIds, vehicleRoleName, defaultEscortVehicleRoleId]);
+
   const assignCrewVehicle = (idx: number, vehicleId: string, leg: "go" | "return" = "go") => {
+    const cargoId = cargoAssignId(vehicleId);
+    const cargoByTractor = !cargoId && vehicleId ? cargoTruckRows.find((t) => t.tractorVehicleId === vehicleId) : undefined;
     setPRows((prev) =>
       prev.map((r, i) => {
         if (i !== idx) return r;
-        if (leg === "return") return { ...r, assignedVehicleReturnId: vehicleId, returnVehicleSameAsGo: false };
-        const onCargo = Boolean(vehicleId && cargoTractorIds.has(vehicleId));
+        if (leg === "return") {
+          if (cargoId || cargoByTractor) return r;
+          return { ...r, assignedVehicleReturnId: vehicleId, returnVehicleSameAsGo: false };
+        }
+        if (cargoId || cargoByTractor) {
+          return {
+            ...r,
+            assignedVehicleId: "",
+            assignedCargoTruckId: cargoId || cargoByTractor?.id || "",
+            returnVehicleSameAsGo: false,
+          };
+        }
         return {
           ...r,
           assignedVehicleId: vehicleId,
-          assignedCargoTruckId: onCargo
-            ? (cargoTruckRows.find((t) => t.tractorVehicleId === vehicleId)?.id ?? "")
-            : "",
-          returnVehicleSameAsGo: onCargo ? false : r.returnVehicleSameAsGo,
+          assignedCargoTruckId: "",
+          returnVehicleSameAsGo: r.returnVehicleSameAsGo,
         };
       }),
     );
-    if (vehicleId) ensureVehicleInMission(vehicleId);
+    if (vehicleId && !cargoId && !cargoByTractor) ensureVehicleInMission(vehicleId);
   };
 
   const applyCargoDocument = async (file: File) => {
@@ -723,17 +781,6 @@ export function MissionFormPage() {
         return row;
       });
       setCargoTruckRows(next.length ? next : [blankCargoTruck()]);
-      const goodsRoleId = vehicleRoleMasters.find((r) => r.name === "สินค้า")?.id;
-      const spareRoleId = vehicleRoleMasters.find((r) => r.name === "หัวลากสำรอง")?.id;
-      ensureVehiclesInMission(
-        next
-          .filter((r) => r.tractorVehicleId)
-          .map((r) => ({
-            vehicleId: r.tractorVehicleId,
-            vehicleRoleId: /หัวลาก/.test(r.role) ? spareRoleId : goodsRoleId,
-            callSign: r.role,
-          })),
-      );
       const matchedHead = next.filter((r) => r.tractorVehicleId || r.tractorPlate.trim()).length;
       const added = result.createdPersonnel?.length ?? 0;
       const addedVehicles = result.createdVehicles?.length ?? 0;
@@ -864,7 +911,7 @@ export function MissionFormPage() {
     }
     setPersonnelTab("bot");
     setVRows([
-      { vehicleId: "", vehicleRoleId: vehicleRoleMasters[0]?.id ?? "", fuelLiters: "", fuelType: "", fuelAmount: "" },
+      { vehicleId: "", vehicleRoleId: defaultEscortVehicleRoleId, fuelLiters: "", fuelType: "", fuelAmount: "" },
     ]);
     setFuelPrices({ GASOLINE: "", DIESEL: "" });
     setDRows([{ address: "", cargoValue: "0", containerCount: 1 }]);
@@ -872,7 +919,7 @@ export function MissionFormPage() {
     setVendorDrafts({});
     estimateRef.current?.reset();
     actualExpenseRef.current?.reset();
-  }, [personnelRoleMasters, vehicleRoleMasters, cargoRoleMasters]);
+  }, [personnelRoleMasters, vehicleRoleMasters, cargoRoleMasters, defaultEscortVehicleRoleId]);
 
   const closeForm = useCallback(() => {
     navigate("/missions");
@@ -931,17 +978,15 @@ export function MissionFormPage() {
       const mappedPeople = personRows.map((p) => {
         const person = personnel.find((x) => x.id === p.personnelId);
         const tabKey = missionPersonnelTabByCategory(person?.personnelCategory?.name) ?? "bot";
-        const cargo = savedTrucks.find((t) => t.id === p.assignedCargoTruckId);
-        const goVehicleId = p.assignedVehicleId || cargo?.tractorVehicleId || "";
-        const onCargo = Boolean(goVehicleId && savedTrucks.some((t) => t.tractorVehicleId === goVehicleId));
+        const cargo = findAssignedCargoTruck(savedTrucks, p.assignedCargoTruckId, p.assignedVehicleId);
         return {
           personnelId: p.personnelId,
           personnelRoleId: p.personnelRoleId,
           compensationRate: String(p.compensationRate ?? "0"),
           tabKey,
-          assignedVehicleId: goVehicleId,
-          assignedCargoTruckId: cargo?.id ?? p.assignedCargoTruckId ?? "",
-          returnVehicleSameAsGo: onCargo ? false : p.returnVehicleSameAsGo !== false,
+          assignedVehicleId: cargo ? "" : (p.assignedVehicleId ?? ""),
+          assignedCargoTruckId: cargo?.id ?? "",
+          returnVehicleSameAsGo: cargo ? false : p.returnVehicleSameAsGo !== false,
           assignedVehicleReturnId: p.assignedVehicleReturnId ?? "",
         };
       });
@@ -981,38 +1026,25 @@ export function MissionFormPage() {
         }
       }
       setPersonnelTab("bot");
-      const loadedVRows: VRow[] = vehicleRows.length
-        ? vehicleRows.map((v) => ({
-            vehicleId: v.vehicleId,
-            vehicleRoleId: v.vehicleRoleId,
-            fuelLiters: v.fuelLiters != null && v.fuelLiters !== "" ? String(v.fuelLiters) : "",
-            fuelType: (v.fuelType === "GASOLINE" || v.fuelType === "DIESEL" ? v.fuelType : "") as MissionVehicleFuelTypeUi,
-            fuelAmount: v.fuelAmount != null && v.fuelAmount !== "" ? String(v.fuelAmount) : "",
-            callSign: v.callSign ?? "",
-          }))
-        : [];
-      const cargoRoleId =
-        vehicleRoleMasters.find((r) => r.name === "สินค้า")?.id ??
-        vehicleRoleMasters.find((r) => r.name === "หัวลากสำรอง")?.id ??
-        vehicleRoleMasters[0]?.id ??
-        "";
-      for (const t of savedTrucks) {
-        if (!t.tractorVehicleId || loadedVRows.some((r) => r.vehicleId === t.tractorVehicleId)) continue;
-        loadedVRows.push({
-          vehicleId: t.tractorVehicleId,
-          vehicleRoleId: /หัวลาก/.test(t.role)
-            ? (vehicleRoleMasters.find((r) => r.name === "หัวลากสำรอง")?.id ?? cargoRoleId)
-            : cargoRoleId,
-          fuelLiters: "",
-          fuelType: "",
-          fuelAmount: "",
-          callSign: t.role,
-        });
-      }
+      const cargoTractorSet = new Set(savedTrucks.map((t) => t.tractorVehicleId).filter(Boolean));
+      const loadedVRows: VRow[] = vehicleRows
+        .filter(
+          (v) =>
+            !cargoTractorSet.has(v.vehicleId) &&
+            !isCargoVehicleRoleName(vehicleRoleMasters.find((r) => r.id === v.vehicleRoleId)?.name),
+        )
+        .map((v) => ({
+          vehicleId: v.vehicleId,
+          vehicleRoleId: v.vehicleRoleId,
+          fuelLiters: v.fuelLiters != null && v.fuelLiters !== "" ? String(v.fuelLiters) : "",
+          fuelType: (v.fuelType === "GASOLINE" || v.fuelType === "DIESEL" ? v.fuelType : "") as MissionVehicleFuelTypeUi,
+          fuelAmount: v.fuelAmount != null && v.fuelAmount !== "" ? String(v.fuelAmount) : "",
+          callSign: v.callSign ?? "",
+        }));
       if (!loadedVRows.length) {
         loadedVRows.push({
           vehicleId: "",
-          vehicleRoleId: vehicleRoleMasters[0]?.id ?? "",
+          vehicleRoleId: defaultEscortVehicleRoleId,
           fuelLiters: "",
           fuelType: "",
           fuelAmount: "",
@@ -1040,7 +1072,7 @@ export function MissionFormPage() {
         : [{ policeStationId: "", amount: "0", estimateItemCode: "2.4" }];
       setPsRows(expandSpecialOpsStationRows(mappedStations, policeStationMasters));
     },
-    [personnel, personnelRoleMasters, vehicleRoleMasters, cargoRoleMasters, policeStationMasters, orderVehicleRows, vehicles],
+    [personnel, personnelRoleMasters, vehicleRoleMasters, cargoRoleMasters, policeStationMasters, orderVehicleRows, vehicles, defaultEscortVehicleRoleId],
   );
 
   useEffect(() => {
@@ -1092,7 +1124,12 @@ export function MissionFormPage() {
     const cargoTrucksPayload = cargoTruckRows
       .map((r, i) => ({ ...r, sortOrder: i }))
       .filter(cargoTruckFilled);
-    const vehiclesOrdered = orderVehicleRows(vRows).filter((r) => r.vehicleId && r.vehicleRoleId);
+    const vehiclesOrdered = orderVehicleRows(vRows).filter((r) => {
+      if (!r.vehicleId || !r.vehicleRoleId) return false;
+      if (cargoTractorIds.has(r.vehicleId)) return false;
+      if (isCargoVehicleRoleName(vehicleRoleName(r.vehicleRoleId))) return false;
+      return true;
+    });
     const vehiclesById = new Map<string, VRow>();
     for (const r of vehiclesOrdered) {
       if (!vehiclesById.has(r.vehicleId)) vehiclesById.set(r.vehicleId, r);
@@ -1144,13 +1181,12 @@ export function MissionFormPage() {
       plannedStart: plannedStart || null,
       plannedEnd: plannedEnd || null,
       personnel: personnelPayload.map((r) => {
+        const cargo = findAssignedCargoTruck(cargoTrucksPayload, r.assignedCargoTruckId, r.assignedVehicleId);
+        const cargoId = cargo?.id ?? null;
         const go =
-          r.assignedVehicleId && vehiclesById.has(r.assignedVehicleId) ? r.assignedVehicleId : null;
-        const cargoId =
-          (go && cargoTrucksPayload.find((t) => t.tractorVehicleId === go)?.id) ||
-          (r.assignedCargoTruckId && cargoTrucksPayload.some((t) => t.id === r.assignedCargoTruckId)
-            ? r.assignedCargoTruckId
-            : null);
+          cargoId || !(r.assignedVehicleId && vehiclesById.has(r.assignedVehicleId))
+            ? null
+            : r.assignedVehicleId;
         const same = cargoId ? false : tabUsesGoReturnVehicles(r.tabKey) ? r.returnVehicleSameAsGo !== false : true;
         const ret =
           !same && r.assignedVehicleReturnId && vehiclesById.has(r.assignedVehicleReturnId)
@@ -1653,15 +1689,6 @@ export function MissionFormPage() {
                           setCargoTruckRows((cur) =>
                             cur.map((r, i) => (i === idx ? withCargoTractor(r, vehicleId, vehicle) : r)),
                           );
-                          if (vehicleId) {
-                            const cargoRoleId = /หัวลาก/.test(row.role)
-                              ? vehicleRoleMasters.find((r) => r.name === "หัวลากสำรอง")?.id
-                              : vehicleRoleMasters.find((r) => r.name === "สินค้า")?.id;
-                            ensureVehicleInMission(vehicleId, {
-                              vehicleRoleId: cargoRoleId,
-                              callSign: row.role,
-                            });
-                          }
                         };
                         const riders = crewByCargoTruck.get(cargoSeatKey(row)) ?? [];
                         const driverCount = [row.driver1Name, row.driver2Name].filter((n) => n.trim()).length;
@@ -1894,7 +1921,9 @@ export function MissionFormPage() {
 
                 {tabUsesGoReturnVehicles(personnelTab) ? (
                   <p className="text-[11px] text-slate-500">
-                    {personnelTab === "special" ? "ขาไปนั่งรถสินค้าได้ · ขากลับเลือกจากยานพาหนะ" : "ประจำรถขาไป / ขากลับ"}
+                    {personnelTab === "special"
+                      ? "ขาไปเลือกจากข้อมูลรถสินค้า · ขากลับเลือกจากยานพาหนะคุ้มกัน"
+                      : "ประจำรถขาไป / ขากลับ"}
                   </p>
                 ) : null}
 
@@ -1908,9 +1937,9 @@ export function MissionFormPage() {
                         <button
                           type="button"
                           className="normal-case tracking-normal text-[#0000BF] hover:underline"
-                          onClick={() => setStep(STEP_VEHICLES)}
+                          onClick={() => setStep(personnelTab === "special" ? STEP_CARGO : STEP_VEHICLES)}
                         >
-                          ไปยานพาหนะ →
+                          {personnelTab === "special" ? "ไปรถสินค้า →" : "ไปยานพาหนะ →"}
                         </button>
                       </span>
                       <span className="text-center normal-case tracking-normal">เหมือนขาไป</span>
@@ -1948,16 +1977,25 @@ export function MissionFormPage() {
                     ) : (
                       pRowsInActiveTab.map(({ row, index: idx }) => {
                         const dual = tabUsesGoReturnVehicles(row.tabKey);
-                        const onCargo = Boolean(
-                          row.assignedVehicleId && cargoTractorIds.has(row.assignedVehicleId),
+                        const cargoGo = findAssignedCargoTruck(
+                          cargoTruckRows,
+                          row.assignedCargoTruckId,
+                          row.assignedVehicleId,
                         );
+                        const onCargo = Boolean(cargoGo);
                         const sameReturn = onCargo ? false : row.returnVehicleSameAsGo !== false;
-                        const goVehicleValue = row.assignedVehicleId ?? "";
+                        const goVehicleValue = cargoGo
+                          ? cargoAssignValue(cargoGo.id)
+                          : (row.assignedVehicleId ?? "");
+                        const goOptions =
+                          row.tabKey === "special"
+                            ? [...cargoGoOptions, ...crewVehicleOptions]
+                            : crewVehicleOptions;
                         const returnVehicleId = sameReturn
                           ? row.assignedVehicleId ?? ""
                           : row.assignedVehicleReturnId ?? "";
                         const goInvalid = Boolean(
-                          row.assignedVehicleId && !missionVehicleIds.has(row.assignedVehicleId),
+                          !onCargo && row.assignedVehicleId && !missionVehicleIds.has(row.assignedVehicleId),
                         );
                         return (
                         <li
@@ -2012,8 +2050,8 @@ export function MissionFormPage() {
                           <SearchableSelect
                             value={goVehicleValue}
                             onChange={(v) => assignCrewVehicle(idx, v, "go")}
-                            options={crewVehicleOptions}
-                            emptyLabel="— ไม่ระบุ —"
+                            options={goOptions}
+                            emptyLabel={row.tabKey === "special" ? "— รถสินค้า / ยานพาหนะ —" : "— ไม่ระบุ —"}
                             allowEmpty
                             aria-label={dual ? `ประจำรถขาไปแถว ${idx + 1}` : `ประจำรถแถว ${idx + 1}`}
                             inputClassName={`w-full rounded-md border bg-white px-2 py-1 text-sm text-slate-900 ${
@@ -2314,7 +2352,9 @@ export function MissionFormPage() {
             {step === STEP_VEHICLES && (
               <div className="space-y-3">
                 <div className="flex flex-wrap items-center justify-between gap-2">
-                  <p className="text-[11px] text-slate-600">กรอกค่าน้ำมันแต่ละคัน — ระบบคำนวณลิตรตามชนิดน้ำมัน</p>
+                  <p className="text-[11px] text-slate-600">
+                    รถคุ้มกันในภารกิจ — กรอกค่าน้ำมันแต่ละคัน · รถสินค้ากรอกที่ขั้นข้อมูลรถสินค้า
+                  </p>
                   <button
                     type="button"
                     className="shrink-0 rounded-lg border border-slate-200 px-2.5 py-1 text-xs font-medium text-[#4d47b6] hover:bg-slate-100"
@@ -2372,7 +2412,9 @@ export function MissionFormPage() {
                             next[idx] = { ...row, vehicleId: v };
                             setVRows(orderVehicleRows(next));
                           }}
-                          options={vehicleSearchOptions}
+                          options={vehicleSearchOptions.filter(
+                            (o) => o.value === row.vehicleId || !cargoTractorIds.has(o.value),
+                          )}
                           emptyLabel="— เลือก —"
                           allowEmpty
                           aria-label={`ยานพาหนะแถว ${idx + 1}`}
@@ -2389,7 +2431,10 @@ export function MissionFormPage() {
                           }}
                         >
                           <option value="">—</option>
-                          {vehicleRoleMasters.map((r) => (
+                          {(isCargoVehicleRoleName(vehicleRoleName(row.vehicleRoleId))
+                            ? vehicleRoleMasters
+                            : escortVehicleRoleMasters
+                          ).map((r) => (
                             <option key={r.id} value={r.id}>
                               {r.name}
                             </option>
@@ -2499,7 +2544,7 @@ export function MissionFormPage() {
                       ...vRows,
                       {
                         vehicleId: "",
-                        vehicleRoleId: vehicleRoleMasters[0]?.id ?? "",
+                        vehicleRoleId: defaultEscortVehicleRoleId,
                         fuelLiters: "",
                         fuelType: "",
                         fuelAmount: "",

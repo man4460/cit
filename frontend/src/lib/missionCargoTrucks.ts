@@ -73,6 +73,26 @@ export function cargoAssignId(value: string): string | null {
   return id || null;
 }
 
+/** บทบาทยานพาหนะของภารกิจที่เป็นรถสินค้า/หัวลาก — ต้องอยู่ที่ขั้นข้อมูลรถสินค้า ไม่ใช่ขั้นยานพาหนะ */
+export function isCargoVehicleRoleName(name?: string | null): boolean {
+  return /สินค้า|หัวลาก/.test(name ?? "");
+}
+
+export function findAssignedCargoTruck(
+  trucks: Array<Pick<CargoTruckRow, "id" | "tractorVehicleId">>,
+  assignedCargoTruckId?: string | null,
+  assignedVehicleId?: string | null,
+): (typeof trucks)[number] | undefined {
+  if (assignedCargoTruckId) {
+    const hit = trucks.find((t) => t.id === assignedCargoTruckId);
+    if (hit) return hit;
+  }
+  if (assignedVehicleId) {
+    return trucks.find((t) => t.tractorVehicleId && t.tractorVehicleId === assignedVehicleId);
+  }
+  return undefined;
+}
+
 export function blankCargoTruck(role = "", roleId = ""): CargoTruckRow {
   return {
     id: newCargoTruckId(),

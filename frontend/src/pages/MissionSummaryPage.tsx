@@ -12,6 +12,8 @@ import {
   cargoTruckDriverNames,
   cargoTruckFilled,
   cargoTruckSeatOptions,
+  findAssignedCargoTruck,
+  isCargoVehicleRoleName,
   toCargoTruckForm,
 } from "../lib/missionCargoTrucks";
 import { compareConvoyOrder } from "../lib/missionConvoyOrder";
@@ -235,15 +237,14 @@ export function MissionSummaryPage() {
 
   const personnel = sortSummaryPersonnel(summary.personnel ?? []);
   const personnelGroups = groupPersonnelByTab(personnel);
-  const vehicles = sortSummaryVehicles(summary.vehicles ?? []);
   const cargoTrucks = (summary.cargoTrucks ?? []).map(toCargoTruckForm).filter(cargoTruckFilled);
+  const cargoTractorIds = new Set(cargoTrucks.map((t) => t.tractorVehicleId).filter(Boolean));
+  const vehicles = sortSummaryVehicles(summary.vehicles ?? []).filter(
+    (v) => !cargoTractorIds.has(v.vehicleId) && !isCargoVehicleRoleName(v.roleName),
+  );
   const cargoRiders = new Map<string, string[]>();
   for (const p of personnel) {
-    const truck = cargoTrucks.find(
-      (t) =>
-        (p.assignedVehicleId && t.tractorVehicleId === p.assignedVehicleId) ||
-        (p.assignedCargoTruckId && t.id === p.assignedCargoTruckId),
-    );
+    const truck = findAssignedCargoTruck(cargoTrucks, p.assignedCargoTruckId, p.assignedVehicleId);
     if (!truck) continue;
     cargoRiders.set(truck.id, [...(cargoRiders.get(truck.id) ?? []), personDisplayName(p)]);
   }

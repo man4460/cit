@@ -27,6 +27,7 @@ import {
   cargoTruckDriverCount,
   cargoTruckDriverNames,
   cargoTruckFilled,
+  findAssignedCargoTruck,
   isSpareCargoTractor,
   toCargoTruckForm,
   type CargoTruckRow,
@@ -484,12 +485,12 @@ function buildConvoySeats(opts: {
   const byKey = new Map(seats.map((s) => [s.key, s]));
   const seated = new Set<string>();
 
-  // 1) ประจำรถขาไป/ขากลับตามที่บันทึกในหน้าแก้ไขภารกิจ
+  // 1) ประจำรถขาไป/ขากลับตามที่บันทึกในหน้าแก้ไขภารกิจ — รถสินค้าลิงก์จากข้อมูลรถสินค้าเท่านั้น
   for (const p of people) {
-    if (leg === "go" && p.assignedCargoTruckId) {
-      const byCargoId = filledTrucks.find((t) => t.id === p.assignedCargoTruckId);
-      const cargoSeat = byKey.get(byCargoId ? cargoSeatKey(byCargoId) : p.assignedCargoTruckId);
-      if (cargoSeat && !p.assignedVehicleId) {
+    if (leg === "go") {
+      const truck = findAssignedCargoTruck(filledTrucks, p.assignedCargoTruckId, p.assignedVehicleId);
+      const cargoSeat = truck ? byKey.get(cargoSeatKey(truck)) : undefined;
+      if (cargoSeat) {
         cargoSeat.people.push(p);
         seated.add(p.personnelId);
         continue;
