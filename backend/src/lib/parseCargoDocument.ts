@@ -82,7 +82,9 @@ export function matchVehicleByPlate(
   if (exact) return exact;
   return vehicles.find((v) => {
     const vp = compactPlate(v.licensePlate);
-    return vp.endsWith(compact) && compact.length >= 6;
+    if (!vp.endsWith(compact) || vp.length <= compact.length) return false;
+    const prefix = vp.slice(0, vp.length - compact.length);
+    return prefix.length > 0 && !/^\d+$/.test(prefix);
   });
 }
 
@@ -135,14 +137,27 @@ function takeAll(re: RegExp, text: string): { matches: string[]; rest: string } 
   return { matches, rest };
 }
 
+const BLOCK_HEADER_RE =
+  /^\s*(\d{1,2})\s+(\d{2}\s*[-–—]\s*\d{4})(?:\s+(\d{2}\s*[-–—]\s*\d{4}))?(?=\s|$|นาย|นาง)/;
+
 function parseTruckBlock(block: string): ParsedCargoTruck | null {
-  const ids = takeAll(ID_RE, block);
+  const header = block.match(BLOCK_HEADER_RE);
+  let tractorPlate = header ? formatCargoPlate(header[2]) : "";
+  let trailerPlate = header?.[3] ? formatCargoPlate(header[3]) : "";
+  const afterHeader = header ? block.slice(header[0].length) : block;
+  const ids = takeAll(ID_RE, afterHeader);
   const hyphenPhones = takeAll(PHONE_RE, ids.rest);
   const plainPhones = takeAll(PHONE_FALLBACK_RE, hyphenPhones.rest);
   const phones = [...hyphenPhones.matches, ...plainPhones.matches].map(formatCargoPhone);
-  const plates = takeAll(PLATE_RE, plainPhones.rest);
-  if (!plates.matches.length) return null;
-  const names = takeAll(NAME_RE, plates.rest);
+  const extraPlates = takeAll(PLATE_RE, plainPhones.rest);
+  if (!tractorPlate) {
+    tractorPlate = formatCargoPlate(extraPlates.matches[0] ?? "");
+    trailerPlate = formatCargoPlate(extraPlates.matches[1] ?? "");
+  } else if (!trailerPlate && extraPlates.matches[0]) {
+    trailerPlate = formatCargoPlate(extraPlates.matches[0]);
+  }
+  if (!tractorPlate) return null;
+  const names = takeAll(NAME_RE, extraPlates.rest);
   const noteBits: string[] = [];
   const drivers: ParsedCargoDriver[] = [];
   const n = Math.min(2, Math.max(names.matches.length, ids.matches.length, phones.length));
@@ -172,8 +187,8 @@ function parseTruckBlock(block: string): ParsedCargoTruck | null {
     .trim();
   if (leftover) noteBits.push(leftover);
   return {
-    tractorPlate: formatCargoPlate(plates.matches[0] ?? ""),
-    trailerPlate: formatCargoPlate(plates.matches[1] ?? ""),
+    tractorPlate,
+    trailerPlate,
     drivers,
     note: [...new Set(noteBits)].join(" ").slice(0, 120),
     role: "",

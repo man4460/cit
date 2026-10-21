@@ -23,11 +23,13 @@ import {
   CARGO_DOC_IMPORT_REMARK,
   cargoDriverRegistryName,
   digitsOnly,
+  formatCargoPlate,
   isCargoDocImportedRemarks,
   matchCargoDocumentPerson,
   matchVehicleByPlate,
   parseCargoDocumentText,
   type CargoDocumentPerson,
+  type CargoPlateVehicle,
 } from "../lib/parseCargoDocument.js";
 import { persistUpload, unlinkUploadFile, upload } from "../lib/upload.js";
 
@@ -1242,7 +1244,7 @@ missionsRouter.post(
         cargoCat = await prisma.personnelCategory.create({ data: { name: "ขับรถสินค้า", sortOrder: 1 } });
       }
 
-      const [vehicles, people] = await Promise.all([
+      const [vehicles, people, truckType, activeStatus] = await Promise.all([
         prisma.vehicle.findMany({ select: { id: true, licensePlate: true } }),
         prisma.personnel.findMany({
           where: { purgedAt: null },
@@ -1256,6 +1258,16 @@ missionsRouter.post(
             personnelCategory: { select: { id: true, name: true } },
           },
         }),
+        prisma.vehicleType.upsert({
+          where: { name: "รถบรรทุก" },
+          create: { name: "รถบรรทุก", sortOrder: 3 },
+          update: {},
+        }),
+        prisma.vehicleStatus.upsert({
+          where: { name: "ใช้งาน" },
+          create: { name: "ใช้งาน", sortOrder: 0 },
+          update: {},
+        }),
       ]);
       const peopleFlat: CargoDocumentPerson[] = people.map((p) => ({
         id: p.id,
@@ -1268,6 +1280,68 @@ missionsRouter.post(
       }));
 
       const createdPersonnel: CargoDocumentPerson[] = [];
+      const vehiclePool: CargoPlateVehicle[] = [...vehicles];
+      const createdVehicles: ReturnType<typeof serializeCargoImportedVehicle>[] = [];
+      const resolveTractor = async (plate: string) => {
+        const formatted = formatCargoPlate(plate);
+        if (!formatted) return { vehicle: null as CargoPlateVehicle | null, created: false };
+        const hit = matchVehicleByPlate(vehiclePool, formatted);
+        if (hit) return { vehicle: hit, created: false };
+        const makeRow = (v: {
+          id: string;
+          licensePlate: string;
+          brandModel: string;
+          brand: string;
+          model: string;
+          vehicleTypeId: string | null;
+          vehicleStatusId: string | null;
+          notes: string | null;
+        }) =>
+          serializeCargoImportedVehicle({
+            ...v,
+            vehicleType: truckType,
+            vehicleStatus: activeStatus,
+          });
+        try {
+          const created = await prisma.vehicle.create({
+            data: {
+              licensePlate: formatted,
+              brandModel: "หัวลากสินค้า",
+              brand: "B&W",
+              model: "หัวลาก",
+              vehicleTypeId: truckType.id,
+              vehicleStatusId: activeStatus.id,
+              notes: CARGO_DOC_IMPORT_REMARK,
+            },
+            select: {
+              id: true,
+              licensePlate: true,
+              brandModel: true,
+              brand: true,
+              model: true,
+              vehicleTypeId: true,
+              vehicleStatusId: true,
+              notes: true,
+            },
+          });
+          const slim = { id: created.id, licensePlate: created.licensePlate };
+          vehiclePool.push(slim);
+          createdVehicles.push(makeRow(created));
+          return { vehicle: slim, created: true };
+        } catch (e: unknown) {
+          if (e && typeof e === "object" && "code" in e && (e as { code: string }).code === "P2002") {
+            const existing = await prisma.vehicle.findUnique({
+              where: { licensePlate: formatted },
+              select: { id: true, licensePlate: true },
+            });
+            if (existing) {
+              if (!vehiclePool.some((v) => v.id === existing.id)) vehiclePool.push(existing);
+              return { vehicle: existing, created: false };
+            }
+          }
+          throw e;
+        }
+      };
       const resolveDriver = async (hint: { name: string; idNumber: string; phone: string } | undefined) => {
         if (!hint || (!hint.name.trim() && !hint.idNumber.trim())) {
           return { person: null as CargoDocumentPerson | null, unregistered: false };
@@ -1351,7 +1425,8 @@ missionsRouter.post(
       const trucks = [];
       for (let i = 0; i < parsed.length; i++) {
         const t = parsed[i];
-        const vehicle = t.tractorPlate ? matchVehicleByPlate(vehicles, t.tractorPlate) : undefined;
+        const tractor = t.tractorPlate ? await resolveTractor(t.tractorPlate) : { vehicle: null, created: false };
+        const vehicle = tractor.vehicle;
         if (t.tractorPlate && !vehicle) {
           warnings.push(`คันที่ ${i + 1} ทะเบียนหัว ${t.tractorPlate} ไม่พบในยานพาหนะ`);
         }
@@ -1410,6 +1485,7 @@ missionsRouter.post(
           insuranceExpiry: null,
           insuranceNotes: null,
         })),
+        createdVehicles,
         warnings,
         extractedChars: text.length,
       });
@@ -1829,6 +1905,47 @@ async function excludeCargoDriverPersonnel(arr: PersonnelIn[]): Promise<Personne
     roles.filter((r) => /พนักงานขับรถสินค้า|ขับรถสินค้า/.test(r.name)).map((r) => r.id),
   );
   return arr.filter((p) => !cargoPeople.has(p.personnelId) && !cargoRoles.has(p.personnelRoleId));
+}
+
+function serializeCargoImportedVehicle(v: {
+  id: string;
+  licensePlate: string;
+  brandModel: string;
+  brand: string;
+  model: string;
+  vehicleTypeId: string | null;
+  vehicleStatusId: string | null;
+  notes: string | null;
+  vehicleType: { id: string; name: string; sortOrder: number } | null;
+  vehicleStatus: {
+    id: string;
+    name: string;
+    sortOrder: number;
+    excludesFromFleetCare: boolean;
+  } | null;
+}) {
+  return {
+    id: v.id,
+    brandModel: v.brandModel,
+    brand: v.brand,
+    model: v.model,
+    licensePlate: v.licensePlate,
+    assetCode: null as string | null,
+    chassisNumber: null as string | null,
+    engineNumber: null as string | null,
+    color: null as string | null,
+    vehicleTypeId: v.vehicleTypeId,
+    vehicleType: v.vehicleType,
+    workCategoryGroupId: null as string | null,
+    workCategoryGroup: null,
+    vehicleStatusId: v.vehicleStatusId,
+    vehicleStatus: v.vehicleStatus,
+    notes: v.notes,
+    purchasedAt: null as string | null,
+    currentMileage: "0",
+    documents: [] as [],
+    _count: { documents: 0, maintenanceLogs: 0, fuelLogs: 0 },
+  };
 }
 
 function serializeCargoTruck(t: CargoTruckIn & { id?: string }) {

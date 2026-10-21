@@ -325,6 +325,7 @@ type CargoParseResult = {
   trucks: CargoTruckRow[];
   cargoRoles?: NameMasterRow[];
   createdPersonnel?: Personnel[];
+  createdVehicles?: Vehicle[];
   warnings?: string[];
 };
 
@@ -510,12 +511,15 @@ export function MissionFormPage() {
 
   const vehicleSearchOptions = useMemo(
     () =>
-      vehicles.map((v) => ({
-        value: v.id,
-        label: v.licensePlate,
-        keywords: `${v.brand ?? ""} ${v.model ?? ""} ${v.brandModel ?? ""} ${vehicleDisplayLabel(v)}`,
-        imageUrl: (v.documents ?? []).find((d) => d.kind === "PHOTO")?.fileUrl ?? null,
-      })),
+      vehicles.map((v) => {
+        const photo = (v.documents ?? []).find((d) => d.kind === "PHOTO")?.fileUrl;
+        return {
+          value: v.id,
+          label: v.licensePlate,
+          keywords: `${v.brand ?? ""} ${v.model ?? ""} ${v.brandModel ?? ""} ${vehicleDisplayLabel(v)}`,
+          ...(photo ? { imageUrl: photo } : {}),
+        };
+      }),
     [vehicles],
   );
 
@@ -698,12 +702,22 @@ export function MissionFormPage() {
           return [...prev, ...result.createdPersonnel!.filter((p) => !ids.has(p.id))];
         });
       }
+      if (result.createdVehicles?.length) {
+        setVehicles((prev) => {
+          const ids = new Set(prev.map((v) => v.id));
+          return [...prev, ...result.createdVehicles!.filter((v) => !ids.has(v.id))];
+        });
+      }
       const roles = result.cargoRoles?.length ? result.cargoRoles : cargoRoleMasters;
+      const vehiclePool = [...vehicles, ...(result.createdVehicles ?? [])];
       const next = (result.trucks ?? []).map((raw) => {
         let row = toCargoTruckForm(raw);
-        const tractorId = matchTractorVehicleId(vehicles, row.tractorVehicleId, row.tractorPlate);
-        const vehicle = vehicles.find((v) => v.id === tractorId);
+        const tractorId = matchTractorVehicleId(vehiclePool, row.tractorVehicleId, row.tractorPlate);
+        const vehicle = vehiclePool.find((v) => v.id === tractorId);
         if (tractorId) row = withCargoTractor(row, tractorId, vehicle);
+        else if (row.tractorVehicleId && !vehiclePool.some((v) => v.id === row.tractorVehicleId)) {
+          row = { ...row, tractorVehicleId: "" };
+        }
         const roleId = matchCargoRoleId(roles, row.roleId, row.role);
         if (roleId) row = withCargoRole(row, roleId, roles);
         return row;
@@ -720,11 +734,16 @@ export function MissionFormPage() {
             callSign: r.role,
           })),
       );
-      const matchedHead = next.filter((r) => r.tractorVehicleId).length;
+      const matchedHead = next.filter((r) => r.tractorVehicleId || r.tractorPlate.trim()).length;
       const added = result.createdPersonnel?.length ?? 0;
+      const addedVehicles = result.createdVehicles?.length ?? 0;
+      const extras = [
+        added ? `เพิ่มกำลังพลใหม่ ${added} คน` : "",
+        addedVehicles ? `เพิ่มหัวลากใหม่ ${addedVehicles} คัน` : "",
+      ].filter(Boolean);
       setCargoDocMsg(
-        added
-          ? `อ่านได้ ${next.length} คัน · จับคู่หัวลาก ${matchedHead}/${next.length} · เพิ่มกำลังพลใหม่ ${added} คน`
+        extras.length
+          ? `อ่านได้ ${next.length} คัน · จับคู่หัวลาก ${matchedHead}/${next.length} · ${extras.join(" · ")}`
           : `อ่านได้ ${next.length} คัน · จับคู่หัวลาก ${matchedHead}/${next.length}`,
       );
     } catch (e) {
@@ -1614,9 +1633,21 @@ export function MissionFormPage() {
                             r.id === row.id || !r.tractorVehicleId ? [] : [r.tractorVehicleId],
                           ),
                         );
-                        const tractorOpts = vehicleSearchOptions.filter(
-                          (o) => o.value === row.tractorVehicleId || !usedTractors.has(o.value),
-                        );
+                        const tractorOpts = [
+                          ...(row.tractorVehicleId &&
+                          !vehicleSearchOptions.some((o) => o.value === row.tractorVehicleId)
+                            ? [
+                                {
+                                  value: row.tractorVehicleId,
+                                  label: row.tractorPlate.trim() || row.tractorVehicleId,
+                                  keywords: row.tractorPlate,
+                                },
+                              ]
+                            : []),
+                          ...vehicleSearchOptions.filter(
+                            (o) => o.value === row.tractorVehicleId || !usedTractors.has(o.value),
+                          ),
+                        ];
                         const setTractor = (vehicleId: string) => {
                           const vehicle = vehicles.find((v) => v.id === vehicleId);
                           setCargoTruckRows((cur) =>
@@ -1698,7 +1729,7 @@ export function MissionFormPage() {
                               value={row.tractorVehicleId}
                               onChange={setTractor}
                               options={tractorOpts}
-                              emptyLabel="— หัวลาก —"
+                              emptyLabel={row.tractorPlate.trim() ? row.tractorPlate : "— หัวลาก —"}
                               allowEmpty
                               aria-label={`รถส่วนหัว คัน ${idx + 1}`}
                               inputClassName="mt-0.5 w-full rounded-md border border-slate-200 bg-white px-1.5 py-1 text-sm text-slate-900"
@@ -1712,7 +1743,7 @@ export function MissionFormPage() {
                             <input
                               aria-label={`ทะเบียนหางลาก คัน ${idx + 1}`}
                               className="mt-0.5 w-full rounded-md border border-slate-200 px-1.5 py-1 text-sm tabular-nums text-slate-900"
-                              placeholder="70-3311"
+                              placeholder="หางลาก"
                               value={row.trailerPlate}
                               onChange={(e) => patch({ trailerPlate: e.target.value })}
                             />
@@ -1737,7 +1768,7 @@ export function MissionFormPage() {
                             <input
                               aria-label={`หมายเหตุ คัน ${idx + 1}`}
                               className="mt-0.5 w-full rounded-md border border-slate-200 px-1.5 py-1 text-xs text-slate-800"
-                              placeholder="ผู้ควบคุม…"
+                              placeholder="หมายเหตุ"
                               value={row.note}
                               onChange={(e) => patch({ note: e.target.value })}
                             />

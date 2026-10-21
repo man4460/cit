@@ -293,12 +293,17 @@ export function matchTractorVehicleId(
   if (vehicleId && vehicles.some((v) => v.id === vehicleId)) return vehicleId;
   const raw = (plate ?? "").trim();
   if (!raw) return "";
-  const compact = raw.replace(/[\s-]/g, "").toLowerCase();
+  const compact = raw.replace(/[\s-–—]/g, "").toLowerCase();
   if (compact.length < 6) return "";
-  const hit =
-    vehicles.find((v) => v.licensePlate.replace(/[\s-]/g, "").toLowerCase() === compact) ??
-    vehicles.find((v) => v.licensePlate.replace(/[\s-]/g, "").toLowerCase().endsWith(compact));
-  return hit?.id ?? "";
+  const hit = vehicles.find((v) => v.licensePlate.replace(/[\s-–—]/g, "").toLowerCase() === compact);
+  if (hit) return hit.id;
+  const suffix = vehicles.find((v) => {
+    const vp = v.licensePlate.replace(/[\s-–—]/g, "").toLowerCase();
+    if (!vp.endsWith(compact) || vp.length <= compact.length) return false;
+    const prefix = vp.slice(0, vp.length - compact.length);
+    return prefix.length > 0 && !/^\d+$/.test(prefix);
+  });
+  return suffix?.id ?? "";
 }
 
 function inferredCargoRole(row: { role?: string | null; note?: string | null }): string {
@@ -313,8 +318,8 @@ export function toCargoTruckForm(row: Partial<CargoTruckRow> & { id?: string | n
   if (!row) return b;
   return {
     id: row.id?.trim() || b.id,
-    tractorVehicleId: row.tractorVehicleId ?? "",
-    tractorPlate: row.tractorPlate ?? "",
+    tractorVehicleId: (row.tractorVehicleId ?? "").trim(),
+    tractorPlate: (row.tractorPlate ?? "").trim(),
     trailerPlate: row.trailerPlate ?? "",
     roleId: row.roleId ?? "",
     role: inferredCargoRole(row),
