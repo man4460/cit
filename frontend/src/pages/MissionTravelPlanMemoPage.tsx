@@ -20,6 +20,17 @@ import {
   type LocationCode,
 } from "../lib/centralMemo";
 import { policeRankIndex } from "../lib/allowanceDocs";
+import {
+  cargoRoleLabel,
+  cargoSeatKey,
+  cargoTruckCallSign,
+  cargoTruckDriverCount,
+  cargoTruckDriverNames,
+  cargoTruckFilled,
+  isSpareCargoTractor,
+  toCargoTruckForm,
+  type CargoTruckRow,
+} from "../lib/missionCargoTrucks";
 import { cargoSequenceNum, compareConvoyOrder } from "../lib/missionConvoyOrder";
 import {
   MISSION_PERSONNEL_TABS,
@@ -238,9 +249,10 @@ type ConvoySeat = {
   defaultUnit: string;
   isCargo: boolean;
   people: MemoPerson[];
+  extraNames?: string[];
 };
 
-/** แท็บบุคลากรในหน้าแก้ไขภารกิจ — ธปท. / กองปราบ / ทางหลวง / ปฏิบัติการพิเศษ / ขับรถสินค้า */
+/** แท็บบุคลากรในหน้าแก้ไขภารกิจ — ธปท. / กองปราบ / ทางหลวง / ปฏิบัติการพิเศษ */
 function personTab(p: MemoPerson): MissionPersonnelTabKey | null {
   const byCat = missionPersonnelTabByCategory(p.personnelCategoryName);
   if (byCat) return byCat;
@@ -283,11 +295,23 @@ function effectiveVehicleId(
   return p.assignedVehicleReturnId ?? null;
 }
 
+function hasGoSeat(
+  p: Pick<MemoPerson, "assignedVehicleId" | "assignedCargoTruckId" | "assignedVehicleReturnId" | "returnVehicleSameAsGo">,
+) {
+  return Boolean(p.assignedCargoTruckId) || Boolean(effectiveVehicleId(p, "go"));
+}
+
+function hasReturnSeat(
+  p: Pick<MemoPerson, "assignedVehicleId" | "assignedVehicleReturnId" | "returnVehicleSameAsGo">,
+) {
+  return Boolean(effectiveVehicleId(p, "return"));
+}
+
 function missionCrewSig(s: MissionSummary) {
   const people = (s.personnel ?? [])
     .map((p) => {
       const same = p.returnVehicleSameAsGo !== false ? "1" : "0";
-      return `${p.personnelId}|${p.personnelCategoryName ?? ""}|${p.roleName}|${p.assignedVehicleId ?? ""}|${same}|${p.assignedVehicleReturnId ?? ""}`;
+      return `${p.personnelId}|${p.personnelCategoryName ?? ""}|${p.roleName}|${p.assignedVehicleId ?? ""}|${p.assignedCargoTruckId ?? ""}|${same}|${p.assignedVehicleReturnId ?? ""}`;
     })
     .sort()
     .join(";");
@@ -295,7 +319,13 @@ function missionCrewSig(s: MissionSummary) {
     .map((v) => `${v.vehicleId}|${v.roleName}|${v.callSign ?? ""}|${v.licensePlate}`)
     .sort()
     .join(";");
-  return `v8:${people}#${vehicles}`;
+  const trucks = (s.cargoTrucks ?? [])
+    .map(
+      (t) =>
+        `${t.id ?? ""}|${t.tractorVehicleId ?? ""}|${t.tractorPlate ?? ""}|${t.trailerPlate ?? ""}|${t.role ?? ""}|${t.driver1PersonnelId ?? ""}|${t.driver1Name ?? ""}|${t.driver2PersonnelId ?? ""}|${t.driver2Name ?? ""}|${t.note ?? ""}`,
+    )
+    .join(";");
+  return `v11:${people}#${vehicles}#${trucks}`;
 }
 
 /** ขยายชื่อหน้าที่สั้นให้ตรงรูปแบบบันทึก — นอกนั้นใช้ชื่อหน้าที่ที่บันทึกในภารกิจ */
@@ -326,22 +356,29 @@ function unitForCrew(crew: MemoPerson[], fallback: string) {
 /**
  * จัดคนเข้าขบวนตามที่บันทึกในหน้าแก้ไขภารกิจเท่านั้น
  * - ประจำรถขาไป/ขากลับที่เลือก → คันนั้น
- * - แท็บ «ขับรถสินค้า» (ขาไป) ที่ยังไม่ระบุคัน → แถวสินค้า/หัวลาก (ทีละ 2 คน)
- * - ขากลับ: ไม่สร้างแถวสินค้า/หัวลากสำรอง
+ * - ปฏิบัติการพิเศษที่นั่งหัวลากสินค้าขาไป → แถวสินค้า/หัวลากสำรองคันนั้น
+ * - ขากลับ: ไม่สร้างแถวสินค้า/หัวลากสำรอง (คนขับไม่กลับขบวน)
  */
 function buildConvoySeats(opts: {
   people: MemoPerson[];
   vehicles: MemoVehicle[];
+  cargoTrucks: CargoTruckRow[];
   totalContainers: number;
   spare: number;
   truckLabel: string;
   leg: "go" | "return";
 }): { seats: ConvoySeat[]; seatOf: Map<string, ConvoySeat>; unseated: MemoPerson[] } {
-  const { people, vehicles, totalContainers, spare, truckLabel, leg } = opts;
+  const { people, vehicles, cargoTrucks, totalContainers, spare, truckLabel, leg } = opts;
   const goodsVehicles = vehicles.filter((v) => /สินค้า/.test(v.roleName) && !/หัวลาก/.test(v.roleName));
   const spareVehicles = vehicles.filter((v) => /หัวลาก/.test(v.roleName));
-  const escortVehicles = vehicles.filter((v) => !isCargoVehicleRole(v.roleName));
+  const tractorIds = new Set(
+    cargoTrucks.map((t) => t.tractorVehicleId.trim()).filter(Boolean),
+  );
+  const escortVehicles = vehicles.filter(
+    (v) => !isCargoVehicleRole(v.roleName) && !tractorIds.has(v.vehicleId),
+  );
   const includeCargo = leg === "go";
+  const filledTrucks = cargoTrucks.filter(cargoTruckFilled);
 
   const seats: ConvoySeat[] = escortVehicles.map((v) => ({
     key: v.vehicleId,
@@ -353,7 +390,34 @@ function buildConvoySeats(opts: {
     people: [],
   }));
 
-  if (includeCargo) {
+  if (includeCargo && filledTrucks.length) {
+    const goods = filledTrucks.filter((t) => !isSpareCargoTractor(t));
+    const spares = filledTrucks.filter(isSpareCargoTractor);
+    goods.forEach((t, i) => {
+      seats.push({
+        key: cargoSeatKey(t) || `hired-cargo-${i}`,
+        formation: cargoRoleLabel(t, i, 0, 0),
+        callSign: cargoTruckCallSign(t),
+        vehicleRole: t.role.trim() || "รถสินค้า",
+        defaultUnit: truckLabel,
+        isCargo: true,
+        people: [],
+        extraNames: cargoTruckDriverNames(t).map((n) => `พขร. ${n}`),
+      });
+    });
+    spares.forEach((t, i) => {
+      seats.push({
+        key: cargoSeatKey(t) || `hired-spare-${i}`,
+        formation: cargoRoleLabel(t, 0, i, spares.length),
+        callSign: cargoTruckCallSign(t),
+        vehicleRole: t.role.trim() || "รถหัวลากสำรอง",
+        defaultUnit: truckLabel,
+        isCargo: true,
+        people: [],
+        extraNames: cargoTruckDriverNames(t).map((n) => `พขร. ${n}`),
+      });
+    });
+  } else if (includeCargo) {
     // รถสินค้าจากภารกิจ — เรียงตามเลขในนามเรียกขาน แล้วตั้งรูปขบวนเป็น สินค้า 1..n
     if (goodsVehicles.length) {
       const ordered = [...goodsVehicles].sort((a, b) => {
@@ -422,6 +486,15 @@ function buildConvoySeats(opts: {
 
   // 1) ประจำรถขาไป/ขากลับตามที่บันทึกในหน้าแก้ไขภารกิจ
   for (const p of people) {
+    if (leg === "go" && p.assignedCargoTruckId) {
+      const byCargoId = filledTrucks.find((t) => t.id === p.assignedCargoTruckId);
+      const cargoSeat = byKey.get(byCargoId ? cargoSeatKey(byCargoId) : p.assignedCargoTruckId);
+      if (cargoSeat && !p.assignedVehicleId) {
+        cargoSeat.people.push(p);
+        seated.add(p.personnelId);
+        continue;
+      }
+    }
     const vid = effectiveVehicleId(p, leg);
     if (!vid) continue;
     const seat = byKey.get(vid);
@@ -430,8 +503,8 @@ function buildConvoySeats(opts: {
     seated.add(p.personnelId);
   }
 
-  // 2) แท็บขับรถสินค้า (เฉพาะขาไป) ที่ยังไม่ถูกจัดคัน → ใส่แถวสินค้า/หัวลาก ตามลำดับ (คันละ 2)
-  if (includeCargo) {
+  // 2) ภารกิจเก่าที่ยังบันทึกคนขับเป็นบุคลากร (ไม่มีตารางหัว/หาง) → ใส่แถวสินค้า/หัวลาก คันละ 2
+  if (includeCargo && !filledTrucks.length) {
     const cargoSeats = seats.filter((s) => s.isCargo);
     const drivers = people.filter((p) => !seated.has(p.personnelId) && personTab(p) === "driver");
     let di = 0;
@@ -464,7 +537,7 @@ function buildConvoySeats(opts: {
   // ขากลับ: ไม่นับคนขับสินค้าเป็นค้างจัดที่นั่ง
   const unseated = people.filter((p) => {
     if (seated.has(p.personnelId)) return false;
-    if (leg === "return" && personTab(p) === "driver") return false;
+    if (personTab(p) === "driver" && (leg === "return" || filledTrucks.length)) return false;
     return true;
   });
   return { seats, seatOf, unseated };
@@ -477,16 +550,20 @@ function seatsToConvoyRows(
 ): string[][] {
   const convoyRows: string[][] = seats.map((s) => {
     const crew = s.people.slice().sort(byPoliceRank);
-    const names = crew.map((p) => personName(p));
+    const names = [...crew.map((p) => personName(p)), ...(s.extraNames ?? [])].filter(Boolean);
     if (s.isCargo && !names.length) {
       return ["", s.formation, s.callSign, settings.truckLabel, "2", ""];
     }
     const count = s.isCargo ? Math.max(2, names.length) : names.length;
+    const cargoUnit =
+      crew.some((p) => personTab(p) === "special")
+        ? `${settings.truckLabel} / ปฏิบัติการพิเศษ`
+        : settings.truckLabel;
     return [
       "",
       s.formation,
       s.callSign,
-      s.isCargo ? settings.truckLabel : unitForCrew(crew, s.defaultUnit),
+      s.isCargo ? cargoUnit : unitForCrew(crew, s.defaultUnit),
       count ? String(count) : "",
       names.join("\n"),
     ];
@@ -573,9 +650,11 @@ export function MissionTravelPlanMemoPage() {
     const people = summary.personnel ?? [];
 
     const vehicles = summary.vehicles ?? [];
+    const cargoTrucks = (summary.cargoTrucks ?? []).map(toCargoTruckForm);
     const goBuilt = buildConvoySeats({
       people,
       vehicles,
+      cargoTrucks,
       totalContainers,
       spare,
       truckLabel: settings.truckLabel,
@@ -584,6 +663,7 @@ export function MissionTravelPlanMemoPage() {
     const returnBuilt = buildConvoySeats({
       people,
       vehicles,
+      cargoTrucks,
       totalContainers,
       spare: 0,
       truckLabel: settings.truckLabel,
@@ -624,27 +704,31 @@ export function MissionTravelPlanMemoPage() {
       return [String(i + 1), personName(p), cs ? `${duty} (นามเรียกขาน ${cs})` : duty];
     });
 
-    /** หน่วยงานภายนอก = แท็บ กองปราบ / ทางหลวง / ปฏิบัติการพิเศษ / ขับรถสินค้า */
-    const extTabOrder: MissionPersonnelTabKey[] = ["crime", "highway", "special", "driver"];
+    /** หน่วยงานภายนอก = แท็บ กองปราบ / ทางหลวง / ปฏิบัติการพิเศษ + คนขับจากข้อมูลรถสินค้า */
+    const extTabOrder: MissionPersonnelTabKey[] = ["crime", "highway", "special"];
     const extRows: string[][] = [];
     for (const key of extTabOrder) {
       const group = people.filter((p) => personTab(p) === key);
       if (!group.length) continue;
       const label =
-        key === "driver"
-          ? settings.truckCompany
-          : key === "crime"
-            ? "เจ้าหน้าที่ตำรวจกองบังคับการปราบปราม"
-            : key === "highway"
-              ? "เจ้าหน้าที่ตำรวจทางหลวง"
-              : "เจ้าหน้าที่ตำรวจปฏิบัติการพิเศษ";
+        key === "crime"
+          ? "เจ้าหน้าที่ตำรวจกองบังคับการปราบปราม"
+          : key === "highway"
+            ? "เจ้าหน้าที่ตำรวจทางหลวง"
+            : "เจ้าหน้าที่ตำรวจปฏิบัติการพิเศษ";
       extRows.push([String(extRows.length + 1), label, String(group.length)]);
     }
-    // ไม่มีแท็บขับรถสินค้า — คงจำนวนคนขับรถบรรทุกตามจำนวนตู้/หัวลาก (แบบเดิม)
-    if (!people.some((p) => personTab(p) === "driver")) {
+    const hiredDriverCount = cargoTruckDriverCount(cargoTrucks);
+    if (hiredDriverCount > 0) {
+      extRows.push([String(extRows.length + 1), settings.truckCompany, String(hiredDriverCount)]);
+    } else if (!people.some((p) => personTab(p) === "driver")) {
       const companyDrivers = (totalContainers + spare) * 2;
       if (companyDrivers > 0)
         extRows.push([String(extRows.length + 1), settings.truckCompany, String(companyDrivers)]);
+    } else {
+      const group = people.filter((p) => personTab(p) === "driver");
+      if (group.length)
+        extRows.push([String(extRows.length + 1), settings.truckCompany, String(group.length)]);
     }
 
     const convoyGo = renumber(
@@ -654,10 +738,11 @@ export function MissionTravelPlanMemoPage() {
       sortConvoyRows(seatsToConvoyRows(returnBuilt.seats, returnBuilt.unseated, settings), "return"),
     );
     const missingVehicleAssign = people.filter((p) => {
-      if (personTab(p) === "driver") return false;
-      return !effectiveVehicleId(p, "go") || !effectiveVehicleId(p, "return");
+      const tab = personTab(p);
+      if (tab === "driver") return false;
+      return !hasGoSeat(p) || !hasReturnSeat(p);
     }).length;
-    const driverCount = people.filter((p) => personTab(p) === "driver").length;
+    const driverCount = hiredDriverCount || people.filter((p) => personTab(p) === "driver").length;
 
     const schedule = new Map<string, string[]>();
     const push = (d: string, line: string) => d && schedule.set(d, [...(schedule.get(d) ?? []), line]);
@@ -711,10 +796,10 @@ export function MissionTravelPlanMemoPage() {
           ? "ยังไม่ได้กำหนดบุคลากรหน้าที่ «ผอ.เดินทาง» ในแท็บ ธปท."
           : null,
         driverCount === 0 && totalContainers + spare > 0
-          ? "ยังไม่มีรายชื่อในแท็บ «ขับรถสินค้า» — แถวสินค้าในรูปขบวนจะยังไม่มีชื่อ"
+          ? "ยังไม่มีหัวลาก/หางลากในขั้น «ข้อมูลรถสินค้า» — เลือกส่วนหัวจากยานพาหนะ แล้วกรอกหางและบทบาท"
           : null,
         missingVehicleAssign > 0
-          ? `ธปท./ตำรวจที่ยังไม่ระบุประจำรถขาไปหรือขากลับ ${missingVehicleAssign} คน — เลือกในหน้าแก้ไขภารกิจ (ติ๊ก «เหมือนขาไป» ได้)`
+          ? `ธปท./ตำรวจที่ยังไม่ระบุประจำรถขาไปหรือขากลับ ${missingVehicleAssign} คน — เลือกจากขั้นยานพาหนะ`
           : null,
       ].filter((w): w is string => Boolean(w)),
     };

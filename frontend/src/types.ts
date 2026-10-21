@@ -994,6 +994,26 @@ export interface MissionActualExpenseRecord {
   };
 }
 
+/** รถบรรทุกสินค้าจ้างเหมา (หัวลาก/หางลาก + คนขับ) กรอกต่อภารกิจ */
+export interface MissionCargoTruck {
+  id?: string;
+  sortOrder?: number;
+  tractorVehicleId?: string | null;
+  tractorPlate: string;
+  trailerPlate?: string | null;
+  roleId?: string | null;
+  role?: string | null;
+  driver1PersonnelId?: string | null;
+  driver1Name: string;
+  driver1IdNumber?: string | null;
+  driver1Phone?: string | null;
+  driver2PersonnelId?: string | null;
+  driver2Name?: string | null;
+  driver2IdNumber?: string | null;
+  driver2Phone?: string | null;
+  note?: string | null;
+}
+
 /** รายละเอียดภารกิจจาก GET /api/missions/:id — ใช้โหลดฟอร์มแก้ไข */
 export interface MissionDetail {
   id: string;
@@ -1009,9 +1029,11 @@ export interface MissionDetail {
     personnelRoleId: string;
     compensationRate: string;
     assignedVehicleId?: string | null;
+    assignedCargoTruckId?: string | null;
     returnVehicleSameAsGo?: boolean;
     assignedVehicleReturnId?: string | null;
   }>;
+  cargoTrucks?: MissionCargoTruck[];
   vehicles: Array<{
     id: string;
     vehicleId: string;
@@ -1081,9 +1103,11 @@ export interface MissionSummary {
     roleName: string;
     compensationRate: string;
     assignedVehicleId?: string | null;
+    assignedCargoTruckId?: string | null;
     returnVehicleSameAsGo?: boolean;
     assignedVehicleReturnId?: string | null;
   }>;
+  cargoTrucks?: MissionCargoTruck[];
   policeStations?: Array<{
     policeStationId: string;
     name: string;

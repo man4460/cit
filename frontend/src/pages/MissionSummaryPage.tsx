@@ -4,13 +4,20 @@ import { apiFormJson, apiJson, apiUrl } from "../api/client";
 import { MissionIncidentsPanel } from "../components/MissionIncidentsPanel";
 import { MissionInsuranceExportModal } from "../components/MissionInsuranceExportModal";
 import { MissionReportModal } from "../components/MissionReportModal";
-import { MissionRouteMapButton } from "../components/MissionRouteMapButton";
 import { gradeSortValue, policeRankIndex } from "../lib/allowanceDocs";
 import { filterBotAllowancePersonnel } from "../lib/botAllowancePrint";
 import { formatBaht, formatInt, formatLiters } from "../lib/formatNumber";
+import {
+  cargoAssignValue,
+  cargoTruckDriverNames,
+  cargoTruckFilled,
+  cargoTruckSeatOptions,
+  toCargoTruckForm,
+} from "../lib/missionCargoTrucks";
 import { compareConvoyOrder } from "../lib/missionConvoyOrder";
 import {
   MISSION_PERSONNEL_TABS,
+  isCargoDriverPersonnel,
   missionPersonnelTabByCategory,
   type MissionPersonnelTabKey,
 } from "../lib/missionPersonnelTabs";
@@ -101,6 +108,7 @@ function groupPersonnelByTab(list: SummaryPerson[]): { tab: MissionPersonnelTabK
   const groups: { tab: MissionPersonnelTabKey; people: SummaryPerson[] }[] = [];
   for (const p of list) {
     const tab = summaryPersonTab(p);
+    if (tab === "driver") continue;
     const last = groups[groups.length - 1];
     if (last && last.tab === tab) last.people.push(p);
     else groups.push({ tab, people: [p] });
@@ -228,6 +236,17 @@ export function MissionSummaryPage() {
   const personnel = sortSummaryPersonnel(summary.personnel ?? []);
   const personnelGroups = groupPersonnelByTab(personnel);
   const vehicles = sortSummaryVehicles(summary.vehicles ?? []);
+  const cargoTrucks = (summary.cargoTrucks ?? []).map(toCargoTruckForm).filter(cargoTruckFilled);
+  const cargoRiders = new Map<string, string[]>();
+  for (const p of personnel) {
+    const truck = cargoTrucks.find(
+      (t) =>
+        (p.assignedVehicleId && t.tractorVehicleId === p.assignedVehicleId) ||
+        (p.assignedCargoTruckId && t.id === p.assignedCargoTruckId),
+    );
+    if (!truck) continue;
+    cargoRiders.set(truck.id, [...(cargoRiders.get(truck.id) ?? []), personDisplayName(p)]);
+  }
   const destinations = (summary.destinations ?? []).filter((d) => d.address.trim());
   const policeStations = summary.policeStations ?? [];
   const attachments = summary.attachments ?? [];
@@ -239,12 +258,14 @@ export function MissionSummaryPage() {
     .filter(([k]) => k.includes(TRUCK_HIRE_KEYWORD))
     .reduce((s, [, v]) => s + v, 0);
   const expenseEntries = allExpenseEntries.filter(([k]) => !k.includes(TRUCK_HIRE_KEYWORD));
-  const otherExpenseTotal = expenseEntries.reduce((s, [, v]) => s + v, 0);
   const maxExpense = Math.max(1, ...expenseEntries.map(([, v]) => v));
   const status = summary.status ?? "PLANNED";
   const days = travelDays(summary.plannedStart, summary.plannedEnd);
   const totalContainers = destinations.reduce((s, d) => s + (d.containerCount || 0), 0);
-  const compensationTotal = personnel.reduce((s, p) => s + Number(p.compensationRate || 0), 0);
+  const compensationTotal = personnel.reduce((s, p) => {
+    if (isCargoDriverPersonnel(p.personnelCategoryName, p.roleName)) return s;
+    return s + Number(p.compensationRate || 0);
+  }, 0);
   const policeTotal = policeStations.reduce((s, p) => s + Number(p.amount || 0), 0);
   const budget = summary.budgetAmount != null && summary.budgetAmount !== "" ? Number(summary.budgetAmount) : null;
   const spent = Number(summary.totalExpenses || 0);
@@ -263,7 +284,7 @@ export function MissionSummaryPage() {
     .filter((s, i, arr) => i === 0 || s !== arr[i - 1]);
 
   return (
-    <div className="space-y-5 print:hidden">
+    <div className="space-y-4 print:hidden">
       <div className="flex flex-wrap items-center justify-between gap-2">
         {backButton}
         <Link
@@ -274,7 +295,7 @@ export function MissionSummaryPage() {
         </Link>
       </div>
 
-      <header className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+      <article className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
         <div className="border-l-4 border-l-[#0000BF] px-5 py-5 sm:px-6">
           <div className="flex flex-wrap items-center gap-2">
             {summary.code ? (
@@ -317,22 +338,7 @@ export function MissionSummaryPage() {
           ) : null}
         </div>
 
-        <div className="space-y-3 border-t border-slate-100 bg-slate-50/60 px-5 py-4 sm:px-6">
-          <ActionRow label="แผนที่">
-            {status === "IN_PROGRESS" && summary.route?.id ? (
-              <MissionRouteMapButton
-                routeId={summary.route.id}
-                autoStartNav
-                label="🧭 นำทางตามเส้นทาง"
-                className="rounded-lg border border-emerald-300 bg-emerald-600 px-3 py-1.5 text-xs font-bold text-white shadow-sm transition hover:bg-emerald-700 disabled:opacity-60 sm:text-sm"
-              />
-            ) : null}
-            <MissionRouteMapButton
-              routeId={summary.route?.id}
-              label="แผนที่เส้นทาง"
-              className="rounded-lg border border-sky-200 bg-white px-3 py-1.5 text-xs font-bold text-sky-700 shadow-sm transition hover:bg-sky-50 disabled:opacity-60 sm:text-sm"
-            />
-          </ActionRow>
+        <div className="space-y-1.5 border-t border-slate-100 bg-slate-50/60 px-5 py-2.5 sm:px-6">
           <ActionRow label="เอกสารพิมพ์">
             <ActionButton tone="indigo" onClick={() => navigate(`/missions/${summary.missionId}/bot-allowance`)}>
               พิมพ์รายการเบี้ยเลี้ยง ธปท.{botCount ? ` (${botCount})` : ""}
@@ -359,60 +365,228 @@ export function MissionSummaryPage() {
             </ActionButton>
           </ActionRow>
         </div>
-      </header>
 
-      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-        <Kpi label="มูลค่าสินค้า" value={`${formatBaht(summary.totalCargoValue)} ฿`} />
-        <Kpi
-          label="รวมรายจ่าย"
-          value={`${formatBaht(summary.totalExpenses)} ฿`}
-          sub={
-            summary.expenseToCargoPercent != null
-              ? `${summary.expenseToCargoPercent.toLocaleString("th-TH", { maximumFractionDigits: 2 })}% ของมูลค่าสินค้า`
-              : undefined
-          }
-        />
-        <Kpi
-          label="ค่าตอบแทนบุคลากร"
-          value={`${formatBaht(summary.personnelCompensationTotal ?? compensationTotal)} ฿`}
-          sub={`${formatInt(personnel.length)} คน`}
-        />
-        <Kpi
-          label="ยานพาหนะ / ตู้สินค้า"
-          value={`${formatInt(vehicles.length)} คัน · ${formatInt(totalContainers)} ตู้`}
-          sub={`${formatInt(destinations.length)} จุดส่ง`}
-        />
-      </div>
-
-      <div className="grid gap-5 lg:grid-cols-3">
-        <div className="space-y-5 lg:col-span-2">
-          <MissionIncidentsPanel
-            missionId={summary.missionId}
-            plannedStart={summary.plannedStart}
-            plannedEnd={summary.plannedEnd}
-            onCountChange={setIncidentCount}
+        <div className="grid grid-cols-2 border-y border-slate-100 sm:grid-cols-4">
+          <Kpi label="มูลค่าสินค้า" value={`${formatBaht(summary.totalCargoValue)} ฿`} />
+          <Kpi
+            label="รวมรายจ่าย"
+            value={`${formatBaht(summary.totalExpenses)} ฿`}
+            sub={
+              summary.expenseToCargoPercent != null
+                ? `${summary.expenseToCargoPercent.toLocaleString("th-TH", { maximumFractionDigits: 2 })}% ของมูลค่าสินค้า`
+                : undefined
+            }
           />
+          <Kpi
+            label="ค่าตอบแทนบุคลากร"
+            value={`${formatBaht(summary.personnelCompensationTotal ?? compensationTotal)} ฿`}
+            sub={`${formatInt(personnel.length)} คน`}
+          />
+          <Kpi
+            label="ยานพาหนะ / ตู้สินค้า"
+            value={`${formatInt(vehicles.length)} คัน · ${formatInt(totalContainers)} ตู้`}
+            sub={`${formatInt(destinations.length)} จุดส่ง`}
+          />
+        </div>
 
-          <Panel title="บุคลากร" count={personnel.length}>
+        <div className="divide-y divide-slate-100">
+          <section className="px-5 py-5 sm:px-6">
+            <div className="grid gap-6 lg:grid-cols-2 lg:gap-0">
+              <div className="lg:pr-6">
+                <PaneTitle count={destinations.length}>จุดส่งสินค้า</PaneTitle>
+                {destinations.length ? (
+                  <div className="overflow-hidden rounded-lg border border-slate-100">
+                    <table className="w-full text-sm">
+                      <thead>
+                        <tr className="bg-slate-50 text-[10px] font-bold uppercase tracking-wide text-slate-400">
+                          <th className="w-8 px-2.5 py-1.5 text-center font-bold">ที่</th>
+                          <th className="px-2.5 py-1.5 text-left font-bold">จุดส่ง</th>
+                          <th className="w-14 px-2.5 py-1.5 text-right font-bold">ตู้</th>
+                          <th className="w-28 px-2.5 py-1.5 text-right font-bold">มูลค่า</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-100">
+                        {destinations.map((d, i) => (
+                          <tr key={`${d.address}-${i}`} className="align-top">
+                            <td className="px-2.5 py-2 text-center text-xs tabular-nums text-slate-400">{i + 1}</td>
+                            <td className="px-2.5 py-2 font-semibold leading-snug text-slate-800">{d.address}</td>
+                            <td className="px-2.5 py-2 text-right tabular-nums text-slate-600">
+                              {formatInt(d.containerCount)}
+                            </td>
+                            <td className="px-2.5 py-2 text-right font-semibold tabular-nums text-[#0000BF]">
+                              {Number(d.cargoValue) > 0 ? `${formatBaht(d.cargoValue)} ฿` : "—"}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                      <tfoot>
+                        <tr className="border-t border-slate-200 bg-slate-50/80 text-sm font-bold">
+                          <td className="px-2.5 py-2 text-slate-500" colSpan={2}>
+                            รวม {formatInt(destinations.length)} จุด
+                          </td>
+                          <td className="px-2.5 py-2 text-right tabular-nums text-slate-700">
+                            {formatInt(totalContainers)}
+                          </td>
+                          <td className="px-2.5 py-2 text-right tabular-nums text-[#0000BF]">
+                            {formatBaht(summary.totalCargoValue)} ฿
+                          </td>
+                        </tr>
+                      </tfoot>
+                    </table>
+                  </div>
+                ) : (
+                  <Empty>ไม่มีจุดส่งสินค้า</Empty>
+                )}
+              </div>
+
+              <div className="lg:border-l lg:border-slate-100 lg:pl-6">
+                <PaneTitle>ค่าใช้จ่าย</PaneTitle>
+                {budget != null ? (
+                  <div className="mb-3 rounded-lg bg-slate-50 px-3 py-2.5">
+                    <div className="grid grid-cols-3 gap-2 text-center">
+                      <div>
+                        <p className="text-[10px] font-bold uppercase tracking-wide text-slate-400">งบประมาณ</p>
+                        <p className="mt-0.5 text-sm font-black tabular-nums text-slate-900">{formatBaht(budget)} ฿</p>
+                      </div>
+                      <div>
+                        <p className="text-[10px] font-bold uppercase tracking-wide text-slate-400">ใช้ไป</p>
+                        <p className="mt-0.5 text-sm font-black tabular-nums text-slate-900">{formatBaht(spent)} ฿</p>
+                      </div>
+                      <div>
+                        <p className="text-[10px] font-bold uppercase tracking-wide text-slate-400">
+                          {summary.overBudget ? "เกินงบ" : "คงเหลือ"}
+                        </p>
+                        <p
+                          className={`mt-0.5 text-sm font-black tabular-nums ${
+                            summary.overBudget ? "text-rose-600" : "text-emerald-700"
+                          }`}
+                        >
+                          {summary.variance != null
+                            ? `${formatBaht(Math.abs(Number(summary.variance)))} ฿`
+                            : "—"}
+                        </p>
+                      </div>
+                    </div>
+                    {budgetPct != null ? (
+                      <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-white">
+                        <div
+                          className={`h-full rounded-full ${summary.overBudget ? "bg-rose-400" : "bg-emerald-400"}`}
+                          style={{ width: `${budgetPct}%` }}
+                        />
+                      </div>
+                    ) : null}
+                  </div>
+                ) : null}
+
+                {expenseEntries.length || truckHire > 0 ? (
+                  <div className="overflow-hidden rounded-lg border border-slate-100">
+                    <ul className="divide-y divide-slate-100">
+                      {truckHire > 0 ? (
+                        <li className="bg-orange-50/60 px-3 py-2">
+                          <div className="flex items-baseline justify-between gap-2 text-sm">
+                            <span className="font-semibold text-orange-900">ค่าจ้างรถบรรทุก</span>
+                            <span className="font-bold tabular-nums text-orange-700">{formatBaht(truckHire)} ฿</span>
+                          </div>
+                          <p className="mt-0.5 text-[11px] text-orange-800/70">
+                            {spent > 0
+                              ? `${((truckHire / spent) * 100).toLocaleString("th-TH", { maximumFractionDigits: 1 })}% ของรายจ่าย`
+                              : null}
+                            {spent > 0 && totalContainers > 0 ? " · " : null}
+                            {totalContainers > 0 ? `เฉลี่ย ${formatBaht(truckHire / totalContainers)} ฿/ตู้` : null}
+                          </p>
+                        </li>
+                      ) : null}
+                      {expenseEntries.map(([k, v]) => (
+                        <li key={k} className="px-3 py-2">
+                          <div className="flex items-baseline justify-between gap-2 text-sm">
+                            <span className="min-w-0 truncate text-slate-700" title={k}>
+                              {k}
+                            </span>
+                            <span className="shrink-0 font-semibold tabular-nums text-slate-800">{formatBaht(v)} ฿</span>
+                          </div>
+                          <div className="mt-1 h-1 overflow-hidden rounded-full bg-slate-100">
+                            <div
+                              className="h-full rounded-full bg-[#0000BF]/40"
+                              style={{ width: `${(v / maxExpense) * 100}%` }}
+                            />
+                          </div>
+                        </li>
+                      ))}
+                      <li className="flex justify-between bg-slate-50 px-3 py-2 text-sm font-bold">
+                        <span className="text-slate-500">รวมรายจ่ายทั้งหมด</span>
+                        <span className="tabular-nums text-slate-900">{formatBaht(summary.totalExpenses)} ฿</span>
+                      </li>
+                    </ul>
+                  </div>
+                ) : (
+                  <Empty>ยังไม่มีค่าใช้จ่าย</Empty>
+                )}
+
+                {summary.expenseToCargoPercent != null ? (
+                  <p className="mt-2 text-right text-[11px] text-slate-400">
+                    {summary.expenseToCargoPercent.toLocaleString("th-TH", { maximumFractionDigits: 2 })}% ของมูลค่าสินค้า
+                  </p>
+                ) : null}
+
+                {policeStations.length ? (
+                  <div className="mt-3">
+                    <p className="mb-1.5 text-[10px] font-bold uppercase tracking-wide text-slate-400">
+                      สถานีตำรวจ
+                      <span className="ml-1 rounded bg-slate-100 px-1 py-px tabular-nums text-slate-500">
+                        {formatInt(policeStations.length)}
+                      </span>
+                    </p>
+                    <ul className="divide-y divide-slate-100 overflow-hidden rounded-lg border border-slate-100">
+                      {policeStations.map((s) => (
+                        <li
+                          key={s.policeStationId}
+                          className="flex items-center justify-between gap-2 px-3 py-1.5 text-sm"
+                        >
+                          <span className="min-w-0">
+                            <span className="block truncate font-medium text-slate-800">{s.name}</span>
+                            {s.vendorCode ? (
+                              <span className="text-[11px] text-slate-400">Vendor {s.vendorCode}</span>
+                            ) : null}
+                          </span>
+                          <span className="shrink-0 font-semibold tabular-nums text-sky-700">
+                            {Number(s.amount) > 0 ? `${formatBaht(s.amount)} ฿` : "—"}
+                          </span>
+                        </li>
+                      ))}
+                      {policeTotal > 0 ? (
+                        <li className="flex justify-between bg-slate-50 px-3 py-1.5 text-sm font-bold">
+                          <span className="text-slate-500">รวม</span>
+                          <span className="tabular-nums text-sky-700">{formatBaht(policeTotal)} ฿</span>
+                        </li>
+                      ) : null}
+                    </ul>
+                  </div>
+                ) : null}
+              </div>
+            </div>
+          </section>
+
+          <Section title="บุคลากร" count={personnel.length}>
             {personnel.length ? (
               <>
-                <div className="space-y-4 p-4">
+                <div className="space-y-4">
                   {personnelGroups.map(({ tab, people }) => (
                     <div key={tab}>
                       <div
-                        className={`mb-2.5 flex items-center justify-between gap-2 rounded-lg border px-3 py-1.5 text-xs font-bold ${TAB_SECTION[tab]}`}
+                        className={`mb-2 flex items-center justify-between gap-2 rounded-md border px-2.5 py-1 text-xs font-bold ${TAB_SECTION[tab]}`}
                       >
                         <span>{tabLabel(tab)}</span>
                         <span className="tabular-nums opacity-70">{formatInt(people.length)} คน</span>
                       </div>
-                      <ul className="grid gap-2.5 sm:grid-cols-2">
+                      <ul className="grid gap-2 sm:grid-cols-2">
                         {people.map((p) => {
                           const catLabel = p.personnelCategoryName?.trim() || tabLabel(tab);
+                          const noPay = isCargoDriverPersonnel(p.personnelCategoryName, p.roleName);
                           return (
                             <li key={p.personnelId}>
                               <Link
                                 to={`/personnel?highlight=${p.personnelId}`}
-                                className="flex h-full items-start gap-3 rounded-xl border border-slate-200 bg-white p-3 transition hover:border-slate-300 hover:bg-slate-50/80"
+                                className="flex h-full items-start gap-3 rounded-lg bg-slate-50/80 p-2.5 transition hover:bg-slate-100/80"
                               >
                                 <Thumb
                                   src={p.photoUrl}
@@ -450,7 +624,9 @@ export function MissionSummaryPage() {
                                     ) : null}
                                   </dl>
                                   <p className="mt-1.5 text-xs font-semibold tabular-nums text-[#0000BF]">
-                                    ค่าตอบแทน {formatBaht(p.compensationRate)} ฿
+                                    {noPay
+                                      ? "ค่าตอบแทนรวมในค่าจ้างรถบรรทุก"
+                                      : `ค่าตอบแทน ${formatBaht(p.compensationRate)} ฿`}
                                   </p>
                                 </div>
                               </Link>
@@ -461,7 +637,7 @@ export function MissionSummaryPage() {
                     </div>
                   ))}
                 </div>
-                <div className="flex items-center justify-between gap-2 border-t border-slate-100 bg-slate-50/80 px-4 py-2.5 text-sm font-bold">
+                <div className="mt-3 flex items-center justify-between gap-2 border-t border-slate-100 pt-2.5 text-sm font-bold">
                   <span className="text-slate-500">รวม {formatInt(personnel.length)} คน</span>
                   <span className="tabular-nums text-[#0000BF]">{formatBaht(compensationTotal)} ฿</span>
                 </div>
@@ -469,11 +645,11 @@ export function MissionSummaryPage() {
             ) : (
               <Empty>ยังไม่มีบุคลากร</Empty>
             )}
-          </Panel>
+          </Section>
 
-          <Panel title="ยานพาหนะ" count={vehicles.length}>
+          <Section title="ยานพาหนะ" count={vehicles.length}>
             {vehicles.length ? (
-              <ul className="grid gap-2.5 p-4 sm:grid-cols-2">
+              <ul className="grid gap-2 sm:grid-cols-2">
                 {vehicles.map((v) => {
                   const fuel = v.fuelType === "DIESEL" ? "ดีเซล" : v.fuelType === "GASOLINE" ? "เบนซิน" : null;
                   const details: [string, string | null | undefined][] = [
@@ -503,7 +679,7 @@ export function MissionSummaryPage() {
                   return (
                     <li
                       key={v.vehicleId}
-                      className="flex items-start gap-3 rounded-xl border border-slate-200 bg-white p-3"
+                      className="flex items-start gap-3 rounded-lg bg-slate-50/80 p-2.5"
                     >
                       <Thumb src={v.photoUrl} alt={v.licensePlate} size="h-14 w-20" fallback="รถ" />
                       <div className="min-w-0 flex-1">
@@ -538,146 +714,41 @@ export function MissionSummaryPage() {
             ) : (
               <Empty>ไม่มียานพาหนะ</Empty>
             )}
-          </Panel>
-        </div>
+          </Section>
 
-        <div className="space-y-4">
-          <Panel title="จุดส่งสินค้า" count={destinations.length}>
-            {destinations.length ? (
-              <>
-                <ul className="divide-y divide-slate-100">
-                  {destinations.map((d, i) => (
-                    <li key={`${d.address}-${i}`} className="px-4 py-3">
-                      <p className="text-sm font-semibold leading-snug text-slate-800">{d.address}</p>
-                      <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-xs">
-                        <span className="tabular-nums text-slate-500">
-                          {formatInt(d.containerCount)} ตู้
-                        </span>
-                        <span className="font-semibold tabular-nums text-[#0000BF]">
-                          {Number(d.cargoValue) > 0 ? `${formatBaht(d.cargoValue)} ฿` : "—"}
-                        </span>
-                      </div>
+          <Section title="ข้อมูลรถสินค้า" count={cargoTrucks.length}>
+            {cargoTrucks.length ? (
+              <ul className="grid gap-2 sm:grid-cols-2">
+                {cargoTruckSeatOptions(cargoTrucks).map((opt) => {
+                  const t = cargoTrucks.find((row) => cargoAssignValue(row.id) === opt.value);
+                  if (!t) return null;
+                  const drivers = cargoTruckDriverNames(t);
+                  const riders = cargoRiders.get(t.id) ?? [];
+                  return (
+                    <li key={t.id} className="rounded-lg bg-slate-50/80 p-2.5">
+                      <p className="text-sm font-bold text-slate-900">{opt.label}</p>
+                      <p className="mt-1.5 text-xs text-slate-500">
+                        <span className="text-slate-400">คนขับ </span>
+                        {drivers.length ? drivers.join(", ") : "—"}
+                      </p>
+                      {t.note ? <p className="mt-0.5 text-xs text-slate-500">{t.note}</p> : null}
+                      {riders.length ? (
+                        <p className="mt-1.5 text-xs text-slate-500">
+                          <span className="text-slate-400">ปฏิบัติการพิเศษขาไป </span>
+                          {riders.join(", ")}
+                        </p>
+                      ) : null}
                     </li>
-                  ))}
-                </ul>
-                <div className="flex items-center justify-between gap-2 border-t border-slate-100 bg-slate-50/80 px-4 py-2 text-sm font-bold">
-                  <span className="text-slate-500">รวม {formatInt(totalContainers)} ตู้</span>
-                  <span className="tabular-nums text-[#0000BF]">{formatBaht(summary.totalCargoValue)} ฿</span>
-                </div>
-              </>
-            ) : (
-              <Empty>ไม่มีจุดส่งสินค้า</Empty>
-            )}
-          </Panel>
-
-          {budget != null ? (
-            <Panel title="งบประมาณ">
-              <div className="space-y-2 px-4 py-3 text-sm">
-                <Row label="งบประมาณ" value={`${formatBaht(budget)} ฿`} />
-                <Row label="ใช้ไป" value={`${formatBaht(spent)} ฿`} />
-                {budgetPct != null ? (
-                  <div className="h-1.5 overflow-hidden rounded-full bg-slate-100">
-                    <div
-                      className={`h-full rounded-full ${summary.overBudget ? "bg-rose-400" : "bg-emerald-400"}`}
-                      style={{ width: `${budgetPct}%` }}
-                    />
-                  </div>
-                ) : null}
-                {summary.variance != null ? (
-                  <Row
-                    label={summary.overBudget ? "เกินงบ" : "คงเหลือ"}
-                    value={`${formatBaht(Math.abs(Number(summary.variance)))} ฿`}
-                    valueClass={summary.overBudget ? "text-rose-600" : "text-emerald-700"}
-                  />
-                ) : null}
-              </div>
-            </Panel>
-          ) : null}
-
-          <Panel title="ค่าจ้างรถบรรทุก">
-            {truckHire > 0 ? (
-              <div className="space-y-1.5 px-4 py-3 text-sm">
-                <p className="text-xl font-black tabular-nums text-orange-700">{formatBaht(truckHire)} ฿</p>
-                {spent > 0 ? (
-                  <Row
-                    label="สัดส่วนของรายจ่ายทั้งหมด"
-                    value={`${((truckHire / spent) * 100).toLocaleString("th-TH", { maximumFractionDigits: 1 })}%`}
-                  />
-                ) : null}
-                {totalContainers > 0 ? (
-                  <Row label="เฉลี่ยต่อตู้" value={`${formatBaht(truckHire / totalContainers)} ฿`} />
-                ) : null}
-              </div>
-            ) : (
-              <Empty compact>ยังไม่มีค่าจ้างรถบรรทุก</Empty>
-            )}
-          </Panel>
-
-          <Panel title="ค่าใช้จ่ายอื่น" count={expenseEntries.length}>
-            {expenseEntries.length ? (
-              <ul className="space-y-2 px-4 py-3">
-                {expenseEntries.map(([k, v]) => (
-                  <li key={k}>
-                    <div className="flex items-baseline justify-between gap-2 text-sm">
-                      <span className="min-w-0 truncate text-slate-700" title={k}>
-                        {k}
-                      </span>
-                      <span className="shrink-0 font-semibold tabular-nums text-slate-800">{formatBaht(v)}</span>
-                    </div>
-                    <div className="mt-1 h-1 overflow-hidden rounded-full bg-slate-100">
-                      <div
-                        className="h-full rounded-full bg-[#0000BF]/40"
-                        style={{ width: `${(v / maxExpense) * 100}%` }}
-                      />
-                    </div>
-                  </li>
-                ))}
-                <li className="flex justify-between border-t border-slate-100 pt-2 text-sm font-bold">
-                  <span className="text-slate-500">รวมค่าใช้จ่ายอื่น</span>
-                  <span className="tabular-nums text-slate-800">{formatBaht(otherExpenseTotal)} ฿</span>
-                </li>
-                {truckHire > 0 ? (
-                  <li className="space-y-1 rounded-lg bg-slate-50 px-2.5 py-2 text-sm">
-                    <Row label="+ ค่าจ้างรถบรรทุก" value={`${formatBaht(truckHire)} ฿`} valueClass="text-orange-700" />
-                    <Row
-                      label="รวมรายจ่ายทั้งหมด"
-                      value={`${formatBaht(summary.totalExpenses)} ฿`}
-                      valueClass="font-black text-slate-900"
-                    />
-                  </li>
-                ) : null}
+                  );
+                })}
               </ul>
             ) : (
-              <Empty compact>ยังไม่มีค่าใช้จ่าย</Empty>
+              <Empty>ยังไม่มีข้อมูลรถสินค้า</Empty>
             )}
-          </Panel>
+          </Section>
 
-          {policeStations.length ? (
-            <Panel title="สถานีตำรวจ" count={policeStations.length}>
-              <ul className="divide-y divide-slate-100">
-                {policeStations.map((s) => (
-                  <li key={s.policeStationId} className="flex items-center justify-between gap-2 px-4 py-2 text-sm">
-                    <span className="min-w-0">
-                      <span className="block truncate font-semibold text-slate-800">{s.name}</span>
-                      {s.vendorCode ? <span className="text-xs text-slate-400">Vendor {s.vendorCode}</span> : null}
-                    </span>
-                    <span className="shrink-0 font-semibold tabular-nums text-sky-700">
-                      {Number(s.amount) > 0 ? `${formatBaht(s.amount)} ฿` : "—"}
-                    </span>
-                  </li>
-                ))}
-                {policeTotal > 0 ? (
-                  <li className="flex justify-between bg-slate-50/80 px-4 py-2 text-sm font-bold">
-                    <span className="text-slate-500">รวม</span>
-                    <span className="tabular-nums text-sky-700">{formatBaht(policeTotal)} ฿</span>
-                  </li>
-                ) : null}
-              </ul>
-            </Panel>
-          ) : null}
-
-          <Panel title="ไฟล์แนบ" count={attachments.length}>
-            <div className="space-y-2 px-4 py-3">
+          <Section title="ไฟล์แนบ" count={attachments.length}>
+            <div className="space-y-2">
               <label className="flex cursor-pointer items-center justify-center rounded-lg border border-dashed border-[#0000BF]/30 bg-[#0000BF]/[0.04] px-3 py-2 text-sm font-semibold text-[#0000BF] transition hover:bg-[#0000BF]/[0.08]">
                 {uploading ? "กำลังอัปโหลด…" : "+ แนบไฟล์"}
                 <input
@@ -718,9 +789,19 @@ export function MissionSummaryPage() {
                 <p className="text-center text-xs text-slate-400">ยังไม่มีไฟล์แนบ</p>
               )}
             </div>
-          </Panel>
+          </Section>
+
+          <section className="px-5 py-5 sm:px-6">
+            <MissionIncidentsPanel
+              embedded
+              missionId={summary.missionId}
+              plannedStart={summary.plannedStart}
+              plannedEnd={summary.plannedEnd}
+              onCountChange={setIncidentCount}
+            />
+          </section>
         </div>
-      </div>
+      </article>
 
       <MissionInsuranceExportModal
         missionId={insuranceOpen ? summary.missionId : null}
@@ -742,11 +823,11 @@ const actionTones = {
 
 function ActionRow({ label, children }: { label: string; children: ReactNode }) {
   return (
-    <div className="flex flex-col gap-1.5 sm:flex-row sm:items-start sm:gap-3">
-      <span className="shrink-0 pt-1 text-[11px] font-bold uppercase tracking-wide text-slate-400 sm:w-24">
+    <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:gap-3">
+      <span className="shrink-0 text-[10px] font-bold uppercase tracking-wide text-slate-400 sm:w-24">
         {label}
       </span>
-      <div className="flex min-w-0 flex-wrap gap-1.5">{children}</div>
+      <div className="flex min-w-0 flex-wrap gap-1">{children}</div>
     </div>
   );
 }
@@ -764,7 +845,7 @@ function ActionButton({
     <button
       type="button"
       onClick={onClick}
-      className={`rounded-lg border bg-white px-3 py-1.5 text-xs font-bold shadow-sm transition sm:text-sm ${actionTones[tone]}`}
+      className={`rounded-md border bg-white px-2 py-0.5 text-[11px] font-semibold transition ${actionTones[tone]}`}
     >
       {children}
     </button>
@@ -773,36 +854,34 @@ function ActionButton({
 
 function Kpi({ label, value, sub }: { label: string; value: string; sub?: string }) {
   return (
-    <div className="rounded-xl border border-slate-200 bg-white px-4 py-3.5 shadow-sm">
+    <div className="border-slate-100 px-5 py-3.5 max-sm:odd:border-r max-sm:[&:nth-child(-n+2)]:border-b sm:[&:not(:last-child)]:border-r">
       <p className="text-[11px] font-bold uppercase tracking-wide text-slate-400">{label}</p>
-      <p className="mt-1 text-lg font-black tabular-nums leading-tight text-slate-900">{value}</p>
+      <p className="mt-0.5 text-lg font-black tabular-nums leading-tight text-slate-900">{value}</p>
       {sub ? <p className="mt-0.5 text-xs text-slate-400">{sub}</p> : null}
     </div>
   );
 }
 
-function Panel({ title, count, children }: { title: string; count?: number; children: ReactNode }) {
+function PaneTitle({ children, count }: { children: ReactNode; count?: number }) {
   return (
-    <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
-      <h2 className="flex items-center gap-2 border-b border-slate-100 bg-slate-50/50 px-4 py-2.5 text-sm font-bold text-slate-800">
-        {title}
-        {count != null ? (
-          <span className="rounded-md bg-slate-200/70 px-1.5 py-0.5 text-[11px] font-bold tabular-nums text-slate-600">
-            {count}
-          </span>
-        ) : null}
-      </h2>
+    <h2 className="mb-3.5 flex items-center gap-2 text-sm font-bold text-slate-800">
+      <span className="h-4 w-0.5 rounded-full bg-[#0000BF]" aria-hidden />
       {children}
-    </section>
+      {count != null ? (
+        <span className="rounded-md bg-slate-100 px-1.5 py-0.5 text-[11px] font-bold tabular-nums text-slate-500">
+          {count}
+        </span>
+      ) : null}
+    </h2>
   );
 }
 
-function Row({ label, value, valueClass = "text-slate-800" }: { label: string; value: string; valueClass?: string }) {
+function Section({ title, count, children }: { title: string; count?: number; children: ReactNode }) {
   return (
-    <div className="flex justify-between gap-2 text-sm">
-      <span className="text-slate-500">{label}</span>
-      <span className={`font-semibold tabular-nums ${valueClass}`}>{value}</span>
-    </div>
+    <section className="px-5 py-5 sm:px-6">
+      <PaneTitle count={count}>{title}</PaneTitle>
+      {children}
+    </section>
   );
 }
 
@@ -842,8 +921,6 @@ function Thumb({
   );
 }
 
-function Empty({ children, compact }: { children: ReactNode; compact?: boolean }) {
-  return (
-    <p className={`text-center text-sm text-slate-400 ${compact ? "px-4 py-4" : "px-4 py-6"}`}>{children}</p>
-  );
+function Empty({ children }: { children: ReactNode }) {
+  return <p className="py-2 text-sm text-slate-400">{children}</p>;
 }

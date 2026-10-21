@@ -1,3 +1,4 @@
+import { randomUUID } from "crypto";
 import { Router } from "express";
 import { MissionStatus, MissionVehicleFuelType, Prisma } from "@prisma/client";
 import XLSX from "xlsx-js-style";
@@ -132,6 +133,7 @@ async function missionSummary(missionId: string) {
         },
         orderBy: { personnel: { fullName: "asc" } },
       },
+      cargoTrucks: { orderBy: { sortOrder: "asc" } },
       vehicles: {
         include: {
           vehicle: {
@@ -167,6 +169,7 @@ async function missionSummary(missionId: string) {
 
   let personnelCompensationTotal = new Prisma.Decimal(0);
   for (const p of mission.personnel) {
+    if (isCargoDriverAssignment(p)) continue;
     personnelCompensationTotal = personnelCompensationTotal.add(p.compensationRate ?? 0);
   }
 
@@ -249,11 +252,13 @@ async function missionSummary(missionId: string) {
       policeStationName: p.personnel.policeStation?.name ?? null,
       policeStationVendorCode: p.personnel.policeStation?.vendorCode ?? null,
       roleName: p.personnelRole.name,
-      compensationRate: p.compensationRate.toString(),
+      compensationRate: isCargoDriverAssignment(p) ? "0" : p.compensationRate.toString(),
       assignedVehicleId: p.assignedVehicleId ?? null,
+      assignedCargoTruckId: p.assignedCargoTruckId ?? null,
       returnVehicleSameAsGo: p.returnVehicleSameAsGo !== false,
       assignedVehicleReturnId: p.assignedVehicleReturnId ?? null,
     })),
+    cargoTrucks: mission.cargoTrucks.map(serializeCargoTruck),
     policeStations: mission.policeStations.map((s) => ({
       policeStationId: s.policeStationId,
       name: s.policeStation.name,
@@ -1262,6 +1267,7 @@ missionsRouter.get("/:id", async (req, res, next) => {
       include: {
         route: true,
         personnel: { include: { personnel: true, personnelRole: true } },
+        cargoTrucks: { orderBy: { sortOrder: "asc" } },
         vehicles: { include: { vehicle: true, vehicleRole: true } },
         destinations: { orderBy: { sortOrder: "asc" } },
         expenses: { include: { expenseType: true }, orderBy: { incurredAt: "desc" } },
@@ -1274,9 +1280,10 @@ missionsRouter.get("/:id", async (req, res, next) => {
       },
     });
     if (!row) return res.status(404).json({ error: "Not found" });
-    const { attachments, policeStations, actualExpense, ...rest } = row;
+    const { attachments, policeStations, actualExpense, cargoTrucks, ...rest } = row;
     res.json({
       ...rest,
+      cargoTrucks: cargoTrucks.map(serializeCargoTruck),
       policeStations: policeStations.map((s) => ({
         id: s.id,
         policeStationId: s.policeStationId,
@@ -1331,6 +1338,7 @@ type PersonnelIn = {
   personnelRoleId: string;
   compensationRate?: string | number;
   assignedVehicleId?: string | null;
+  assignedCargoTruckId?: string | null;
   returnVehicleSameAsGo?: boolean | null;
   assignedVehicleReturnId?: string | null;
 };
@@ -1344,13 +1352,249 @@ function assignedVehicleOf(
   return id && vehicles.some((v) => v.vehicleId === id) ? id : null;
 }
 
-function personnelVehicleFields(p: PersonnelIn, vehicles: VehicleIn[]) {
+function personnelVehicleFields(
+  p: PersonnelIn,
+  vehicles: VehicleIn[],
+  cargoTruckIds: Set<string>,
+  cargoByTractor: Map<string, string>,
+) {
   const go = assignedVehicleOf(p.assignedVehicleId, vehicles);
-  const same = p.returnVehicleSameAsGo !== false;
+  let cargo =
+    p.assignedCargoTruckId && cargoTruckIds.has(String(p.assignedCargoTruckId))
+      ? String(p.assignedCargoTruckId)
+      : null;
+  if (!cargo && go && cargoByTractor.has(go)) cargo = cargoByTractor.get(go) ?? null;
+  const onCargo = Boolean(cargo);
+  const same = onCargo ? false : p.returnVehicleSameAsGo !== false;
   return {
     assignedVehicleId: go,
+    assignedCargoTruckId: cargo,
     returnVehicleSameAsGo: same,
     assignedVehicleReturnId: same ? null : assignedVehicleOf(p.assignedVehicleReturnId, vehicles),
+  };
+}
+
+type CargoTruckIn = {
+  id: string;
+  sortOrder: number;
+  tractorVehicleId: string | null;
+  tractorPlate: string;
+  trailerPlate: string | null;
+  roleId: string | null;
+  role: string | null;
+  driver1PersonnelId: string | null;
+  driver1Name: string;
+  driver1IdNumber: string | null;
+  driver1Phone: string | null;
+  driver2PersonnelId: string | null;
+  driver2Name: string | null;
+  driver2IdNumber: string | null;
+  driver2Phone: string | null;
+  note: string | null;
+};
+
+function personnelDisplayName(p: { rank?: string | null; fullName: string }): string {
+  return [p.rank, p.fullName].filter(Boolean).join(" ").trim();
+}
+
+function cargoStr(v: unknown, max: number): string {
+  const s = String(v ?? "").trim();
+  return s ? s.slice(0, max) : "";
+}
+
+function asUuid(v: unknown): string | undefined {
+  const s = String(v ?? "").trim();
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(s)
+    ? s
+    : undefined;
+}
+
+function parseCargoTrucks(raw: unknown): CargoTruckIn[] {
+  if (!Array.isArray(raw)) return [];
+  return raw
+    .map((row, i) => {
+      const r = (row ?? {}) as Record<string, unknown>;
+      const tractorPlate = cargoStr(r.tractorPlate, 40);
+      const trailerPlate = cargoStr(r.trailerPlate, 40);
+      const role = cargoStr(r.role, 40);
+      const driver1Name = cargoStr(r.driver1Name, 120);
+      const driver2Name = cargoStr(r.driver2Name, 120);
+      const driver1IdNumber = cargoStr(r.driver1IdNumber, 20);
+      const driver2IdNumber = cargoStr(r.driver2IdNumber, 20);
+      const driver1Phone = cargoStr(r.driver1Phone, 30);
+      const driver2Phone = cargoStr(r.driver2Phone, 30);
+      const note = cargoStr(r.note, 120);
+      const id = asUuid(r.id) ?? randomUUID();
+      const tractorVehicleId = asUuid(r.tractorVehicleId) ?? null;
+      const roleId = asUuid(r.roleId) ?? null;
+      const driver1PersonnelId = asUuid(r.driver1PersonnelId) ?? null;
+      const driver2PersonnelId = asUuid(r.driver2PersonnelId) ?? null;
+      return {
+        id,
+        sortOrder: typeof r.sortOrder === "number" ? r.sortOrder : i,
+        tractorVehicleId,
+        tractorPlate,
+        trailerPlate: trailerPlate || null,
+        roleId,
+        role: role || null,
+        driver1PersonnelId,
+        driver1Name,
+        driver1IdNumber: driver1IdNumber || null,
+        driver1Phone: driver1Phone || null,
+        driver2PersonnelId,
+        driver2Name: driver2Name || null,
+        driver2IdNumber: driver2IdNumber || null,
+        driver2Phone: driver2Phone || null,
+        note: note || null,
+      };
+    })
+    .filter(
+      (t) =>
+        t.tractorVehicleId ||
+        t.tractorPlate ||
+        t.trailerPlate ||
+        t.roleId ||
+        t.role ||
+        t.driver1PersonnelId ||
+        t.driver2PersonnelId ||
+        t.driver1Name ||
+        t.driver2Name,
+    );
+}
+
+async function hydrateCargoTruckTractors(trucks: CargoTruckIn[]): Promise<CargoTruckIn[]> {
+  const ids = [...new Set(trucks.map((t) => t.tractorVehicleId).filter((id): id is string => Boolean(id)))];
+  const plates = [
+    ...new Set(trucks.filter((t) => !t.tractorVehicleId && t.tractorPlate).map((t) => t.tractorPlate)),
+  ];
+  if (!ids.length && !plates.length) return trucks;
+  const found = await prisma.vehicle.findMany({
+    where: {
+      OR: [
+        ...(ids.length ? [{ id: { in: ids } }] : []),
+        ...plates.map((p) => ({ licensePlate: { contains: p } })),
+      ],
+    },
+    select: { id: true, licensePlate: true },
+  });
+  const byId = new Map(found.map((v) => [v.id, v]));
+  const byPlate = new Map(found.map((v) => [v.licensePlate.replace(/\s+/g, "").toLowerCase(), v]));
+  return trucks.map((t) => {
+    const byFk = t.tractorVehicleId ? byId.get(t.tractorVehicleId) : undefined;
+    const compact = t.tractorPlate.replace(/\s+/g, "").toLowerCase();
+    const byPl = !byFk && compact ? byPlate.get(compact) : undefined;
+    const v = byFk ?? byPl;
+    return {
+      ...t,
+      tractorVehicleId: v?.id ?? null,
+      tractorPlate: v?.licensePlate ?? t.tractorPlate,
+    };
+  });
+}
+
+async function hydrateCargoTruckRoles(trucks: CargoTruckIn[]): Promise<CargoTruckIn[]> {
+  const ids = [...new Set(trucks.map((t) => t.roleId).filter((id): id is string => Boolean(id)))];
+  const names = [...new Set(trucks.map((t) => t.role).filter((n): n is string => Boolean(n)))];
+  if (!ids.length && !names.length) return trucks;
+  const found = await prisma.missionCargoRoleMaster.findMany({
+    where: {
+      OR: [
+        ...(ids.length ? [{ id: { in: ids } }] : []),
+        ...(names.length ? [{ name: { in: names } }] : []),
+      ],
+    },
+    select: { id: true, name: true },
+  });
+  const byId = new Map(found.map((r) => [r.id, r]));
+  const byName = new Map(found.map((r) => [r.name, r]));
+  return trucks.map((t) => {
+    const hit = (t.roleId ? byId.get(t.roleId) : undefined) ?? (t.role ? byName.get(t.role) : undefined);
+    return {
+      ...t,
+      roleId: hit?.id ?? null,
+      role: hit?.name ?? t.role,
+    };
+  });
+}
+
+async function hydrateCargoTrucks(trucks: CargoTruckIn[]): Promise<CargoTruckIn[]> {
+  return hydrateCargoTruckRoles(await hydrateCargoTruckTractors(await hydrateCargoTruckDrivers(trucks)));
+}
+
+async function hydrateCargoTruckDrivers(trucks: CargoTruckIn[]): Promise<CargoTruckIn[]> {
+  const ids = [
+    ...new Set(trucks.flatMap((t) => [t.driver1PersonnelId, t.driver2PersonnelId]).filter((id): id is string => Boolean(id))),
+  ];
+  if (!ids.length) return trucks;
+  const people = await prisma.personnel.findMany({
+    where: { id: { in: ids } },
+    select: { id: true, fullName: true, rank: true, idNumber: true, phone: true },
+  });
+  const byId = new Map(people.map((p) => [p.id, p]));
+  return trucks.map((t) => {
+    const a = t.driver1PersonnelId ? byId.get(t.driver1PersonnelId) : undefined;
+    const b = t.driver2PersonnelId ? byId.get(t.driver2PersonnelId) : undefined;
+    return {
+      ...t,
+      driver1PersonnelId: a?.id ?? null,
+      driver1Name: a ? personnelDisplayName(a) : t.driver1Name,
+      driver1IdNumber: a?.idNumber ?? t.driver1IdNumber,
+      driver1Phone: a?.phone ?? t.driver1Phone,
+      driver2PersonnelId: b?.id ?? null,
+      driver2Name: b ? personnelDisplayName(b) : t.driver2Name,
+      driver2IdNumber: b?.idNumber ?? t.driver2IdNumber,
+      driver2Phone: b?.phone ?? t.driver2Phone,
+    };
+  });
+}
+
+function isCargoDriverAssignment(p: {
+  personnelRole?: { name?: string | null } | null;
+  personnel?: { personnelCategory?: { name?: string | null } | null } | null;
+}): boolean {
+  const cat = p.personnel?.personnelCategory?.name?.trim() ?? "";
+  if (cat === "ขับรถสินค้า") return true;
+  return /พนักงานขับรถสินค้า|ขับรถสินค้า/.test(p.personnelRole?.name ?? "");
+}
+
+/** คนขับรถสินค้าไม่บันทึกเป็นบุคลากรค่าตอบแทน — รวมในค่าจ้างรถบรรทุก */
+async function excludeCargoDriverPersonnel(arr: PersonnelIn[]): Promise<PersonnelIn[]> {
+  if (!arr.length) return arr;
+  const people = await prisma.personnel.findMany({
+    where: { id: { in: [...new Set(arr.map((p) => p.personnelId))] } },
+    select: { id: true, personnelCategory: { select: { name: true } } },
+  });
+  const cargoPeople = new Set(
+    people.filter((r) => r.personnelCategory?.name?.trim() === "ขับรถสินค้า").map((r) => r.id),
+  );
+  const roles = await prisma.missionPersonnelRoleMaster.findMany({
+    where: { id: { in: [...new Set(arr.map((p) => p.personnelRoleId))] } },
+    select: { id: true, name: true },
+  });
+  const cargoRoles = new Set(
+    roles.filter((r) => /พนักงานขับรถสินค้า|ขับรถสินค้า/.test(r.name)).map((r) => r.id),
+  );
+  return arr.filter((p) => !cargoPeople.has(p.personnelId) && !cargoRoles.has(p.personnelRoleId));
+}
+
+function serializeCargoTruck(t: CargoTruckIn & { id?: string }) {
+  return {
+    id: t.id,
+    sortOrder: t.sortOrder,
+    tractorVehicleId: t.tractorVehicleId ?? null,
+    tractorPlate: t.tractorPlate,
+    trailerPlate: t.trailerPlate ?? "",
+    roleId: t.roleId ?? null,
+    role: t.role ?? "",
+    driver1PersonnelId: t.driver1PersonnelId ?? null,
+    driver1Name: t.driver1Name,
+    driver1IdNumber: t.driver1IdNumber ?? "",
+    driver1Phone: t.driver1Phone ?? "",
+    driver2PersonnelId: t.driver2PersonnelId ?? null,
+    driver2Name: t.driver2Name ?? "",
+    driver2IdNumber: t.driver2IdNumber ?? "",
+    driver2Phone: t.driver2Phone ?? "",
+    note: t.note ?? "",
   };
 }
 type VehicleIn = {
@@ -1394,6 +1638,7 @@ missionsRouter.post("/", async (req, res, next) => {
       plannedStart,
       plannedEnd,
       personnel,
+      cargoTrucks,
       vehicles,
       destinations,
       expenses,
@@ -1404,6 +1649,7 @@ missionsRouter.post("/", async (req, res, next) => {
       return res.status(400).json({ error: "Invalid status" });
 
     const personnelArr: PersonnelIn[] = Array.isArray(personnel) ? personnel : [];
+    const cargoTruckArr = await hydrateCargoTrucks(parseCargoTrucks(cargoTrucks));
     const vehiclesArr: VehicleIn[] = Array.isArray(vehicles) ? vehicles : [];
     const destArr: DestIn[] = Array.isArray(destinations) ? destinations : [];
     const expArr: ExpIn[] = Array.isArray(expenses) ? expenses : [];
@@ -1441,180 +1687,30 @@ missionsRouter.post("/", async (req, res, next) => {
       return res.status(400).json({ error: "Invalid expense type" });
     if (!(await allIdsExist("policeStation", policeStationArr.map((s) => s.policeStationId))))
       return res.status(400).json({ error: "Invalid police station" });
+
+    const personnelToSave = await excludeCargoDriverPersonnel(personnelArr);
+    const cargoTruckIds = new Set(cargoTruckArr.map((t) => t.id).filter((id): id is string => Boolean(id)));
+    const cargoByTractor = new Map(
+      cargoTruckArr
+        .filter((t) => t.tractorVehicleId)
+        .map((t) => [t.tractorVehicleId as string, t.id]),
+    );
 
     const codeIn = code == null || code === "" ? "" : String(code).trim();
     const finalCode = codeIn ? codeIn : await generateNextMissionCode();
 
-    const row = await prisma.mission.create({
-      data: {
-        title: title || null,
-        code: finalCode,
-        status: status ?? MissionStatus.DRAFT,
-        routeId: routeId || null,
-        budgetAmount: dec(budgetAmount),
-        plannedStart: plannedStart ? new Date(plannedStart) : null,
-        plannedEnd: plannedEnd ? new Date(plannedEnd) : null,
-        personnel: {
-          create: personnelArr.map((p) => ({
-            personnelId: p.personnelId,
-            personnelRoleId: p.personnelRoleId,
-            compensationRate: dec(p.compensationRate) ?? new Prisma.Decimal(0),
-            ...personnelVehicleFields(p, vehiclesArr),
-          })),
-        },
-        vehicles: {
-          create: vehiclesArr.map((v) => ({
-            vehicleId: v.vehicleId,
-            vehicleRoleId: v.vehicleRoleId,
-            fuelLiters: normalizeFuelLiters(v.fuelLiters),
-            fuelType: normalizeFuelType(v.fuelType),
-            fuelAmount: normalizeFuelAmount(v.fuelAmount),
-            callSign: normalizeCallSign(v.callSign),
-          })),
-        },
-        destinations: {
-          create: destArr.map((d, i) => ({
-            address: d.address,
-            cargoValue: dec(d.cargoValue) ?? new Prisma.Decimal(0),
-            containerCount: d.containerCount ?? 0,
-            sortOrder: d.sortOrder ?? i,
-          })),
-        },
-        expenses: {
-          create: expArr.map((e) => ({
-            expenseTypeId: e.expenseTypeId,
-            amount: dec(e.amount)!,
-            description: e.description || null,
-            incurredAt: e.incurredAt ? new Date(e.incurredAt) : undefined,
-          })),
-        },
-        policeStations: {
-          create: policeStationArr.map((s, i) => ({
-            policeStationId: s.policeStationId,
-            amount: dec(s.amount) ?? new Prisma.Decimal(0),
-            estimateItemCode: normalizeEstimateItemCode(s.estimateItemCode),
-            note: s.note ? String(s.note) : null,
-            sortOrder: s.sortOrder ?? i,
-          })),
-        },
-      },
-      include: {
-        route: true,
-        personnel: { include: { personnel: true, personnelRole: true } },
-        vehicles: { include: { vehicle: true, vehicleRole: true } },
-        destinations: true,
-        expenses: { include: { expenseType: true } },
-        policeStations: { include: { policeStation: true } },
-        attachments: { orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }] },
-      },
-    });
-    await reactivatePersonnel(
-      row.personnel.map((p) => p.personnelId),
-      row.plannedEnd ?? row.plannedStart ?? row.createdAt,
-    );
-    const { attachments, ...rest } = row;
-    res.status(201).json({ ...rest, attachments: attachments.map(serializeMissionAttachment) });
-  } catch (e: unknown) {
-    if (e && typeof e === "object" && "code" in e && (e as { code: string }).code === "P2002")
-      return res.status(409).json({ error: "code must be unique" });
-    next(e);
-  }
-});
-
-/** แทนที่บุคลากร/รถ/จุดส่ง/ค่าใช้จ่ายทั้งหมด — รหัสภารกิจและงบเดิมคงอยู่ */
-missionsRouter.put("/:id", async (req, res, next) => {
-  try {
-    const id = req.params.id;
-    const existing = await prisma.mission.findUnique({ where: { id } });
-    if (!existing) return res.status(404).json({ error: "Not found" });
-
-    const {
-      title,
-      status,
-      routeId,
-      plannedStart,
-      plannedEnd,
-      personnel,
-      vehicles,
-      destinations,
-      expenses,
-      policeStations,
-    } = req.body;
-
-    if (status && !Object.values(MissionStatus).includes(status))
-      return res.status(400).json({ error: "Invalid status" });
-
-    const personnelArr: PersonnelIn[] = Array.isArray(personnel) ? personnel : [];
-    const vehiclesArr: VehicleIn[] = Array.isArray(vehicles) ? vehicles : [];
-    const destArr: DestIn[] = Array.isArray(destinations) ? destinations : [];
-    const expArr: ExpIn[] = Array.isArray(expenses) ? expenses : [];
-    const policeStationArr: PoliceStationIn[] = Array.isArray(policeStations) ? policeStations : [];
-
-    for (const p of personnelArr) {
-      if (!p.personnelId || !p.personnelRoleId)
-        return res.status(400).json({ error: "Invalid personnel entry" });
-    }
-    for (const v of vehiclesArr) {
-      if (!v.vehicleId || !v.vehicleRoleId) return res.status(400).json({ error: "Invalid vehicle entry" });
-      if (!validateFuelLitersInput(v.fuelLiters))
-        return res.status(400).json({ error: "fuelLiters must be a non-negative number" });
-      if (!validateFuelTypeInput(v.fuelType))
-        return res.status(400).json({ error: "fuelType must be GASOLINE, DIESEL, or empty" });
-      if (!validateFuelAmountInput(v.fuelAmount))
-        return res.status(400).json({ error: "fuelAmount must be a non-negative number" });
-    }
-    for (const d of destArr) {
-      if (!d.address) return res.status(400).json({ error: "Each destination needs address" });
-    }
-    for (const e of expArr) {
-      if (!e.expenseTypeId || e.amount === undefined)
-        return res.status(400).json({ error: "Invalid expense entry" });
-    }
-    for (const s of policeStationArr) {
-      if (!s.policeStationId) return res.status(400).json({ error: "Invalid police station entry" });
-    }
-
-    if (!(await allIdsExist("personnelRole", personnelArr.map((p) => p.personnelRoleId))))
-      return res.status(400).json({ error: "Invalid personnel role" });
-    if (!(await allIdsExist("vehicleRole", vehiclesArr.map((v) => v.vehicleRoleId))))
-      return res.status(400).json({ error: "Invalid vehicle role" });
-    if (!(await allIdsExist("expenseType", expArr.map((e) => e.expenseTypeId))))
-      return res.status(400).json({ error: "Invalid expense type" });
-    if (!(await allIdsExist("policeStation", policeStationArr.map((s) => s.policeStationId))))
-      return res.status(400).json({ error: "Invalid police station" });
-
     const row = await prisma.$transaction(async (tx) => {
-      await tx.missionPersonnel.deleteMany({ where: { missionId: id } });
-      await tx.missionVehicle.deleteMany({ where: { missionId: id } });
-      await tx.missionDestination.deleteMany({ where: { missionId: id } });
-      await tx.missionExpense.deleteMany({ where: { missionId: id } });
-      await tx.missionPoliceStation.deleteMany({ where: { missionId: id } });
-
-      return tx.mission.update({
-        where: { id },
+      const created = await tx.mission.create({
         data: {
-          title: title !== undefined ? title || null : existing.title,
-          status: status ?? existing.status,
-          routeId: routeId !== undefined ? routeId || null : existing.routeId,
-          plannedStart:
-            plannedStart !== undefined
-              ? plannedStart
-                ? new Date(plannedStart)
-                : null
-              : existing.plannedStart,
-          plannedEnd:
-            plannedEnd !== undefined
-              ? plannedEnd
-                ? new Date(plannedEnd)
-                : null
-              : existing.plannedEnd,
-          personnel: {
-            create: personnelArr.map((p) => ({
-              personnelId: p.personnelId,
-              personnelRoleId: p.personnelRoleId,
-              compensationRate: dec(p.compensationRate) ?? new Prisma.Decimal(0),
-              ...personnelVehicleFields(p, vehiclesArr),
-            })),
+          title: title || null,
+          code: finalCode,
+          status: status ?? MissionStatus.DRAFT,
+          routeId: routeId || null,
+          budgetAmount: dec(budgetAmount),
+          plannedStart: plannedStart ? new Date(plannedStart) : null,
+          plannedEnd: plannedEnd ? new Date(plannedEnd) : null,
+          cargoTrucks: {
+            create: cargoTruckArr,
           },
           vehicles: {
             create: vehiclesArr.map((v) => ({
@@ -1652,9 +1748,200 @@ missionsRouter.put("/:id", async (req, res, next) => {
             })),
           },
         },
+      });
+      if (personnelToSave.length) {
+        await tx.missionPersonnel.createMany({
+          data: personnelToSave.map((p) => ({
+            missionId: created.id,
+            personnelId: p.personnelId,
+            personnelRoleId: p.personnelRoleId,
+            compensationRate: dec(p.compensationRate) ?? new Prisma.Decimal(0),
+            ...personnelVehicleFields(p, vehiclesArr, cargoTruckIds, cargoByTractor),
+          })),
+        });
+      }
+      return tx.mission.findUniqueOrThrow({
+        where: { id: created.id },
         include: {
           route: true,
           personnel: { include: { personnel: true, personnelRole: true } },
+          cargoTrucks: { orderBy: { sortOrder: "asc" } },
+          vehicles: { include: { vehicle: true, vehicleRole: true } },
+          destinations: true,
+          expenses: { include: { expenseType: true } },
+          policeStations: { include: { policeStation: true } },
+          attachments: { orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }] },
+        },
+      });
+    });
+    await reactivatePersonnel(
+      row.personnel.map((p) => p.personnelId),
+      row.plannedEnd ?? row.plannedStart ?? row.createdAt,
+    );
+    const { attachments, ...rest } = row;
+    res.status(201).json({ ...rest, attachments: attachments.map(serializeMissionAttachment) });
+  } catch (e: unknown) {
+    if (e && typeof e === "object" && "code" in e && (e as { code: string }).code === "P2002")
+      return res.status(409).json({ error: "code must be unique" });
+    next(e);
+  }
+});
+
+/** แทนที่บุคลากร/รถ/จุดส่ง/ค่าใช้จ่ายทั้งหมด — รหัสภารกิจและงบเดิมคงอยู่ */
+missionsRouter.put("/:id", async (req, res, next) => {
+  try {
+    const id = req.params.id;
+    const existing = await prisma.mission.findUnique({ where: { id } });
+    if (!existing) return res.status(404).json({ error: "Not found" });
+
+    const {
+      title,
+      status,
+      routeId,
+      plannedStart,
+      plannedEnd,
+      personnel,
+      cargoTrucks,
+      vehicles,
+      destinations,
+      expenses,
+      policeStations,
+    } = req.body;
+
+    if (status && !Object.values(MissionStatus).includes(status))
+      return res.status(400).json({ error: "Invalid status" });
+
+    const personnelArr: PersonnelIn[] = Array.isArray(personnel) ? personnel : [];
+    const cargoTruckArr = await hydrateCargoTrucks(parseCargoTrucks(cargoTrucks));
+    const vehiclesArr: VehicleIn[] = Array.isArray(vehicles) ? vehicles : [];
+    const destArr: DestIn[] = Array.isArray(destinations) ? destinations : [];
+    const expArr: ExpIn[] = Array.isArray(expenses) ? expenses : [];
+    const policeStationArr: PoliceStationIn[] = Array.isArray(policeStations) ? policeStations : [];
+
+    for (const p of personnelArr) {
+      if (!p.personnelId || !p.personnelRoleId)
+        return res.status(400).json({ error: "Invalid personnel entry" });
+    }
+    for (const v of vehiclesArr) {
+      if (!v.vehicleId || !v.vehicleRoleId) return res.status(400).json({ error: "Invalid vehicle entry" });
+      if (!validateFuelLitersInput(v.fuelLiters))
+        return res.status(400).json({ error: "fuelLiters must be a non-negative number" });
+      if (!validateFuelTypeInput(v.fuelType))
+        return res.status(400).json({ error: "fuelType must be GASOLINE, DIESEL, or empty" });
+      if (!validateFuelAmountInput(v.fuelAmount))
+        return res.status(400).json({ error: "fuelAmount must be a non-negative number" });
+    }
+    for (const d of destArr) {
+      if (!d.address) return res.status(400).json({ error: "Each destination needs address" });
+    }
+    for (const e of expArr) {
+      if (!e.expenseTypeId || e.amount === undefined)
+        return res.status(400).json({ error: "Invalid expense entry" });
+    }
+    for (const s of policeStationArr) {
+      if (!s.policeStationId) return res.status(400).json({ error: "Invalid police station entry" });
+    }
+
+    if (!(await allIdsExist("personnelRole", personnelArr.map((p) => p.personnelRoleId))))
+      return res.status(400).json({ error: "Invalid personnel role" });
+    if (!(await allIdsExist("vehicleRole", vehiclesArr.map((v) => v.vehicleRoleId))))
+      return res.status(400).json({ error: "Invalid vehicle role" });
+    if (!(await allIdsExist("expenseType", expArr.map((e) => e.expenseTypeId))))
+      return res.status(400).json({ error: "Invalid expense type" });
+    if (!(await allIdsExist("policeStation", policeStationArr.map((s) => s.policeStationId))))
+      return res.status(400).json({ error: "Invalid police station" });
+
+    const personnelToSave = await excludeCargoDriverPersonnel(personnelArr);
+    const cargoTruckIds = new Set(cargoTruckArr.map((t) => t.id).filter((id): id is string => Boolean(id)));
+    const cargoByTractor = new Map(
+      cargoTruckArr
+        .filter((t) => t.tractorVehicleId)
+        .map((t) => [t.tractorVehicleId as string, t.id]),
+    );
+
+    const row = await prisma.$transaction(async (tx) => {
+      await tx.missionPersonnel.deleteMany({ where: { missionId: id } });
+      await tx.missionCargoTruck.deleteMany({ where: { missionId: id } });
+      await tx.missionVehicle.deleteMany({ where: { missionId: id } });
+      await tx.missionDestination.deleteMany({ where: { missionId: id } });
+      await tx.missionExpense.deleteMany({ where: { missionId: id } });
+      await tx.missionPoliceStation.deleteMany({ where: { missionId: id } });
+
+      await tx.mission.update({
+        where: { id },
+        data: {
+          title: title !== undefined ? title || null : existing.title,
+          status: status ?? existing.status,
+          routeId: routeId !== undefined ? routeId || null : existing.routeId,
+          plannedStart:
+            plannedStart !== undefined
+              ? plannedStart
+                ? new Date(plannedStart)
+                : null
+              : existing.plannedStart,
+          plannedEnd:
+            plannedEnd !== undefined
+              ? plannedEnd
+                ? new Date(plannedEnd)
+                : null
+              : existing.plannedEnd,
+          cargoTrucks: {
+            create: cargoTruckArr,
+          },
+          vehicles: {
+            create: vehiclesArr.map((v) => ({
+              vehicleId: v.vehicleId,
+              vehicleRoleId: v.vehicleRoleId,
+              fuelLiters: normalizeFuelLiters(v.fuelLiters),
+              fuelType: normalizeFuelType(v.fuelType),
+              fuelAmount: normalizeFuelAmount(v.fuelAmount),
+              callSign: normalizeCallSign(v.callSign),
+            })),
+          },
+          destinations: {
+            create: destArr.map((d, i) => ({
+              address: d.address,
+              cargoValue: dec(d.cargoValue) ?? new Prisma.Decimal(0),
+              containerCount: d.containerCount ?? 0,
+              sortOrder: d.sortOrder ?? i,
+            })),
+          },
+          expenses: {
+            create: expArr.map((e) => ({
+              expenseTypeId: e.expenseTypeId,
+              amount: dec(e.amount)!,
+              description: e.description || null,
+              incurredAt: e.incurredAt ? new Date(e.incurredAt) : undefined,
+            })),
+          },
+          policeStations: {
+            create: policeStationArr.map((s, i) => ({
+              policeStationId: s.policeStationId,
+              amount: dec(s.amount) ?? new Prisma.Decimal(0),
+              estimateItemCode: normalizeEstimateItemCode(s.estimateItemCode),
+              note: s.note ? String(s.note) : null,
+              sortOrder: s.sortOrder ?? i,
+            })),
+          },
+        },
+      });
+      if (personnelToSave.length) {
+        await tx.missionPersonnel.createMany({
+          data: personnelToSave.map((p) => ({
+            missionId: id,
+            personnelId: p.personnelId,
+            personnelRoleId: p.personnelRoleId,
+            compensationRate: dec(p.compensationRate) ?? new Prisma.Decimal(0),
+            ...personnelVehicleFields(p, vehiclesArr, cargoTruckIds, cargoByTractor),
+          })),
+        });
+      }
+      return tx.mission.findUniqueOrThrow({
+        where: { id },
+        include: {
+          route: true,
+          personnel: { include: { personnel: true, personnelRole: true } },
+          cargoTrucks: { orderBy: { sortOrder: "asc" } },
           vehicles: { include: { vehicle: true, vehicleRole: true } },
           destinations: true,
           expenses: { include: { expenseType: true } },
@@ -1713,6 +2000,7 @@ missionsRouter.patch("/:id", async (req, res, next) => {
       include: {
         route: true,
         personnel: { include: { personnel: true, personnelRole: true } },
+        cargoTrucks: { orderBy: { sortOrder: "asc" } },
         vehicles: { include: { vehicle: true, vehicleRole: true } },
         destinations: true,
         expenses: { include: { expenseType: true } },

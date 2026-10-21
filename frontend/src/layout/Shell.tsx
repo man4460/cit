@@ -456,14 +456,7 @@ export function Shell() {
                   </button>
                 </div>
               ) : (
-                <>
-                  {pageLevel === "read" || pageLevel === "edit" ? (
-                    <p className="no-print mb-3 rounded-lg border border-amber-200 bg-amber-50/70 px-3 py-1.5 text-[12px] font-semibold text-amber-800">
-                      สิทธิ์ของคุณในส่วนนี้: {pageLevel === "read" ? "อ่านอย่างเดียว — เพิ่ม แก้ไข หรือลบข้อมูลไม่ได้" : "เพิ่มและแก้ไขได้ — ลบข้อมูลไม่ได้"}
-                    </p>
-                  ) : null}
-                  <Outlet key={dataEpoch} />
-                </>
+                <Outlet key={dataEpoch} />
               )}
             </div>
           </div>

@@ -14,8 +14,10 @@ import {
   type MissionEstimateEditorHandle,
 } from "../components/MissionEstimateEditor";
 import { MissionRateNotesModal } from "../components/MissionRateNotesModal";
+import { Modal } from "../components/Modal";
 import { PageHeaderBar } from "../components/PageHeaderBar";
 import { MissionsSubNav } from "../components/MissionsSubNav";
+import { NavIcons } from "../lib/navVisuals";
 import { SearchableSelect, personnelSelectLabel } from "../components/SearchableSelect";
 import { EMPTY_BOT_LINE_AMOUNTS, type BotLineAmounts } from "../lib/estimatePersonCounts";
 import { formatBaht, formatInt, parseLooseNumber } from "../lib/formatNumber";
@@ -26,9 +28,27 @@ import {
   isBotPersonnelCategory,
   missionInclusiveDays,
 } from "../lib/botAllowancePrint";
+import {
+  blankCargoTruck,
+  cargoSeatKey,
+  cargoTruckCallSign,
+  cargoTruckDriverCount,
+  cargoTruckDriverNames,
+  cargoTruckFilled,
+  matchCargoDriverId,
+  matchCargoRoleId,
+  matchTractorVehicleId,
+  nextSuggestedCargoRole,
+  toCargoTruckForm,
+  withCargoDriver,
+  withCargoRole,
+  withCargoTractor,
+  type CargoTruckRow,
+} from "../lib/missionCargoTrucks";
 import { sortMissionVehicleRows } from "../lib/missionConvoyOrder";
 import {
   MISSION_PERSONNEL_TABS,
+  MISSION_STAFF_TABS,
   defaultMissionRoleIdForTab,
   missionPersonnelTabByCategory,
   type MissionPersonnelTabKey,
@@ -59,6 +79,8 @@ type PRow = {
   tabKey: MissionPersonnelTabKey;
   /** รถประจำขาไป — ต้องอยู่ในรายการยานพาหนะของภารกิจ */
   assignedVehicleId?: string;
+  /** รถสินค้าจ้างเหมาขาไป (แท็บปฏิบัติการพิเศษ) */
+  assignedCargoTruckId?: string;
   /** ขากลับโดยสารคันเดียวกับขาไป */
   returnVehicleSameAsGo?: boolean;
   /** รถประจำขากลับ — ใช้เมื่อไม่ติ๊กเหมือนขาไป */
@@ -126,6 +148,21 @@ type DRow = { address: string; cargoValue: string; containerCount: number };
 type PsRow = { policeStationId: string; amount: string; estimateItemCode: string; note?: string | null };
 
 const LOADED_MARK = "__loaded__";
+
+const FORM_STEPS = [
+  "ข้อมูลทั่วไป",
+  "ประมาณการค่าใช้จ่าย",
+  "ข้อมูลรถสินค้า",
+  "บุคลากร",
+  "สถานีตำรวจ",
+  "ยานพาหนะ",
+  "ค่าใช้จ่าย",
+] as const;
+const STEP_CARGO = 2;
+const STEP_PERSONNEL = 3;
+const STEP_STATIONS = 4;
+const STEP_VEHICLES = 5;
+const STEP_EXPENSES = 6;
 
 const PERSONNEL_TAB_ORDER: MissionPersonnelTabKey[] = ["bot", "crime", "highway", "special", "driver"];
 
@@ -302,13 +339,18 @@ export function MissionFormPage() {
   const [routes, setRoutes] = useState<RouteMaster[]>([]);
   const [personnelRoleMasters, setPersonnelRoleMasters] = useState<NameMasterRow[]>([]);
   const [vehicleRoleMasters, setVehicleRoleMasters] = useState<NameMasterRow[]>([]);
+  const [cargoRoleMasters, setCargoRoleMasters] = useState<NameMasterRow[]>([]);
   const [expenseTypeMasters, setExpenseTypeMasters] = useState<NameMasterRow[]>([]);
   const [policeStationMasters, setPoliceStationMasters] = useState<NameMasterRow[]>([]);
 
   const [step, setStep] = useState(0);
   const [personnelTab, setPersonnelTab] = useState<MissionPersonnelTabKey>("bot");
+  useEffect(() => {
+    if (personnelTab === "driver") setPersonnelTab("special");
+  }, [personnelTab]);
   const [crudPersonnelRoleOpen, setCrudPersonnelRoleOpen] = useState(false);
   const [crudVehicleRoleOpen, setCrudVehicleRoleOpen] = useState(false);
+  const [crudCargoRoleOpen, setCrudCargoRoleOpen] = useState(false);
   const [crudPoliceStationOpen, setCrudPoliceStationOpen] = useState(false);
   const [editingMissionId, setEditingMissionId] = useState<string | null>(
     mode === "edit" ? (routeMissionId ?? null) : null,
@@ -327,6 +369,7 @@ export function MissionFormPage() {
   const [pRows, setPRows] = useState<PRow[]>([
     { personnelId: "", personnelRoleId: "", compensationRate: "0", tabKey: "bot" },
   ]);
+  const [cargoTruckRows, setCargoTruckRows] = useState<CargoTruckRow[]>([blankCargoTruck("สินค้า 1")]);
   const [vRows, setVRows] = useState<VRow[]>([
     { vehicleId: "", vehicleRoleId: "", fuelLiters: "", fuelType: "", fuelAmount: "" },
   ]);
@@ -338,14 +381,17 @@ export function MissionFormPage() {
   const [savingMission, setSavingMission] = useState(false);
   const [saveFlash, setSaveFlash] = useState<string | null>(null);
   const [mastersReady, setMastersReady] = useState(false);
+  const [crewPopupVehicleId, setCrewPopupVehicleId] = useState<string | null>(null);
+  const [crewPopupCargoId, setCrewPopupCargoId] = useState<string | null>(null);
 
   const load = useCallback(async () => {
-    const [p, v, r, pr, vr, et, ps] = await Promise.all([
+    const [p, v, r, pr, vr, cr, et, ps] = await Promise.all([
       apiJson<Personnel[]>("/api/personnel"),
       apiJson<Vehicle[]>("/api/vehicles"),
       apiJson<RouteMaster[]>("/api/route-master"),
       apiJson<NameMasterRow[]>("/api/mission-personnel-roles"),
       apiJson<NameMasterRow[]>("/api/mission-vehicle-roles"),
+      apiJson<NameMasterRow[]>("/api/mission-cargo-roles"),
       apiJson<NameMasterRow[]>("/api/mission-expense-types"),
       apiJson<NameMasterRow[]>("/api/police-stations"),
     ]);
@@ -354,6 +400,7 @@ export function MissionFormPage() {
     setRoutes(r);
     setPersonnelRoleMasters(pr);
     setVehicleRoleMasters(vr);
+    setCargoRoleMasters(cr);
     setExpenseTypeMasters(et);
     setPoliceStationMasters(ps);
     setMastersReady(true);
@@ -406,12 +453,25 @@ export function MissionFormPage() {
     [routes, routeId],
   );
 
+  const cargoDriverOptions = useMemo(
+    () =>
+      personnel
+        .filter((p) => (p.personnelCategory?.name ?? "").trim() === "ขับรถสินค้า")
+        .map((p) => ({
+          value: p.id,
+          label: personnelSelectLabel(p),
+          keywords: `${p.position ?? ""} ${p.phone ?? ""} ${p.idNumber ?? ""} ขับรถสินค้า`,
+          imageUrl: p.photoUrl ?? null,
+        })),
+    [personnel],
+  );
+
   const personnelOptionsByTab = useMemo(() => {
     const map = {} as Record<
       MissionPersonnelTabKey,
       Array<{ value: string; label: string; keywords: string }>
     >;
-    for (const tab of MISSION_PERSONNEL_TABS) {
+    for (const tab of MISSION_STAFF_TABS) {
       map[tab.key] = personnel
         .filter((p) => tab.categories.includes(p.personnelCategory?.name ?? ""))
         .map((p) => ({
@@ -430,9 +490,9 @@ export function MissionFormPage() {
 
   const personnelTabCounts = useMemo(() => {
     const counts = {} as Record<MissionPersonnelTabKey, number>;
-    for (const tab of MISSION_PERSONNEL_TABS) counts[tab.key] = 0;
+    for (const tab of MISSION_STAFF_TABS) counts[tab.key] = 0;
     for (const row of pRows) {
-      if (row.personnelId) counts[row.tabKey] = (counts[row.tabKey] ?? 0) + 1;
+      if (row.personnelId && row.tabKey !== "driver") counts[row.tabKey] = (counts[row.tabKey] ?? 0) + 1;
     }
     return counts;
   }, [pRows]);
@@ -479,16 +539,55 @@ export function MissionFormPage() {
     return [...inMission, ...others];
   }, [vehicleSearchOptions, missionVehicleIds, missionVehicleLabelById]);
 
+  const cargoTractorIds = useMemo(
+    () => new Set(cargoTruckRows.map((r) => r.tractorVehicleId).filter(Boolean)),
+    [cargoTruckRows],
+  );
+
   const crewByVehicle = useMemo(() => {
-    const map = new Map<string, string[]>();
+    const map = new Map<string, { go: string[]; ret: string[] }>();
+    const add = (vehicleId: string, leg: "go" | "ret", name: string) => {
+      if (!vehicleId) return;
+      const cur = map.get(vehicleId) ?? { go: [], ret: [] };
+      cur[leg].push(name);
+      map.set(vehicleId, cur);
+    };
     for (const r of pRows) {
-      if (!r.assignedVehicleId || !r.personnelId) continue;
+      if (!r.personnelId) continue;
       const p = personnel.find((x) => x.id === r.personnelId);
       const name = p ? `${p.rank ? `${p.rank} ` : ""}${p.fullName}` : "—";
-      map.set(r.assignedVehicleId, [...(map.get(r.assignedVehicleId) ?? []), name]);
+      if (r.assignedVehicleId) add(r.assignedVehicleId, "go", name);
+      const onCargo = Boolean(r.assignedVehicleId && cargoTractorIds.has(r.assignedVehicleId));
+      const same = onCargo ? false : r.returnVehicleSameAsGo !== false;
+      const retId = same ? r.assignedVehicleId ?? "" : r.assignedVehicleReturnId ?? "";
+      if (retId) add(retId, "ret", name);
     }
     return map;
-  }, [pRows, personnel]);
+  }, [pRows, personnel, cargoTractorIds]);
+
+  const crewByCargoTruck = useMemo(() => {
+    const map = new Map<string, string[]>();
+    for (const r of pRows) {
+      if (!r.personnelId) continue;
+      const truck = cargoTruckRows.find(
+        (t) =>
+          (r.assignedVehicleId && t.tractorVehicleId === r.assignedVehicleId) ||
+          (r.assignedCargoTruckId && t.id === r.assignedCargoTruckId),
+      );
+      if (!truck) continue;
+      const p = personnel.find((x) => x.id === r.personnelId);
+      const name = p ? `${p.rank ? `${p.rank} ` : ""}${p.fullName}` : "—";
+      map.set(cargoSeatKey(truck), [...(map.get(cargoSeatKey(truck)) ?? []), name]);
+    }
+    return map;
+  }, [pRows, personnel, cargoTruckRows]);
+
+  const crewPopupCargo = crewPopupCargoId
+    ? cargoTruckRows.find((r) => r.id === crewPopupCargoId)
+    : undefined;
+  const crewPopupCargoRiders = crewPopupCargo
+    ? (crewByCargoTruck.get(cargoSeatKey(crewPopupCargo)) ?? [])
+    : [];
 
   const vehicleRoleName = useCallback(
     (roleId: string) => vehicleRoleMasters.find((r) => r.id === roleId)?.name ?? "",
@@ -507,16 +606,24 @@ export function MissionFormPage() {
     [personnel, personnelRoleMasters],
   );
 
-  const ensureVehicleInMission = (vehicleId: string) => {
+  const ensureVehicleInMission = (
+    vehicleId: string,
+    extras?: { vehicleRoleId?: string; callSign?: string },
+  ) => {
     if (!vehicleId || missionVehicleIds.has(vehicleId)) return;
     setVRows((prev) => {
       const blank = prev.findIndex((r) => !r.vehicleId);
       const row: VRow = {
         vehicleId,
-        vehicleRoleId: (blank >= 0 ? prev[blank].vehicleRoleId : "") || vehicleRoleMasters[0]?.id || "",
+        vehicleRoleId:
+          extras?.vehicleRoleId ||
+          (blank >= 0 ? prev[blank].vehicleRoleId : "") ||
+          vehicleRoleMasters[0]?.id ||
+          "",
         fuelLiters: "",
         fuelType: "",
         fuelAmount: "",
+        callSign: extras?.callSign ?? "",
       };
       const next =
         blank >= 0 ? prev.map((r, i) => (i === blank ? { ...r, ...row, fuelAmount: r.fuelAmount } : r)) : [...prev, row];
@@ -529,23 +636,49 @@ export function MissionFormPage() {
       prev.map((r, i) => {
         if (i !== idx) return r;
         if (leg === "return") return { ...r, assignedVehicleReturnId: vehicleId, returnVehicleSameAsGo: false };
-        return { ...r, assignedVehicleId: vehicleId };
+        const onCargo = Boolean(vehicleId && cargoTractorIds.has(vehicleId));
+        return {
+          ...r,
+          assignedVehicleId: vehicleId,
+          assignedCargoTruckId: onCargo
+            ? (cargoTruckRows.find((t) => t.tractorVehicleId === vehicleId)?.id ?? "")
+            : "",
+          returnVehicleSameAsGo: onCargo ? false : r.returnVehicleSameAsGo,
+        };
       }),
     );
-    ensureVehicleInMission(vehicleId);
+    if (vehicleId) ensureVehicleInMission(vehicleId);
+  };
+
+  const setCargoDriver = (rowId: string, slot: 1 | 2, personnelId: string) => {
+    const person = personnel.find((p) => p.id === personnelId);
+    setCargoTruckRows((cur) =>
+      cur.map((r) => {
+        if (r.id !== rowId) return r;
+        const cleared =
+          personnelId && slot === 1 && r.driver2PersonnelId === personnelId
+            ? withCargoDriver(r, 2, "", undefined)
+            : personnelId && slot === 2 && r.driver1PersonnelId === personnelId
+              ? withCargoDriver(r, 1, "", undefined)
+              : r;
+        return withCargoDriver(cleared, slot, personnelId, person);
+      }),
+    );
   };
 
   const setReturnSameAsGo = (idx: number, same: boolean) => {
     setPRows((prev) =>
-      prev.map((r, i) =>
-        i !== idx
-          ? r
-          : {
-              ...r,
-              returnVehicleSameAsGo: same,
-              assignedVehicleReturnId: same ? "" : r.assignedVehicleReturnId || r.assignedVehicleId || "",
-            },
-      ),
+      prev.map((r, i) => {
+        if (i !== idx) return r;
+        if (same && r.assignedVehicleId && cargoTractorIds.has(r.assignedVehicleId)) {
+          return { ...r, returnVehicleSameAsGo: false };
+        }
+        return {
+          ...r,
+          returnVehicleSameAsGo: same,
+          assignedVehicleReturnId: same ? "" : r.assignedVehicleReturnId || r.assignedVehicleId || "",
+        };
+      }),
     );
   };
 
@@ -621,6 +754,10 @@ export function MissionFormPage() {
         tabKey: "bot",
       },
     ]);
+    {
+      const nextRole = nextSuggestedCargoRole([], cargoRoleMasters);
+      setCargoTruckRows([blankCargoTruck(nextRole.role, nextRole.roleId)]);
+    }
     setPersonnelTab("bot");
     setVRows([
       { vehicleId: "", vehicleRoleId: vehicleRoleMasters[0]?.id ?? "", fuelLiters: "", fuelType: "", fuelAmount: "" },
@@ -631,7 +768,7 @@ export function MissionFormPage() {
     setVendorDrafts({});
     estimateRef.current?.reset();
     actualExpenseRef.current?.reset();
-  }, [personnelRoleMasters, vehicleRoleMasters]);
+  }, [personnelRoleMasters, vehicleRoleMasters, cargoRoleMasters]);
 
   const closeForm = useCallback(() => {
     navigate("/missions");
@@ -667,26 +804,47 @@ export function MissionFormPage() {
         .filter((d) => d.address.trim());
       const personRows = mission.personnel.filter((p) => p.personnelId && p.personnelRoleId);
       const vehicleRows = mission.vehicles.filter((v) => v.vehicleId && v.vehicleRoleId);
+      const savedTrucks = (mission.cargoTrucks ?? [])
+        .map((t) => {
+          let row = toCargoTruckForm(t);
+          const tractorId = matchTractorVehicleId(vehicles, t.tractorVehicleId, t.tractorPlate);
+          if (tractorId) {
+            row = withCargoTractor(
+              row,
+              tractorId,
+              vehicles.find((v) => v.id === tractorId),
+            );
+          }
+          const id1 = matchCargoDriverId(personnel, t.driver1PersonnelId, t.driver1IdNumber, t.driver1Name);
+          const id2 = matchCargoDriverId(personnel, t.driver2PersonnelId, t.driver2IdNumber, t.driver2Name);
+          if (id1) row = withCargoDriver(row, 1, id1, personnel.find((p) => p.id === id1));
+          if (id2) row = withCargoDriver(row, 2, id2, personnel.find((p) => p.id === id2));
+          const roleId = matchCargoRoleId(cargoRoleMasters, t.roleId, row.role);
+          if (roleId) row = withCargoRole(row, roleId, cargoRoleMasters);
+          return row;
+        })
+        .filter(cargoTruckFilled);
+      const mappedPeople = personRows.map((p) => {
+        const person = personnel.find((x) => x.id === p.personnelId);
+        const tabKey = missionPersonnelTabByCategory(person?.personnelCategory?.name) ?? "bot";
+        const cargo = savedTrucks.find((t) => t.id === p.assignedCargoTruckId);
+        const goVehicleId = p.assignedVehicleId || cargo?.tractorVehicleId || "";
+        const onCargo = Boolean(goVehicleId && savedTrucks.some((t) => t.tractorVehicleId === goVehicleId));
+        return {
+          personnelId: p.personnelId,
+          personnelRoleId: p.personnelRoleId,
+          compensationRate: String(p.compensationRate ?? "0"),
+          tabKey,
+          assignedVehicleId: goVehicleId,
+          assignedCargoTruckId: cargo?.id ?? p.assignedCargoTruckId ?? "",
+          returnVehicleSameAsGo: onCargo ? false : p.returnVehicleSameAsGo !== false,
+          assignedVehicleReturnId: p.assignedVehicleReturnId ?? "",
+        };
+      });
+      const staffRows = mappedPeople.filter((r) => r.tabKey !== "driver");
       setPRows(
-        personRows.length
-          ? sortMissionPersonnelRows(
-              personRows.map((p) => {
-                const person = personnel.find((x) => x.id === p.personnelId);
-                const tabKey =
-                  missionPersonnelTabByCategory(person?.personnelCategory?.name) ?? "bot";
-                return {
-                  personnelId: p.personnelId,
-                  personnelRoleId: p.personnelRoleId,
-                  compensationRate: String(p.compensationRate ?? "0"),
-                  tabKey,
-                  assignedVehicleId: p.assignedVehicleId ?? "",
-                  returnVehicleSameAsGo: p.returnVehicleSameAsGo !== false,
-                  assignedVehicleReturnId: p.assignedVehicleReturnId ?? "",
-                };
-              }),
-              personnel,
-              personnelRoleMasters,
-            )
+        staffRows.length
+          ? sortMissionPersonnelRows(staffRows, personnel, personnelRoleMasters)
           : [
               {
                 personnelId: "",
@@ -696,6 +854,28 @@ export function MissionFormPage() {
               },
             ],
       );
+      if (savedTrucks.length) {
+        setCargoTruckRows(savedTrucks);
+      } else {
+        const legacyDrivers = mappedPeople.filter((r) => r.tabKey === "driver");
+        if (legacyDrivers.length) {
+          const paired: CargoTruckRow[] = [];
+          for (let i = 0; i < legacyDrivers.length; i += 2) {
+            const a = personnel.find((x) => x.id === legacyDrivers[i]?.personnelId);
+            const b = personnel.find((x) => x.id === legacyDrivers[i + 1]?.personnelId);
+            const nextRole = nextSuggestedCargoRole(paired, cargoRoleMasters);
+            let row = blankCargoTruck(nextRole.role, nextRole.roleId);
+            row = withCargoDriver(row, 1, a?.id ?? "", a);
+            row = withCargoDriver(row, 2, b?.id ?? "", b);
+            paired.push(row);
+          }
+          const emptyRole = nextSuggestedCargoRole([], cargoRoleMasters);
+          setCargoTruckRows(paired.length ? paired : [blankCargoTruck(emptyRole.role, emptyRole.roleId)]);
+        } else {
+          const nextRole = nextSuggestedCargoRole([], cargoRoleMasters);
+          setCargoTruckRows([blankCargoTruck(nextRole.role, nextRole.roleId)]);
+        }
+      }
       setPersonnelTab("bot");
       const loadedVRows: VRow[] = vehicleRows.length
         ? vehicleRows.map((v) => ({
@@ -706,15 +886,34 @@ export function MissionFormPage() {
             fuelAmount: v.fuelAmount != null && v.fuelAmount !== "" ? String(v.fuelAmount) : "",
             callSign: v.callSign ?? "",
           }))
-        : [
-            {
-              vehicleId: "",
-              vehicleRoleId: vehicleRoleMasters[0]?.id ?? "",
-              fuelLiters: "",
-              fuelType: "",
-              fuelAmount: "",
-            },
-          ];
+        : [];
+      const cargoRoleId =
+        vehicleRoleMasters.find((r) => r.name === "สินค้า")?.id ??
+        vehicleRoleMasters.find((r) => r.name === "หัวลากสำรอง")?.id ??
+        vehicleRoleMasters[0]?.id ??
+        "";
+      for (const t of savedTrucks) {
+        if (!t.tractorVehicleId || loadedVRows.some((r) => r.vehicleId === t.tractorVehicleId)) continue;
+        loadedVRows.push({
+          vehicleId: t.tractorVehicleId,
+          vehicleRoleId: /หัวลาก/.test(t.role)
+            ? (vehicleRoleMasters.find((r) => r.name === "หัวลากสำรอง")?.id ?? cargoRoleId)
+            : cargoRoleId,
+          fuelLiters: "",
+          fuelType: "",
+          fuelAmount: "",
+          callSign: t.role,
+        });
+      }
+      if (!loadedVRows.length) {
+        loadedVRows.push({
+          vehicleId: "",
+          vehicleRoleId: vehicleRoleMasters[0]?.id ?? "",
+          fuelLiters: "",
+          fuelType: "",
+          fuelAmount: "",
+        });
+      }
       setVRows(orderVehicleRows(loadedVRows));
       setFuelPrices({ GASOLINE: "", DIESEL: "" });
       setDRows(
@@ -737,7 +936,7 @@ export function MissionFormPage() {
         : [{ policeStationId: "", amount: "0", estimateItemCode: "2.4" }];
       setPsRows(expandSpecialOpsStationRows(mappedStations, policeStationMasters));
     },
-    [personnel, personnelRoleMasters, vehicleRoleMasters, policeStationMasters, orderVehicleRows],
+    [personnel, personnelRoleMasters, vehicleRoleMasters, cargoRoleMasters, policeStationMasters, orderVehicleRows, vehicles],
   );
 
   useEffect(() => {
@@ -778,6 +977,7 @@ export function MissionFormPage() {
       const seen = new Set<string>();
       const out: typeof pRows = [];
       for (const r of pRows) {
+        if (r.tabKey === "driver") continue;
         if (!r.personnelId || !r.personnelRoleId) continue;
         if (seen.has(r.personnelId)) continue;
         seen.add(r.personnelId);
@@ -785,6 +985,9 @@ export function MissionFormPage() {
       }
       return out;
     })();
+    const cargoTrucksPayload = cargoTruckRows
+      .map((r, i) => ({ ...r, sortOrder: i }))
+      .filter(cargoTruckFilled);
     const vehiclesOrdered = orderVehicleRows(vRows).filter((r) => r.vehicleId && r.vehicleRoleId);
     const vehiclesById = new Map<string, VRow>();
     for (const r of vehiclesOrdered) {
@@ -839,7 +1042,12 @@ export function MissionFormPage() {
       personnel: personnelPayload.map((r) => {
         const go =
           r.assignedVehicleId && vehiclesById.has(r.assignedVehicleId) ? r.assignedVehicleId : null;
-        const same = tabUsesGoReturnVehicles(r.tabKey) ? r.returnVehicleSameAsGo !== false : true;
+        const cargoId =
+          (go && cargoTrucksPayload.find((t) => t.tractorVehicleId === go)?.id) ||
+          (r.assignedCargoTruckId && cargoTrucksPayload.some((t) => t.id === r.assignedCargoTruckId)
+            ? r.assignedCargoTruckId
+            : null);
+        const same = cargoId ? false : tabUsesGoReturnVehicles(r.tabKey) ? r.returnVehicleSameAsGo !== false : true;
         const ret =
           !same && r.assignedVehicleReturnId && vehiclesById.has(r.assignedVehicleReturnId)
             ? r.assignedVehicleReturnId
@@ -849,10 +1057,12 @@ export function MissionFormPage() {
           personnelRoleId: r.personnelRoleId,
           compensationRate: r.compensationRate === "" ? 0 : Number(r.compensationRate) || 0,
           assignedVehicleId: go,
+          assignedCargoTruckId: cargoId,
           returnVehicleSameAsGo: same,
           assignedVehicleReturnId: ret,
         };
       }),
+      cargoTrucks: cargoTrucksPayload,
       vehicles: vehiclesPayload.map((r) => ({
         vehicleId: r.vehicleId,
         vehicleRoleId: r.vehicleRoleId,
@@ -985,9 +1195,9 @@ export function MissionFormPage() {
 
   const personnelTabAmounts = useMemo(() => {
     const amounts = {} as Record<MissionPersonnelTabKey, number>;
-    for (const tab of MISSION_PERSONNEL_TABS) amounts[tab.key] = 0;
+    for (const tab of MISSION_STAFF_TABS) amounts[tab.key] = 0;
     for (const row of pRows) {
-      if (!row.personnelId) continue;
+      if (!row.personnelId || row.tabKey === "driver") continue;
       const n = parseLooseNumber(row.compensationRate);
       if (Number.isFinite(n) && n > 0) amounts[row.tabKey] += n;
     }
@@ -1023,6 +1233,7 @@ export function MissionFormPage() {
       [
         { amount: 0, label: "รวมค่าใช้จ่าย" },
         { amount: estimateApprovalTotal, label: "รวมขออนุมัติ (ประมาณการ)" },
+        { amount: 0, label: "รถสินค้า" },
         { amount: personnelCompensationTotal, label: "รวมค่าตอบแทนบุคลากร" },
         { amount: policeStationTotal, label: "รวมสถานีตำรวจ" },
         { amount: vehicleFuelTotal, label: "รวมค่าน้ำมัน" },
@@ -1039,14 +1250,7 @@ export function MissionFormPage() {
     return `${formatInt(amount)} ฿`;
   }
 
-  const steps = [
-    "ข้อมูลทั่วไป",
-    "ประมาณการค่าใช้จ่าย",
-    "บุคลากร",
-    "สถานีตำรวจ",
-    "ยานพาหนะ",
-    "ค่าใช้จ่าย",
-  ];
+  const steps = FORM_STEPS;
 
   if (loadingPage) {
     return (
@@ -1261,7 +1465,193 @@ export function MissionFormPage() {
               </div>
             )}
 
-            {step === 2 && (
+            {step === STEP_CARGO && (
+              <div className="space-y-2">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                <p className="text-[11px] text-slate-500">
+                  ส่วนหัวเลือกจากยานพาหนะ — กรอกส่วนหาง และเลือกบทบาท (เช่น สินค้า 1) · กดไอคอนบุคลากรเพื่อเลือกคนขับจากกำลังพลประเภท «ขับรถสินค้า» และดูจนท.ปฏิบัติการพิเศษขาไป
+                  {cargoTruckDriverCount(cargoTruckRows) > 0
+                    ? ` · คนขับ ${cargoTruckDriverCount(cargoTruckRows)} นาย`
+                    : ""}
+                  {cargoDriverOptions.length === 0
+                    ? " · ยังไม่มีรายชื่อประเภทนี้ในกำลังพล — เพิ่มก่อนแล้วกลับมาเลือก"
+                    : ""}
+                  {" · "}ไม่มีค่าตอบแทนรายคน รวมในค่าจ้างรถบรรทุกแล้ว
+                </p>
+                  <div className="flex shrink-0 flex-wrap items-center gap-2">
+                    <button
+                      type="button"
+                      className="rounded-lg border border-slate-200 px-2.5 py-1 text-xs font-medium text-[#4d47b6] hover:bg-slate-100"
+                      onClick={() => setCrudCargoRoleOpen(true)}
+                    >
+                      จัดการบทบาท…
+                    </button>
+                    <button
+                      type="button"
+                      className="text-[11px] font-semibold text-[#0000BF] hover:underline"
+                      onClick={() => setStep(STEP_VEHICLES)}
+                    >
+                      ไปยานพาหนะ →
+                    </button>
+                    <Link to="/personnel" className="text-[11px] font-semibold text-[#0000BF] hover:underline">
+                      ไปทะเบียนกำลังพล →
+                    </Link>
+                  </div>
+                </div>
+                <div className="overflow-x-auto rounded-lg border border-slate-200">
+                  <div className="hidden min-w-[52rem] grid-cols-[2.2rem_minmax(8rem,1.2fr)_minmax(6.5rem,0.7fr)_minmax(6.5rem,0.7fr)_minmax(7rem,0.8fr)_2.4rem_2.5rem] gap-1.5 border-b border-slate-200 bg-slate-50 px-2 py-1.5 text-[10px] font-bold uppercase tracking-wide text-slate-600 sm:grid">
+                    <span>ที่</span>
+                    <span>รถส่วนหัว</span>
+                    <span>ส่วนหาง</span>
+                    <span>บทบาท</span>
+                    <span>หมายเหตุ</span>
+                    <span className="sr-only">บุคลากร</span>
+                    <span className="sr-only">ลบ</span>
+                  </div>
+                  <ul className="min-w-[52rem] divide-y divide-slate-100">
+                    {cargoTruckRows.length === 0 ? (
+                      <li className="px-3 py-4 text-center text-xs text-slate-500">
+                        ยังไม่มีรายการ — กด «+ เพิ่มคัน»
+                      </li>
+                    ) : (
+                      cargoTruckRows.map((row, idx) => {
+                        const patch = (part: Partial<CargoTruckRow>) =>
+                          setCargoTruckRows((cur) => cur.map((r, i) => (i === idx ? { ...r, ...part } : r)));
+                        const usedTractors = new Set(
+                          cargoTruckRows.flatMap((r) =>
+                            r.id === row.id || !r.tractorVehicleId ? [] : [r.tractorVehicleId],
+                          ),
+                        );
+                        const tractorOpts = vehicleSearchOptions.filter(
+                          (o) => o.value === row.tractorVehicleId || !usedTractors.has(o.value),
+                        );
+                        const setTractor = (vehicleId: string) => {
+                          const vehicle = vehicles.find((v) => v.id === vehicleId);
+                          setCargoTruckRows((cur) =>
+                            cur.map((r, i) => (i === idx ? withCargoTractor(r, vehicleId, vehicle) : r)),
+                          );
+                          if (vehicleId) {
+                            const cargoRoleId = /หัวลาก/.test(row.role)
+                              ? vehicleRoleMasters.find((r) => r.name === "หัวลากสำรอง")?.id
+                              : vehicleRoleMasters.find((r) => r.name === "สินค้า")?.id;
+                            ensureVehicleInMission(vehicleId, {
+                              vehicleRoleId: cargoRoleId,
+                              callSign: row.role,
+                            });
+                          }
+                        };
+                        const riders = crewByCargoTruck.get(cargoSeatKey(row)) ?? [];
+                        const crewCount = cargoTruckDriverNames(row).length + riders.length;
+                        return (
+                          <li
+                            key={row.id || `cargo-truck-${idx}`}
+                            className="grid grid-cols-[2.2rem_minmax(8rem,1.2fr)_minmax(6.5rem,0.7fr)_minmax(6.5rem,0.7fr)_minmax(7rem,0.8fr)_2.4rem_2.5rem] items-start gap-1.5 px-2 py-1.5"
+                          >
+                            <span className="pt-1.5 text-center text-xs tabular-nums text-slate-500">{idx + 1}</span>
+                            <SearchableSelect
+                              value={row.tractorVehicleId}
+                              onChange={setTractor}
+                              options={tractorOpts}
+                              emptyLabel="— หัวลากจากยานพาหนะ —"
+                              allowEmpty
+                              aria-label={`รถส่วนหัว คัน ${idx + 1}`}
+                              inputClassName="mt-0.5 w-full rounded-md border border-slate-200 bg-white px-1.5 py-1 text-sm text-slate-900"
+                            />
+                            <input
+                              aria-label={`ทะเบียนหางลาก คัน ${idx + 1}`}
+                              className="mt-0.5 w-full rounded-md border border-slate-200 px-1.5 py-1 text-sm tabular-nums text-slate-900"
+                              placeholder="70-3311"
+                              value={row.trailerPlate}
+                              onChange={(e) => patch({ trailerPlate: e.target.value })}
+                            />
+                            <select
+                              aria-label={`บทบาทรถสินค้า คัน ${idx + 1}`}
+                              className="mt-0.5 w-full rounded-md border border-slate-200 bg-white px-1.5 py-1 text-sm text-slate-900"
+                              value={row.roleId}
+                              onChange={(e) => {
+                                const next = withCargoRole(row, e.target.value, cargoRoleMasters);
+                                patch({ roleId: next.roleId, role: next.role });
+                              }}
+                            >
+                              <option value="">—</option>
+                              {cargoRoleMasters.map((r) => (
+                                <option key={r.id} value={r.id}>
+                                  {r.name}
+                                </option>
+                              ))}
+                            </select>
+                            <input
+                              aria-label={`หมายเหตุ คัน ${idx + 1}`}
+                              className="mt-0.5 w-full rounded-md border border-slate-200 px-1.5 py-1 text-xs text-slate-800"
+                              placeholder="ผู้ควบคุม…"
+                              value={row.note}
+                              onChange={(e) => patch({ note: e.target.value })}
+                            />
+                            <button
+                              type="button"
+                              className={`relative mt-0.5 rounded-md p-1 ${
+                                crewCount
+                                  ? "text-[#0000BF] hover:bg-[#0000BF]/10"
+                                  : "text-slate-400 hover:bg-slate-100 hover:text-slate-600"
+                              }`}
+                              aria-label={
+                                crewCount ? `บุคลากร ${crewCount} คน` : "ดูบุคลากร — ยังไม่ระบุ"
+                              }
+                              title="บุคลากร"
+                              onClick={() => setCrewPopupCargoId(row.id)}
+                            >
+                              {NavIcons.personnel({ className: "h-4 w-4" })}
+                              {crewCount > 0 ? (
+                                <span className="absolute -right-0.5 -top-0.5 flex h-3.5 min-w-3.5 items-center justify-center rounded-full bg-[#0000BF] px-0.5 text-[9px] font-bold leading-none text-white">
+                                  {crewCount}
+                                </span>
+                              ) : null}
+                            </button>
+                            <button
+                              type="button"
+                              className="mt-0.5 rounded-md px-1 py-1 text-xs text-rose-600 hover:bg-rose-50"
+                              aria-label={`ลบคัน ${idx + 1}`}
+                              onClick={() => {
+                                const removedId = row.id;
+                                setCargoTruckRows((cur) => {
+                                  if (cur.length > 1) return cur.filter((_, i) => i !== idx);
+                                  const nextRole = nextSuggestedCargoRole([], cargoRoleMasters);
+                                  return [blankCargoTruck(nextRole.role, nextRole.roleId)];
+                                });
+                                if (removedId) {
+                                  setCrewPopupCargoId((cur) => (cur === removedId ? null : cur));
+                                  setPRows((prev) =>
+                                    prev.map((r) =>
+                                      r.assignedCargoTruckId === removedId ? { ...r, assignedCargoTruckId: "" } : r,
+                                    ),
+                                  );
+                                }
+                              }}
+                            >
+                              ลบ
+                            </button>
+                          </li>
+                        );
+                      })
+                    )}
+                  </ul>
+                </div>
+                <button
+                  type="button"
+                  className="text-xs font-medium text-[#5b61ff] hover:text-[#4d47b6] hover:underline"
+                  onClick={() =>
+                    setCargoTruckRows((cur) => {
+                      const nextRole = nextSuggestedCargoRole(cur, cargoRoleMasters);
+                      return [...cur, blankCargoTruck(nextRole.role, nextRole.roleId)];
+                    })
+                  }
+                >
+                  + เพิ่มคัน (หัวลาก / หางลาก)
+                </button>
+              </div>
+            )}
+
+            {step === STEP_PERSONNEL && (
               <div className="space-y-2">
                 <div className="flex flex-wrap items-center justify-end gap-2">
                   <button
@@ -1278,7 +1668,7 @@ export function MissionFormPage() {
                   role="tablist"
                   aria-label="ประเภทบุคลากร"
                 >
-                  {MISSION_PERSONNEL_TABS.map((tab) => {
+                  {MISSION_STAFF_TABS.map((tab) => {
                     const active = personnelTab === tab.key;
                     const count = personnelTabCounts[tab.key] ?? 0;
                     const tabAmount = formatStepTabAmount(personnelTabAmounts[tab.key] ?? 0);
@@ -1324,11 +1714,14 @@ export function MissionFormPage() {
                     แถบนี้เรียงตามยศอัตโนมัติ (สูง→ต่ำ) เมื่อเลือกบุคลากร
                   </p>
                 )}
-                {tabUsesGoReturnVehicles(personnelTab) && (
+                {tabUsesGoReturnVehicles(personnelTab) ? (
                   <p className="text-[11px] text-slate-500">
-                    ระบุประจำรถขาไปและขากลับแยกกันได้ — ติ๊ก «เหมือนขาไป» หากโดยสารคันเดิม (ลิงก์ไปแผนเดินทางอัตโนมัติหลังบันทึก)
+                    ประจำรถขาไปเลือกจากขั้นยานพาหนะ — ติ๊ก «เหมือนขาไป» หากโดยสารคันเดิม
+                    {personnelTab === "special"
+                      ? " · ถ้านั่งหัวลากสินค้าขาไป ขากลับต้องเลือกยานพาหนะคุ้มกัน"
+                      : ""}
                   </p>
-                )}
+                ) : null}
 
                 <div className="overflow-x-auto rounded-lg border border-slate-200">
                   {tabUsesGoReturnVehicles(personnelTab) ? (
@@ -1340,7 +1733,7 @@ export function MissionFormPage() {
                         <button
                           type="button"
                           className="normal-case tracking-normal text-[#0000BF] hover:underline"
-                          onClick={() => setStep(4)}
+                          onClick={() => setStep(STEP_VEHICLES)}
                         >
                           ไปยานพาหนะ →
                         </button>
@@ -1359,7 +1752,7 @@ export function MissionFormPage() {
                         <button
                           type="button"
                           className="normal-case tracking-normal text-[#0000BF] hover:underline"
-                          onClick={() => setStep(4)}
+                          onClick={() => setStep(STEP_VEHICLES)}
                         >
                           ไปยานพาหนะ →
                         </button>
@@ -1380,10 +1773,17 @@ export function MissionFormPage() {
                     ) : (
                       pRowsInActiveTab.map(({ row, index: idx }) => {
                         const dual = tabUsesGoReturnVehicles(row.tabKey);
-                        const sameReturn = row.returnVehicleSameAsGo !== false;
+                        const onCargo = Boolean(
+                          row.assignedVehicleId && cargoTractorIds.has(row.assignedVehicleId),
+                        );
+                        const sameReturn = onCargo ? false : row.returnVehicleSameAsGo !== false;
+                        const goVehicleValue = row.assignedVehicleId ?? "";
                         const returnVehicleId = sameReturn
                           ? row.assignedVehicleId ?? ""
                           : row.assignedVehicleReturnId ?? "";
+                        const goInvalid = Boolean(
+                          row.assignedVehicleId && !missionVehicleIds.has(row.assignedVehicleId),
+                        );
                         return (
                         <li
                           key={`${row.tabKey}-${idx}`}
@@ -1435,28 +1835,33 @@ export function MissionFormPage() {
                             ))}
                           </select>
                           <SearchableSelect
-                            value={row.assignedVehicleId ?? ""}
+                            value={goVehicleValue}
                             onChange={(v) => assignCrewVehicle(idx, v, "go")}
                             options={crewVehicleOptions}
                             emptyLabel="— ไม่ระบุ —"
                             allowEmpty
                             aria-label={dual ? `ประจำรถขาไปแถว ${idx + 1}` : `ประจำรถแถว ${idx + 1}`}
                             inputClassName={`w-full rounded-md border bg-white px-2 py-1 text-sm text-slate-900 ${
-                              row.assignedVehicleId && !missionVehicleIds.has(row.assignedVehicleId)
-                                ? "border-rose-300"
-                                : "border-slate-200"
+                              goInvalid ? "border-rose-300" : "border-slate-200"
                             }`}
                           />
                           {dual ? (
                             <>
                               <label
-                                className="flex cursor-pointer items-center justify-center gap-1 px-1"
-                                title="ติ๊กหากโดยสารขากลับคันเดียวกับขาไป"
+                                className={`flex items-center justify-center gap-1 px-1 ${
+                                  onCargo ? "cursor-not-allowed opacity-40" : "cursor-pointer"
+                                }`}
+                                title={
+                                  onCargo
+                                    ? "นั่งรถสินค้าขาไป — ขากลับต้องเลือกยานพาหนะคุ้มกัน"
+                                    : "ติ๊กหากโดยสารขากลับคันเดียวกับขาไป"
+                                }
                               >
                                 <input
                                   type="checkbox"
                                   className="h-3.5 w-3.5 rounded border-slate-300 text-[#0000BF]"
                                   checked={sameReturn}
+                                  disabled={onCargo}
                                   onChange={(e) => setReturnSameAsGo(idx, e.target.checked)}
                                   aria-label={`ขากลับเหมือนขาไปแถว ${idx + 1}`}
                                 />
@@ -1536,14 +1941,14 @@ export function MissionFormPage() {
                   }
                 >
                   + เพิ่มบุคลากร
-                  {MISSION_PERSONNEL_TABS.find((t) => t.key === personnelTab)
-                    ? ` (${MISSION_PERSONNEL_TABS.find((t) => t.key === personnelTab)!.label})`
+                  {MISSION_STAFF_TABS.find((t) => t.key === personnelTab)
+                    ? ` (${MISSION_STAFF_TABS.find((t) => t.key === personnelTab)!.label})`
                     : ""}
                 </button>
               </div>
             )}
 
-            {step === 3 && (
+            {step === STEP_STATIONS && (
               <div className="space-y-2">
                 <div className="flex flex-wrap items-center justify-end gap-2">
                   <button
@@ -1731,7 +2136,7 @@ export function MissionFormPage() {
               </div>
             )}
 
-            {step === 4 && (
+            {step === STEP_VEHICLES && (
               <div className="space-y-3">
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <p className="text-[11px] text-slate-600">
@@ -1770,24 +2175,25 @@ export function MissionFormPage() {
                   </label>
                 </div>
                 <p className="text-[11px] text-slate-500">
-                  เรียงอัตโนมัติตามรูปขบวน (ขาไป): ส่วนล่วงหน้า → นำขบวน → ประสานท้องที่ → คุ้มกันหน้า → สินค้า 1… →
-                  คุ้มกันหลัง → ปิดท้าย → หัวลากสำรอง · ขากลับส่วนล่วงหน้า (เช่น อินทรี) อยู่หลังคุ้มกันหลัง (เช่น อัลฟ่า 2)
+                  เรียงอัตโนมัติตามรูปขบวนคุ้มกัน (ขาไป): ส่วนล่วงหน้า → นำขบวน → ประสานท้องที่ → คุ้มกันหน้า →
+                  คุ้มกันหลัง → ปิดท้าย · ส่วนหัวรถสินค้าเลือกจากรายการนี้ แล้วกรอกหาง/บทบาทในขั้น «ข้อมูลรถสินค้า»
                 </p>
                 <div className="overflow-x-auto rounded-lg border border-slate-200 pr-1">
-                  <div className="hidden min-w-[63rem] grid-cols-[minmax(0,1.15fr)_minmax(6rem,0.75fr)_7rem_5rem_5rem_minmax(8rem,0.9fr)_2.75rem] gap-2 border-b border-slate-200 bg-slate-50 px-3 py-1.5 text-[10px] font-bold uppercase tracking-wide text-slate-600 sm:grid">
+                  <div className="hidden min-w-[63rem] grid-cols-[minmax(0,1.15fr)_minmax(6rem,0.75fr)_7rem_5rem_5rem_minmax(8rem,0.9fr)_2.4rem_2.75rem] gap-2 border-b border-slate-200 bg-slate-50 px-3 py-1.5 text-[10px] font-bold uppercase tracking-wide text-slate-600 sm:grid">
                     <span>ยานพาหนะ</span>
                     <span>บทบาท</span>
                     <span>นามเรียกขาน</span>
                     <span>ลิตร</span>
                     <span>ชนิด</span>
                     <span className="text-right text-amber-800">ค่าน้ำมัน (บาท)</span>
+                    <span className="sr-only">ประจำรถ</span>
                     <span className="sr-only">ลบ</span>
                   </div>
                   <ul className="min-w-[63rem] divide-y divide-slate-100">
                     {vRows.map((row, idx) => (
                       <li
                         key={idx}
-                        className="grid grid-cols-[minmax(0,1.15fr)_minmax(6rem,0.75fr)_7rem_5rem_5rem_minmax(8rem,0.9fr)_2.75rem] items-center gap-2 px-3 py-1.5"
+                        className="grid grid-cols-[minmax(0,1.15fr)_minmax(6rem,0.75fr)_7rem_5rem_5rem_minmax(8rem,0.9fr)_2.4rem_2.75rem] items-center gap-2 px-3 py-1.5"
                       >
                         <SearchableSelect
                           value={row.vehicleId}
@@ -1865,6 +2271,38 @@ export function MissionFormPage() {
                           maxFractionDigits={2}
                           onChange={(raw) => patchVRow(idx, { fuelAmount: raw })}
                         />
+                        {row.vehicleId ? (
+                          (() => {
+                            const crew = crewByVehicle.get(row.vehicleId);
+                            const count = new Set([...(crew?.go ?? []), ...(crew?.ret ?? [])]).size;
+                            return (
+                              <button
+                                type="button"
+                                className={`relative rounded-md p-1 ${
+                                  count
+                                    ? "text-[#0000BF] hover:bg-[#0000BF]/10"
+                                    : "text-slate-400 hover:bg-slate-100 hover:text-slate-600"
+                                }`}
+                                aria-label={
+                                  count
+                                    ? `ผู้ประจำรถ ${count} คน`
+                                    : "ดูผู้ประจำรถ — ยังไม่ระบุ"
+                                }
+                                title="ผู้ประจำรถ"
+                                onClick={() => setCrewPopupVehicleId(row.vehicleId)}
+                              >
+                                {NavIcons.personnel({ className: "h-4 w-4" })}
+                                {count > 0 ? (
+                                  <span className="absolute -right-0.5 -top-0.5 flex h-3.5 min-w-3.5 items-center justify-center rounded-full bg-[#0000BF] px-0.5 text-[9px] font-bold leading-none text-white">
+                                    {count}
+                                  </span>
+                                ) : null}
+                              </button>
+                            );
+                          })()
+                        ) : (
+                          <span />
+                        )}
                         <button
                           type="button"
                           className="rounded-md px-1 py-1 text-xs text-rose-600 hover:bg-rose-50"
@@ -1873,27 +2311,6 @@ export function MissionFormPage() {
                         >
                           ลบ
                         </button>
-                        {row.vehicleId ? (
-                          <div className="col-span-full -mt-0.5 flex flex-wrap items-center gap-1 text-[11px] text-slate-500">
-                            <span className="font-semibold text-slate-600">ประจำรถ:</span>
-                            {crewByVehicle.get(row.vehicleId)?.length ? (
-                              crewByVehicle.get(row.vehicleId)!.map((n, i) => (
-                                <span key={i} className="rounded-full bg-[#0000BF]/[0.06] px-1.5 py-0.5 text-[#2e2a58]">
-                                  {n}
-                                </span>
-                              ))
-                            ) : (
-                              <span>ยังไม่ระบุ</span>
-                            )}
-                            <button
-                              type="button"
-                              className="ml-1 font-semibold text-[#0000BF] hover:underline"
-                              onClick={() => setStep(2)}
-                            >
-                              กำหนดในบุคลากร →
-                            </button>
-                          </div>
-                        ) : null}
                       </li>
                     ))}
                   </ul>
@@ -1939,7 +2356,7 @@ export function MissionFormPage() {
               />
             </div>
 
-            <div className={step === 5 ? "block" : "hidden"} aria-hidden={step !== 5}>
+            <div className={step === STEP_EXPENSES ? "block" : "hidden"} aria-hidden={step !== STEP_EXPENSES}>
               <MissionActualExpenseEditor
                 ref={actualExpenseRef}
                 routeId={routeId}
@@ -2020,6 +2437,13 @@ export function MissionFormPage() {
         onChanged={load}
       />
       <CrudNameMasterModal
+        title="บทบาทรถสินค้า"
+        apiPath="/api/mission-cargo-roles"
+        open={crudCargoRoleOpen}
+        onClose={() => setCrudCargoRoleOpen(false)}
+        onChanged={load}
+      />
+      <CrudNameMasterModal
         title="สถานีตำรวจ / สังกัด"
         apiPath="/api/police-stations"
         vendorField
@@ -2031,6 +2455,123 @@ export function MissionFormPage() {
         }}
       />
       <MissionRateNotesModal open={notesOpen} onClose={() => setNotesOpen(false)} />
+      <Modal
+        open={Boolean(crewPopupVehicleId)}
+        onClose={() => setCrewPopupVehicleId(null)}
+        title={`ประจำรถ — ${crewPopupVehicleId ? missionVehicleLabelById.get(crewPopupVehicleId) ?? "ยานพาหนะ" : ""}`}
+        size="sm"
+      >
+        {crewPopupVehicleId ? (
+          <div className="space-y-4">
+            {(["go", "ret"] as const).map((leg) => {
+              const names = crewByVehicle.get(crewPopupVehicleId)?.[leg] ?? [];
+              return (
+                <div key={leg}>
+                  <p className="mb-1.5 text-xs font-bold uppercase tracking-wide text-slate-500">
+                    {leg === "go" ? "ขาไป" : "ขากลับ"}
+                  </p>
+                  {names.length ? (
+                    <ul className="space-y-1">
+                      {names.map((n, i) => (
+                        <li
+                          key={`${leg}-${n}-${i}`}
+                          className="rounded-lg bg-slate-50 px-2.5 py-1.5 text-sm text-slate-800"
+                        >
+                          {n}
+                        </li>
+                      ))}
+                    </ul>
+                  ) : (
+                    <p className="text-sm text-slate-500">ยังไม่ระบุ</p>
+                  )}
+                </div>
+              );
+            })}
+            <button
+              type="button"
+              className="text-sm font-semibold text-[#0000BF] hover:underline"
+              onClick={() => {
+                setCrewPopupVehicleId(null);
+                setStep(STEP_PERSONNEL);
+              }}
+            >
+              กำหนดในบุคลากร →
+            </button>
+          </div>
+        ) : null}
+      </Modal>
+      <Modal
+        open={Boolean(crewPopupCargoId)}
+        onClose={() => setCrewPopupCargoId(null)}
+        title={`บุคลากร — ${
+          crewPopupCargo
+            ? crewPopupCargo.role || cargoTruckCallSign(crewPopupCargo) || "รถสินค้า"
+            : ""
+        }`}
+        size="sm"
+      >
+        {crewPopupCargo ? (
+          <div className="space-y-4">
+            <div>
+              <p className="mb-1.5 text-xs font-bold uppercase tracking-wide text-slate-500">คนขับ</p>
+              <div className="space-y-2">
+                {([1, 2] as const).map((slot) => {
+                  const currentId = slot === 1 ? crewPopupCargo.driver1PersonnelId : crewPopupCargo.driver2PersonnelId;
+                  const otherId = slot === 1 ? crewPopupCargo.driver2PersonnelId : crewPopupCargo.driver1PersonnelId;
+                  const phone = slot === 1 ? crewPopupCargo.driver1Phone : crewPopupCargo.driver2Phone;
+                  const usedDrivers = new Set(
+                    cargoTruckRows.flatMap((r) =>
+                      r.id === crewPopupCargo.id ? [] : [r.driver1PersonnelId, r.driver2PersonnelId].filter(Boolean),
+                    ),
+                  );
+                  const driverOpts = cargoDriverOptions.filter(
+                    (o) => o.value === currentId || (o.value !== otherId && !usedDrivers.has(o.value)),
+                  );
+                  return (
+                    <div key={slot}>
+                      <SearchableSelect
+                        value={currentId}
+                        onChange={(v) => setCargoDriver(crewPopupCargo.id, slot, v)}
+                        options={driverOpts}
+                        emptyLabel={`— คนขับ ${slot} จากกำลังพล —`}
+                        allowEmpty
+                        aria-label={`คนขับ ${slot}`}
+                        inputClassName="w-full rounded-md border border-slate-200 bg-white px-1.5 py-1 text-sm text-slate-900"
+                      />
+                      {phone ? <p className="mt-0.5 px-0.5 text-[10px] text-slate-500">{phone}</p> : null}
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+            <div>
+              <p className="mb-1.5 text-xs font-bold uppercase tracking-wide text-slate-500">ปฏิบัติการพิเศษขาไป</p>
+              {crewPopupCargoRiders.length ? (
+                <ul className="space-y-1">
+                  {crewPopupCargoRiders.map((n, i) => (
+                    <li key={`${n}-${i}`} className="rounded-lg bg-slate-50 px-2.5 py-1.5 text-sm text-slate-800">
+                      {n}
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                <p className="text-sm text-slate-500">ยังไม่ระบุ</p>
+              )}
+            </div>
+            <button
+              type="button"
+              className="text-sm font-semibold text-[#0000BF] hover:underline"
+              onClick={() => {
+                setCrewPopupCargoId(null);
+                setPersonnelTab("special");
+                setStep(STEP_PERSONNEL);
+              }}
+            >
+              กำหนดในบุคลากร →
+            </button>
+          </div>
+        ) : null}
+      </Modal>
     </div>
   );
 }

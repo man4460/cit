@@ -35,9 +35,25 @@ export async function seedMissionMasterData() {
     { name: "รถสื่อสาร", sortOrder: 6 },
     { name: "รถกำกับ / คุ้มกัน", sortOrder: 7 },
     { name: "รถหลัก", sortOrder: 8 },
+    { name: "สินค้า", sortOrder: 9 },
+    { name: "หัวลากสำรอง", sortOrder: 10 },
   ];
   for (const r of vehicleRoles) {
     await prisma.missionVehicleRoleMaster.upsert({
+      where: { name: r.name },
+      create: r,
+      update: { sortOrder: r.sortOrder },
+    });
+  }
+
+  const cargoRoles = [
+    { name: "สินค้า 1", sortOrder: 0 },
+    { name: "สินค้า 2", sortOrder: 1 },
+    { name: "สินค้า 3", sortOrder: 2 },
+    { name: "หัวลากสำรอง", sortOrder: 10 },
+  ];
+  for (const r of cargoRoles) {
+    await prisma.missionCargoRoleMaster.upsert({
       where: { name: r.name },
       create: r,
       update: { sortOrder: r.sortOrder },

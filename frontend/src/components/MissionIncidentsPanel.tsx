@@ -24,6 +24,8 @@ type Props = {
   plannedStart?: string | null;
   plannedEnd?: string | null;
   onCountChange?: (count: number) => void;
+  /** ไม่มีกรอบการ์ด — ใช้ภายในหน้าสรุปภารกิจ */
+  embedded?: boolean;
 };
 
 type FormState = {
@@ -90,7 +92,13 @@ function PendingPreviews({ files, onRemove }: { files: File[]; onRemove: (index:
   );
 }
 
-export function MissionIncidentsPanel({ missionId, plannedStart, plannedEnd, onCountChange }: Props) {
+export function MissionIncidentsPanel({
+  missionId,
+  plannedStart,
+  plannedEnd,
+  onCountChange,
+  embedded = false,
+}: Props) {
   const { user } = useAuth();
   const reporterDefault = user?.fullName?.trim() || user?.username || "";
   const [rows, setRows] = useState<MissionIncident[] | null>(null);
@@ -244,10 +252,16 @@ export function MissionIncidentsPanel({ missionId, plannedStart, plannedEnd, onC
   const highCount = list.filter((r) => r.severity === "HIGH").length;
   const openCount = list.filter((r) => !r.resolved).length;
 
+  const edge = embedded ? "" : "px-4";
   return (
-    <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
-      <div className="flex flex-wrap items-center gap-2 border-b border-slate-100 px-4 py-2.5">
+    <section className={embedded ? undefined : "overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm"}>
+      <div
+        className={`flex flex-wrap items-center gap-2 border-b border-slate-100 ${
+          embedded ? "mb-1 pb-2.5" : "px-4 py-2.5"
+        }`}
+      >
         <h2 className="flex items-center gap-2 text-sm font-bold text-slate-800">
+          {embedded ? <span className="h-4 w-0.5 rounded-full bg-rose-500" aria-hidden /> : null}
           เหตุการณ์ไม่ปกติระหว่างทริป
           <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-bold text-slate-500">{list.length}</span>
         </h2>
@@ -264,22 +278,26 @@ export function MissionIncidentsPanel({ missionId, plannedStart, plannedEnd, onC
         <button
           type="button"
           onClick={openAdd}
-          className="ml-auto rounded-full bg-gradient-to-r from-[#0000BF] via-[#8b5cf6] to-[#ec4899] px-3.5 py-1.5 text-xs font-bold text-white shadow-md hover:opacity-95"
+          className={`ml-auto font-bold text-white hover:opacity-95 ${
+            embedded
+              ? "rounded-md bg-[#0000BF] px-2 py-0.5 text-[11px]"
+              : "rounded-full bg-gradient-to-r from-[#0000BF] via-[#8b5cf6] to-[#ec4899] px-3.5 py-1.5 text-xs shadow-md"
+          }`}
         >
           + บันทึกเหตุการณ์
         </button>
       </div>
 
-      {err ? <p className="px-4 py-3 text-sm text-rose-600">{err}</p> : null}
-      {rows === null && !err ? <p className="px-4 py-6 text-center text-sm text-slate-400">กำลังโหลด…</p> : null}
+      {err ? <p className={`${edge} py-3 text-sm text-rose-600`}>{err}</p> : null}
+      {rows === null && !err ? <p className={`${edge} py-6 text-center text-sm text-slate-400`}>กำลังโหลด…</p> : null}
       {rows !== null && list.length === 0 ? (
-        <p className="px-4 py-6 text-center text-sm text-slate-400">
+        <p className={`${edge} py-4 text-center text-sm text-slate-400`}>
           ไม่มีเหตุการณ์ผิดปกติ — รายงานผลการปฏิบัติจะระบุว่า «ไม่มีเหตุการณ์ผิดปกติ»
         </p>
       ) : null}
 
       {list.length ? (
-        <ol className="relative space-y-0 px-4 py-3">
+        <ol className={`relative space-y-0 py-3 ${edge}`}>
           {list.map((r, idx) => {
             const sev = severityMeta(r.severity);
             const delay = formatDelay(r.delayMinutes);

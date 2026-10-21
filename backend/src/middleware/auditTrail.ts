@@ -56,6 +56,7 @@ const ENTITY_LABELS: Record<string, string> = {
   "coordination-categories": "หมวดหมู่ประสานงาน",
   "mission-personnel-roles": "บทบาทบุคลากรภารกิจ",
   "mission-vehicle-roles": "บทบาทรถภารกิจ",
+  "mission-cargo-roles": "บทบาทรถสินค้า",
   "mission-expense-types": "ประเภทค่าใช้จ่ายภารกิจ",
 };
 

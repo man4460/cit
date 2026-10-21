@@ -22,6 +22,7 @@ export const PERMISSION_MODULES: { key: string; apiPrefixes: string[] }[] = [
       "/route-master",
       "/mission-personnel-roles",
       "/mission-vehicle-roles",
+      "/mission-cargo-roles",
       "/mission-expense-types",
       "/police-stations",
     ],

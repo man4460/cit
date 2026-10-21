@@ -91,6 +91,8 @@ model Personnel {
 
   beneficiaries           PersonnelBeneficiary[]
   missionAssignments      MissionPersonnel[]
+  cargoTrucksAsDriver1    MissionCargoTruck[]      @relation("CargoTruckDriver1")
+  cargoTrucksAsDriver2    MissionCargoTruck[]      @relation("CargoTruckDriver2")
   assetsAudited           Asset[]                  @relation("AssetAuditor")
   inspections             AssetInspection[]
   armorMonthlyInspections ArmorMonthlyInspection[]
@@ -234,8 +236,9 @@ model Vehicle {
   maintenanceLogs   MaintenanceLog[]
   fuelLogs          FuelConsumptionLog[]
   missionVehicles   MissionVehicle[]
-  missionCrew       MissionPersonnel[] @relation("MissionPersonnelVehicle")
-  missionCrewReturn MissionPersonnel[] @relation("MissionPersonnelVehicleReturn")
+  missionCrew          MissionPersonnel[] @relation("MissionPersonnelVehicle")
+  missionCrewReturn    MissionPersonnel[] @relation("MissionPersonnelVehicleReturn")
+  cargoTrucksAsTractor MissionCargoTruck[] @relation("CargoTruckTractor")
   weeklyInspections VehicleWeeklyInspection[]
   dispositionLogs   VehicleDispositionLog[]
 }
@@ -819,6 +822,16 @@ model MissionVehicleRoleMaster {
   assignments MissionVehicle[]
 }
 
+model MissionCargoRoleMaster {
+  id        String   @id @default(uuid())
+  name      String   @unique
+  sortOrder Int      @default(0)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  assignments MissionCargoTruck[]
+}
+
 model MissionExpenseTypeMaster {
   id        String   @id @default(uuid())
   name      String   @unique
@@ -861,6 +874,7 @@ model Mission {
   updatedAt DateTime @updatedAt
 
   personnel      MissionPersonnel[]
+  cargoTrucks    MissionCargoTruck[]
   vehicles       MissionVehicle[]
   destinations   MissionDestination[]
   expenses       MissionExpense[]
@@ -998,6 +1012,10 @@ model MissionPersonnel {
   assignedVehicleId String?
   assignedVehicle   Vehicle? @relation("MissionPersonnelVehicle", fields: [assignedVehicleId], references: [id], onDelete: SetNull)
 
+  /// รถสินค้าจ้างเหมาที่ประจำขาไป (แท็บปฏิบัติการพิเศษ นั่งสินค้า)
+  assignedCargoTruckId String?
+  assignedCargoTruck   MissionCargoTruck? @relation("MissionPersonnelCargoTruck", fields: [assignedCargoTruckId], references: [id], onDelete: SetNull)
+
   /// true = ขากลับโดยสารคันเดียวกับขาไป (ไม่ใช้ assignedVehicleReturnId)
   returnVehicleSameAsGo Boolean @default(true)
 
@@ -1006,6 +1024,41 @@ model MissionPersonnel {
   assignedVehicleReturn   Vehicle? @relation("MissionPersonnelVehicleReturn", fields: [assignedVehicleReturnId], references: [id], onDelete: SetNull)
 
   @@unique([missionId, personnelId])
+}
+
+/// รถบรรทุกสินค้าจ้างเหมา (หัวลาก + หางลาก + คนขับ) — กรอกต่อภารกิจ ไม่ผูกทะเบียน master
+model MissionCargoTruck {
+  id        String  @id @default(uuid())
+  missionId String
+  mission   Mission @relation(fields: [missionId], references: [id], onDelete: Cascade)
+  sortOrder Int     @default(0)
+
+  tractorVehicleId String?
+  tractorVehicle   Vehicle? @relation("CargoTruckTractor", fields: [tractorVehicleId], references: [id], onDelete: SetNull)
+  tractorPlate     String   @db.VarChar(40)
+  trailerPlate     String?  @db.VarChar(40)
+  roleId    String?
+  cargoRole MissionCargoRoleMaster? @relation(fields: [roleId], references: [id], onDelete: Restrict)
+  /// สำเนาชื่อบทบาทตอนบันทึก เช่น สินค้า 1, หัวลากสำรอง
+  role      String? @db.VarChar(40)
+
+  /// คนขับจากทะเบียนกำลังพล — ชื่อ/บัตร/โทรเก็บเป็นสำเนาตอนบันทึก
+  driver1PersonnelId String?
+  driver1Personnel   Personnel? @relation("CargoTruckDriver1", fields: [driver1PersonnelId], references: [id], onDelete: SetNull)
+  driver1Name        String     @db.VarChar(120)
+  driver1IdNumber    String?    @db.VarChar(20)
+  driver1Phone       String?    @db.VarChar(30)
+
+  driver2PersonnelId String?
+  driver2Personnel   Personnel? @relation("CargoTruckDriver2", fields: [driver2PersonnelId], references: [id], onDelete: SetNull)
+  driver2Name        String?    @db.VarChar(120)
+  driver2IdNumber    String?    @db.VarChar(20)
+  driver2Phone       String?    @db.VarChar(30)
+  note               String?    @db.VarChar(120)
+
+  outboundCrew MissionPersonnel[] @relation("MissionPersonnelCargoTruck")
+
+  @@index([missionId, sortOrder])
 }
 
 model MissionVehicle {

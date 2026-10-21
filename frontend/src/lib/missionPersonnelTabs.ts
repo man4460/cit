@@ -23,6 +23,19 @@ export const MISSION_PERSONNEL_TABS: readonly MissionPersonnelTabDef[] = [
   { key: "driver", label: "ขับรถสินค้า", categories: ["ขับรถสินค้า"], defaultRoleRe: /คนขับ|ขับรถ/ },
 ] as const;
 
+/** แท็บบุคลากรในฟอร์ม — คนขับสินค้าไม่ใช่บุคลากร อยู่ในขั้น «ข้อมูลรถสินค้า» */
+export const MISSION_STAFF_TABS = MISSION_PERSONNEL_TABS.filter((t) => t.key !== "driver");
+
+/** คนขับรถสินค้าจ้างเหมา — ไม่มีค่าตอบแทนรายคน (รวมในค่าจ้างรถบรรทุก) */
+export function isCargoDriverPersonnel(
+  categoryName?: string | null,
+  roleName?: string | null,
+): boolean {
+  const cat = (categoryName ?? "").trim();
+  if (cat === "ขับรถสินค้า") return true;
+  return /พนักงานขับรถสินค้า|ขับรถสินค้า/.test(roleName ?? "");
+}
+
 export function missionPersonnelTabByCategory(
   categoryName: string | null | undefined,
 ): MissionPersonnelTabKey | null {

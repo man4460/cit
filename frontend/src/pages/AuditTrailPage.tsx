@@ -87,6 +87,8 @@ function entityTypeLabel(t: string) {
     MissionPersonnelRoles: "บทบาทบุคลากรภารกิจ",
     MissionVehicleRole: "บทบาทรถภารกิจ",
     MissionVehicleRoles: "บทบาทรถภารกิจ",
+    MissionCargoRole: "บทบาทรถสินค้า",
+    MissionCargoRoles: "บทบาทรถสินค้า",
     MissionExpenseType: "ประเภทค่าใช้จ่ายภารกิจ",
     MissionExpenseTypes: "ประเภทค่าใช้จ่ายภารกิจ",
   };
