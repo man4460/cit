@@ -50,6 +50,11 @@ export async function seedMissionMasterData() {
     { name: "สินค้า 1", sortOrder: 0 },
     { name: "สินค้า 2", sortOrder: 1 },
     { name: "สินค้า 3", sortOrder: 2 },
+    { name: "สินค้า 4", sortOrder: 3 },
+    { name: "สินค้า 5", sortOrder: 4 },
+    { name: "สินค้า 6", sortOrder: 5 },
+    { name: "สินค้า 7", sortOrder: 6 },
+    { name: "สินค้า 8", sortOrder: 7 },
     { name: "หัวลากสำรอง", sortOrder: 10 },
   ];
   for (const r of cargoRoles) {

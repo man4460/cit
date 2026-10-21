@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { PDFParse } from "pdf-parse";
+import { detectImageKind } from "./upload/detectImageKind.js";
 import { prisma } from "./prisma.js";
 
 const OCR_MAX_BYTES = 12 * 1024 * 1024;
@@ -28,8 +29,7 @@ export function uploadFilenameFromFileUrl(fileUrl: string): string | null {
   return uploadRelativePathFromFileUrl(fileUrl);
 }
 
-async function extractPdfText(absPath: string): Promise<string | null> {
-  const buf = fs.readFileSync(absPath);
+async function extractPdfTextFromBuffer(buf: Buffer): Promise<string | null> {
   const parser = new PDFParse({ data: buf });
   try {
     const { text } = await parser.getText();
@@ -40,15 +40,14 @@ async function extractPdfText(absPath: string): Promise<string | null> {
   }
 }
 
-async function extractImageOcr(absPath: string): Promise<string | null> {
-  const stat = fs.statSync(absPath);
-  if (stat.size > OCR_MAX_BYTES) return null;
+async function extractImageOcrFromBuffer(buf: Buffer): Promise<string | null> {
+  if (buf.length > OCR_MAX_BYTES) return null;
   const { createWorker } = await import("tesseract.js");
   const worker = await createWorker(["tha", "eng"], 1, {
     logger: () => undefined,
   });
   try {
-    const { data } = await worker.recognize(absPath);
+    const { data } = await worker.recognize(buf);
     const t = data.text?.replace(/\u00a0/g, " ").trim();
     return t && t.length > 0 ? t : null;
   } finally {
@@ -56,28 +55,41 @@ async function extractImageOcr(absPath: string): Promise<string | null> {
   }
 }
 
-export async function extractTextFromLibraryFile(absPath: string, mimeType: string | null): Promise<string | null> {
-  const ext = path.extname(absPath).toLowerCase();
+const IMAGE_EXTS = [".png", ".jpg", ".jpeg", ".webp", ".gif", ".tif", ".tiff", ".bmp"];
+
+export async function extractTextFromBuffer(
+  buf: Buffer,
+  mimeType: string | null,
+  originalName?: string,
+): Promise<string | null> {
+  const ext = path.extname(originalName ?? "").toLowerCase();
   const mt = (mimeType || "").toLowerCase();
+  const looksPdf = mt === "application/pdf" || ext === ".pdf" || buf.slice(0, 5).toString("ascii") === "%PDF-";
+  const looksText = mt === "text/plain" || ext === ".txt" || ext === ".csv";
+  const looksImage =
+    mt.startsWith("image/") || IMAGE_EXTS.includes(ext) || Boolean(detectImageKind(buf));
 
   try {
-    if (mt === "application/pdf" || ext === ".pdf") {
-      return await extractPdfText(absPath);
-    }
-    if (mt === "text/plain" || ext === ".txt" || ext === ".csv") {
-      const raw = fs.readFileSync(absPath, "utf8").trim();
+    if (looksPdf) return await extractPdfTextFromBuffer(buf);
+    if (looksText) {
+      const raw = buf.toString("utf8").trim();
       return raw.length > 0 ? raw : null;
     }
-    if (
-      mt.startsWith("image/") ||
-      [".png", ".jpg", ".jpeg", ".webp", ".gif", ".tif", ".tiff", ".bmp"].includes(ext)
-    ) {
-      return await extractImageOcr(absPath);
-    }
+    if (looksImage) return await extractImageOcrFromBuffer(buf);
   } catch (e) {
-    console.error("extractTextFromLibraryFile", absPath, e);
+    console.error("extractTextFromBuffer", originalName, e);
   }
   return null;
+}
+
+export async function extractTextFromLibraryFile(absPath: string, mimeType: string | null): Promise<string | null> {
+  try {
+    const buf = fs.readFileSync(absPath);
+    return await extractTextFromBuffer(buf, mimeType, absPath);
+  } catch (e) {
+    console.error("extractTextFromLibraryFile", absPath, e);
+    return null;
+  }
 }
 
 /** อ่านไฟล์จาก uploads แล้วอัปเดต extractedText */

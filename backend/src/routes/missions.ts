@@ -18,6 +18,17 @@ import {
 import { prisma } from "../lib/prisma.js";
 import { reactivatePersonnel } from "../lib/personnelRetention.js";
 import { routeParam } from "../lib/routeParam.js";
+import { extractTextFromBuffer } from "../lib/libraryDocumentExtract.js";
+import {
+  CARGO_DOC_IMPORT_REMARK,
+  cargoDriverRegistryName,
+  digitsOnly,
+  isCargoDocImportedRemarks,
+  matchCargoDocumentPerson,
+  matchVehicleByPlate,
+  parseCargoDocumentText,
+  type CargoDocumentPerson,
+} from "../lib/parseCargoDocument.js";
 import { persistUpload, unlinkUploadFile, upload } from "../lib/upload.js";
 
 export const missionsRouter = Router();
@@ -1164,6 +1175,249 @@ missionsRouter.post("/actual-expense/export-return", async (req, res, next) => {
     next(e);
   }
 });
+
+async function ensureParsedCargoRoles(names: string[]) {
+  const wanted = [...new Set(names.map((n) => n.trim()).filter(Boolean))];
+  if (!wanted.length) {
+    return prisma.missionCargoRoleMaster.findMany({
+      orderBy: [{ sortOrder: "asc" }, { name: "asc" }],
+    });
+  }
+  const existing = await prisma.missionCargoRoleMaster.findMany();
+  const byName = new Map(existing.map((r) => [r.name, r]));
+  for (const name of wanted) {
+    if (byName.has(name)) continue;
+    const spare = /หัวลาก/.test(name);
+    const m = name.match(/สินค้า\s+(\d+)/);
+    const sortOrder = spare ? 10 : m ? Math.max(0, Number(m[1]) - 1) : 20;
+    const row = await prisma.missionCargoRoleMaster.create({ data: { name, sortOrder } });
+    byName.set(name, row);
+  }
+  return [...byName.values()].sort(
+    (a, b) => a.sortOrder - b.sortOrder || a.name.localeCompare(b.name, "th"),
+  );
+}
+
+/** อ่านเอกสารตอบกลับขนส่ง แล้วจับคู่หัวลาก / หาง / คนขับ */
+missionsRouter.post(
+  "/cargo-trucks/parse",
+  (req, res, next) => {
+    upload.single("file")(req, res, (err: unknown) => {
+      if (err) {
+        const msg = multerFilesErrorMessage(err);
+        if (msg) {
+          return res.status(400).json({
+            error: msg.replace("ใช้ชื่อฟิลด์ files", "ใช้ชื่อฟิลด์ file"),
+          });
+        }
+        return next(err);
+      }
+      next();
+    });
+  },
+  async (req, res, next) => {
+    try {
+      const file = req.file;
+      if (!file?.buffer?.length) {
+        return res.status(400).json({ error: "เลือกไฟล์เอกสารก่อน — PDF หรือรูปตารางรถสินค้า" });
+      }
+      const text = await extractTextFromBuffer(file.buffer, file.mimetype, file.originalname);
+      if (!text || text.length < 40) {
+        return res.status(400).json({
+          error: "ไม่อ่านข้อความจากไฟล์ได้ — ใช้ PDF ที่มีข้อความ หรือรูปตารางที่ชัด",
+        });
+      }
+      const parsed = parseCargoDocumentText(text);
+      if (!parsed.length) {
+        return res.status(400).json({
+          error: "ไม่อ่านรายการรถได้ — ต้องการตารางทะเบียนหัว / หาง และชื่อคนขับ",
+        });
+      }
+
+      const cargoRoles = await ensureParsedCargoRoles(parsed.map((t) => t.role));
+      const roleByName = new Map(cargoRoles.map((r) => [r.name, r]));
+
+      let cargoCat = await prisma.personnelCategory.findUnique({ where: { name: "ขับรถสินค้า" } });
+      if (!cargoCat) {
+        cargoCat = await prisma.personnelCategory.create({ data: { name: "ขับรถสินค้า", sortOrder: 1 } });
+      }
+
+      const [vehicles, people] = await Promise.all([
+        prisma.vehicle.findMany({ select: { id: true, licensePlate: true } }),
+        prisma.personnel.findMany({
+          where: { purgedAt: null },
+          select: {
+            id: true,
+            fullName: true,
+            rank: true,
+            idNumber: true,
+            phone: true,
+            remarks: true,
+            personnelCategory: { select: { id: true, name: true } },
+          },
+        }),
+      ]);
+      const peopleFlat: CargoDocumentPerson[] = people.map((p) => ({
+        id: p.id,
+        fullName: p.fullName,
+        rank: p.rank,
+        idNumber: p.idNumber,
+        phone: p.phone,
+        remarks: p.remarks,
+        categoryName: p.personnelCategory?.name ?? null,
+      }));
+
+      const createdPersonnel: CargoDocumentPerson[] = [];
+      const resolveDriver = async (hint: { name: string; idNumber: string; phone: string } | undefined) => {
+        if (!hint || (!hint.name.trim() && !hint.idNumber.trim())) {
+          return { person: null as CargoDocumentPerson | null, unregistered: false };
+        }
+        const hit = matchCargoDocumentPerson(peopleFlat, hint);
+        if (hit) {
+          if (hint.phone && !hit.phone) {
+            await prisma.personnel.update({ where: { id: hit.id }, data: { phone: hint.phone } });
+            hit.phone = hint.phone;
+          }
+          return { person: hit, unregistered: isCargoDocImportedRemarks(hit.remarks) };
+        }
+        const fullName = cargoDriverRegistryName(hint.name) || "คนขับรถสินค้า";
+        const idn = digitsOnly(hint.idNumber);
+        const idNumber = idn.length >= 12 ? idn : `DOC-${randomUUID().replace(/-/g, "").slice(0, 13)}`;
+        try {
+          const created = await prisma.personnel.create({
+            data: {
+              fullName,
+              idNumber,
+              phone: hint.phone || null,
+              position: "พนักงานขับรถสินค้า",
+              personnelCategoryId: cargoCat.id,
+              remarks: CARGO_DOC_IMPORT_REMARK,
+            },
+            select: {
+              id: true,
+              fullName: true,
+              rank: true,
+              idNumber: true,
+              phone: true,
+              remarks: true,
+              personnelCategory: { select: { name: true } },
+            },
+          });
+          const flat: CargoDocumentPerson = {
+            id: created.id,
+            fullName: created.fullName,
+            rank: created.rank,
+            idNumber: created.idNumber,
+            phone: created.phone,
+            remarks: created.remarks,
+            categoryName: created.personnelCategory?.name ?? "ขับรถสินค้า",
+          };
+          peopleFlat.push(flat);
+          createdPersonnel.push(flat);
+          return { person: flat, unregistered: true };
+        } catch (e: unknown) {
+          if (e && typeof e === "object" && "code" in e && (e as { code: string }).code === "P2002") {
+            const existing = await prisma.personnel.findUnique({
+              where: { idNumber },
+              select: {
+                id: true,
+                fullName: true,
+                rank: true,
+                idNumber: true,
+                phone: true,
+                remarks: true,
+                personnelCategory: { select: { name: true } },
+              },
+            });
+            if (existing) {
+              const flat: CargoDocumentPerson = {
+                id: existing.id,
+                fullName: existing.fullName,
+                rank: existing.rank,
+                idNumber: existing.idNumber,
+                phone: existing.phone,
+                remarks: existing.remarks,
+                categoryName: existing.personnelCategory?.name ?? null,
+              };
+              if (!peopleFlat.some((p) => p.id === flat.id)) peopleFlat.push(flat);
+              return { person: flat, unregistered: isCargoDocImportedRemarks(flat.remarks) };
+            }
+          }
+          throw e;
+        }
+      };
+
+      const warnings: string[] = [];
+      const trucks = [];
+      for (let i = 0; i < parsed.length; i++) {
+        const t = parsed[i];
+        const vehicle = t.tractorPlate ? matchVehicleByPlate(vehicles, t.tractorPlate) : undefined;
+        if (t.tractorPlate && !vehicle) {
+          warnings.push(`คันที่ ${i + 1} ทะเบียนหัว ${t.tractorPlate} ไม่พบในยานพาหนะ`);
+        }
+        const roleRow = t.role ? roleByName.get(t.role) : undefined;
+        const r1 = await resolveDriver(t.drivers[0]);
+        const r2 = await resolveDriver(t.drivers[1]);
+        const p1 = r1.person;
+        const p2 = r2.person && r2.person.id !== p1?.id ? r2.person : null;
+        trucks.push({
+          id: randomUUID(),
+          sortOrder: i,
+          tractorVehicleId: vehicle?.id ?? null,
+          tractorPlate: vehicle?.licensePlate ?? t.tractorPlate,
+          trailerPlate: t.trailerPlate,
+          roleId: roleRow?.id ?? null,
+          role: roleRow?.name ?? t.role,
+          driver1PersonnelId: p1?.id ?? null,
+          driver1Name: p1 ? personnelDisplayName(p1) : (t.drivers[0]?.name ?? ""),
+          driver1IdNumber: p1?.idNumber ?? t.drivers[0]?.idNumber ?? "",
+          driver1Phone: p1?.phone ?? t.drivers[0]?.phone ?? "",
+          driver1Unregistered: r1.unregistered || Boolean(t.drivers[0]?.name && !p1),
+          driver2PersonnelId: p2?.id ?? null,
+          driver2Name: p2 ? personnelDisplayName(p2) : (t.drivers[1]?.name ?? ""),
+          driver2IdNumber: p2?.idNumber ?? t.drivers[1]?.idNumber ?? "",
+          driver2Phone: p2?.phone ?? t.drivers[1]?.phone ?? "",
+          driver2Unregistered: r2.unregistered || Boolean(t.drivers[1]?.name && !p2),
+          note: t.note,
+        });
+      }
+
+      const createdIds = createdPersonnel.map((p) => p.id);
+      if (createdIds.length) await reactivatePersonnel(createdIds, new Date());
+
+      res.json({
+        trucks: trucks.map((t) => ({
+          ...serializeCargoTruck(t),
+          driver1Unregistered: t.driver1Unregistered,
+          driver2Unregistered: t.driver2Unregistered,
+        })),
+        cargoRoles,
+        createdPersonnel: createdPersonnel.map((p) => ({
+          id: p.id,
+          fullName: p.fullName,
+          rank: p.rank ?? null,
+          idNumber: p.idNumber ?? "",
+          phone: p.phone ?? null,
+          remarks: p.remarks ?? CARGO_DOC_IMPORT_REMARK,
+          personnelCategoryId: cargoCat.id,
+          personnelCategory: { id: cargoCat.id, name: "ขับรถสินค้า", sortOrder: cargoCat.sortOrder },
+          photoUrl: null,
+          position: "พนักงานขับรถสินค้า",
+          organizationUnitTypeId: null,
+          organizationUnitType: null,
+          insuranceCompany: null,
+          insurancePolicyNumber: null,
+          insuranceExpiry: null,
+          insuranceNotes: null,
+        })),
+        warnings,
+        extractedChars: text.length,
+      });
+    } catch (e) {
+      next(e);
+    }
+  },
+);
 
 missionsRouter.get("/:id/attachments", async (req, res, next) => {
   try {

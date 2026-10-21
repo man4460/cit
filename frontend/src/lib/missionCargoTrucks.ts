@@ -13,12 +13,20 @@ export type CargoTruckRow = {
   driver1Name: string;
   driver1IdNumber: string;
   driver1Phone: string;
+  driver1Unregistered: boolean;
   driver2PersonnelId: string;
   driver2Name: string;
   driver2IdNumber: string;
   driver2Phone: string;
+  driver2Unregistered: boolean;
   note: string;
 };
+
+export const CARGO_DOC_IMPORT_REMARK = "จากเอกสารขนส่ง";
+
+export function isCargoDocImported(remarks?: string | null): boolean {
+  return (remarks ?? "").includes(CARGO_DOC_IMPORT_REMARK);
+}
 
 export type CargoDriverPerson = {
   id: string;
@@ -26,6 +34,7 @@ export type CargoDriverPerson = {
   rank?: string | null;
   idNumber?: string | null;
   phone?: string | null;
+  remarks?: string | null;
 };
 
 export type CargoTractorVehicle = {
@@ -76,10 +85,12 @@ export function blankCargoTruck(role = "", roleId = ""): CargoTruckRow {
     driver1Name: "",
     driver1IdNumber: "",
     driver1Phone: "",
+    driver1Unregistered: false,
     driver2PersonnelId: "",
     driver2Name: "",
     driver2IdNumber: "",
     driver2Phone: "",
+    driver2Unregistered: false,
     note: "",
   };
 }
@@ -126,6 +137,20 @@ export function cargoTruckFilled(row: CargoTruckRow): boolean {
       row.driver2PersonnelId.trim() ||
       row.driver1Name.trim() ||
       row.driver2Name.trim(),
+  );
+}
+
+/** มีข้อมูลจากเอกสาร/ผู้ใช้จริง — ไม่นับแถวว่างที่มีแค่บทบาทแนะนำ */
+export function cargoRowHasDocumentData(row: CargoTruckRow): boolean {
+  return Boolean(
+    row.tractorVehicleId.trim() ||
+      row.tractorPlate.trim() ||
+      row.trailerPlate.trim() ||
+      row.driver1PersonnelId.trim() ||
+      row.driver2PersonnelId.trim() ||
+      row.driver1Name.trim() ||
+      row.driver2Name.trim() ||
+      row.note.trim(),
   );
 }
 
@@ -195,6 +220,7 @@ export function withCargoDriver(
   person: CargoDriverPerson | undefined,
 ): CargoTruckRow {
   const snap = cargoDriverSnapshot(personnelId ? person : undefined);
+  const unregistered = Boolean(personnelId && isCargoDocImported(person?.remarks));
   if (slot === 1) {
     return {
       ...row,
@@ -202,6 +228,7 @@ export function withCargoDriver(
       driver1Name: snap.name,
       driver1IdNumber: snap.idNumber,
       driver1Phone: snap.phone,
+      driver1Unregistered: unregistered,
     };
   }
   return {
@@ -210,6 +237,7 @@ export function withCargoDriver(
     driver2Name: snap.name,
     driver2IdNumber: snap.idNumber,
     driver2Phone: snap.phone,
+    driver2Unregistered: unregistered,
   };
 }
 
@@ -225,6 +253,13 @@ export function withCargoTractor(
   };
 }
 
+function compactPersonName(value: string): string {
+  return value
+    .replace(/^(นางสาว|นาย|นาง)\s*/u, "")
+    .replace(/\s+/g, "")
+    .toLowerCase();
+}
+
 export function matchCargoDriverId(
   people: CargoDriverPerson[],
   personnelId?: string | null,
@@ -237,9 +272,16 @@ export function matchCargoDriverId(
     const hit = people.find((p) => (p.idNumber ?? "").replace(/\D/g, "") === idn);
     if (hit) return hit.id;
   }
-  const n = (name ?? "").trim();
-  if (!n) return "";
-  const hit = people.find((p) => cargoDriverDisplayName(p) === n || p.fullName === n);
+  const n = compactPersonName(name ?? "");
+  if (n.length >= 4) {
+    const hit = people.find(
+      (p) => compactPersonName(cargoDriverDisplayName(p)) === n || compactPersonName(p.fullName) === n,
+    );
+    if (hit) return hit.id;
+  }
+  const raw = (name ?? "").trim();
+  if (!raw) return "";
+  const hit = people.find((p) => cargoDriverDisplayName(p) === raw || p.fullName === raw);
   return hit?.id ?? "";
 }
 
@@ -251,8 +293,11 @@ export function matchTractorVehicleId(
   if (vehicleId && vehicles.some((v) => v.id === vehicleId)) return vehicleId;
   const raw = (plate ?? "").trim();
   if (!raw) return "";
-  const compact = raw.replace(/\s+/g, "").toLowerCase();
-  const hit = vehicles.find((v) => v.licensePlate.replace(/\s+/g, "").toLowerCase() === compact);
+  const compact = raw.replace(/[\s-]/g, "").toLowerCase();
+  if (compact.length < 6) return "";
+  const hit =
+    vehicles.find((v) => v.licensePlate.replace(/[\s-]/g, "").toLowerCase() === compact) ??
+    vehicles.find((v) => v.licensePlate.replace(/[\s-]/g, "").toLowerCase().endsWith(compact));
   return hit?.id ?? "";
 }
 
@@ -277,10 +322,12 @@ export function toCargoTruckForm(row: Partial<CargoTruckRow> & { id?: string | n
     driver1Name: row.driver1Name ?? "",
     driver1IdNumber: row.driver1IdNumber ?? "",
     driver1Phone: row.driver1Phone ?? "",
+    driver1Unregistered: Boolean(row.driver1Unregistered),
     driver2PersonnelId: row.driver2PersonnelId ?? "",
     driver2Name: row.driver2Name ?? "",
     driver2IdNumber: row.driver2IdNumber ?? "",
     driver2Phone: row.driver2Phone ?? "",
+    driver2Unregistered: Boolean(row.driver2Unregistered),
     note: row.note ?? "",
   };
 }

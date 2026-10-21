@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { gradeSortValue, policeRankIndex } from "../lib/allowanceDocs";
 import { Link, useLocation, useNavigate, useParams } from "react-router-dom";
-import { apiJson } from "../api/client";
+import { apiFormJson, apiJson } from "../api/client";
 import {
   MissionActualExpenseEditor,
   type MissionActualExpenseEditorHandle,
@@ -30,11 +30,11 @@ import {
 } from "../lib/botAllowancePrint";
 import {
   blankCargoTruck,
+  cargoRowHasDocumentData,
   cargoSeatKey,
   cargoTruckCallSign,
-  cargoTruckDriverCount,
-  cargoTruckDriverNames,
   cargoTruckFilled,
+  isCargoDocImported,
   matchCargoDriverId,
   matchCargoRoleId,
   matchTractorVehicleId,
@@ -321,6 +321,15 @@ function isoToLocalDatetimeValue(iso: string | null | undefined): string {
 
 type MissionFormMode = "create" | "edit" | "duplicate";
 
+type CargoParseResult = {
+  trucks: CargoTruckRow[];
+  cargoRoles?: NameMasterRow[];
+  createdPersonnel?: Personnel[];
+  warnings?: string[];
+};
+
+type CargoCrewInfo = { name: string; phone: string; idNumber: string };
+
 export function MissionFormPage() {
   const navigate = useNavigate();
   const location = useLocation();
@@ -383,6 +392,9 @@ export function MissionFormPage() {
   const [mastersReady, setMastersReady] = useState(false);
   const [crewPopupVehicleId, setCrewPopupVehicleId] = useState<string | null>(null);
   const [crewPopupCargoId, setCrewPopupCargoId] = useState<string | null>(null);
+  const cargoDocInputRef = useRef<HTMLInputElement>(null);
+  const [cargoDocBusy, setCargoDocBusy] = useState(false);
+  const [cargoDocMsg, setCargoDocMsg] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     const [p, v, r, pr, vr, cr, et, ps] = await Promise.all([
@@ -461,7 +473,6 @@ export function MissionFormPage() {
           value: p.id,
           label: personnelSelectLabel(p),
           keywords: `${p.position ?? ""} ${p.phone ?? ""} ${p.idNumber ?? ""} ขับรถสินค้า`,
-          imageUrl: p.photoUrl ?? null,
         })),
     [personnel],
   );
@@ -566,7 +577,7 @@ export function MissionFormPage() {
   }, [pRows, personnel, cargoTractorIds]);
 
   const crewByCargoTruck = useMemo(() => {
-    const map = new Map<string, string[]>();
+    const map = new Map<string, CargoCrewInfo[]>();
     for (const r of pRows) {
       if (!r.personnelId) continue;
       const truck = cargoTruckRows.find(
@@ -576,8 +587,12 @@ export function MissionFormPage() {
       );
       if (!truck) continue;
       const p = personnel.find((x) => x.id === r.personnelId);
-      const name = p ? `${p.rank ? `${p.rank} ` : ""}${p.fullName}` : "—";
-      map.set(cargoSeatKey(truck), [...(map.get(cargoSeatKey(truck)) ?? []), name]);
+      const info: CargoCrewInfo = {
+        name: p ? `${p.rank ? `${p.rank} ` : ""}${p.fullName}` : "—",
+        phone: p?.phone ?? "",
+        idNumber: p?.idNumber ?? "",
+      };
+      map.set(cargoSeatKey(truck), [...(map.get(cargoSeatKey(truck)) ?? []), info]);
     }
     return map;
   }, [pRows, personnel, cargoTruckRows]);
@@ -606,29 +621,42 @@ export function MissionFormPage() {
     [personnel, personnelRoleMasters],
   );
 
+  const ensureVehiclesInMission = (
+    items: Array<{ vehicleId: string; vehicleRoleId?: string; callSign?: string }>,
+  ) => {
+    setVRows((prev) => {
+      let next = prev;
+      let changed = false;
+      for (const item of items) {
+        if (!item.vehicleId || next.some((r) => r.vehicleId === item.vehicleId)) continue;
+        const blank = next.findIndex((r) => !r.vehicleId);
+        const row: VRow = {
+          vehicleId: item.vehicleId,
+          vehicleRoleId:
+            item.vehicleRoleId ||
+            (blank >= 0 ? next[blank].vehicleRoleId : "") ||
+            vehicleRoleMasters[0]?.id ||
+            "",
+          fuelLiters: "",
+          fuelType: "",
+          fuelAmount: "",
+          callSign: item.callSign ?? "",
+        };
+        next =
+          blank >= 0
+            ? next.map((r, i) => (i === blank ? { ...r, ...row, fuelAmount: r.fuelAmount } : r))
+            : [...next, row];
+        changed = true;
+      }
+      return changed ? orderVehicleRows(next) : prev;
+    });
+  };
+
   const ensureVehicleInMission = (
     vehicleId: string,
     extras?: { vehicleRoleId?: string; callSign?: string },
   ) => {
-    if (!vehicleId || missionVehicleIds.has(vehicleId)) return;
-    setVRows((prev) => {
-      const blank = prev.findIndex((r) => !r.vehicleId);
-      const row: VRow = {
-        vehicleId,
-        vehicleRoleId:
-          extras?.vehicleRoleId ||
-          (blank >= 0 ? prev[blank].vehicleRoleId : "") ||
-          vehicleRoleMasters[0]?.id ||
-          "",
-        fuelLiters: "",
-        fuelType: "",
-        fuelAmount: "",
-        callSign: extras?.callSign ?? "",
-      };
-      const next =
-        blank >= 0 ? prev.map((r, i) => (i === blank ? { ...r, ...row, fuelAmount: r.fuelAmount } : r)) : [...prev, row];
-      return orderVehicleRows(next);
-    });
+    ensureVehiclesInMission([{ vehicleId, ...extras }]);
   };
 
   const assignCrewVehicle = (idx: number, vehicleId: string, leg: "go" | "return" = "go") => {
@@ -648,6 +676,63 @@ export function MissionFormPage() {
       }),
     );
     if (vehicleId) ensureVehicleInMission(vehicleId);
+  };
+
+  const applyCargoDocument = async (file: File) => {
+    if (cargoTruckRows.some(cargoRowHasDocumentData)) {
+      if (!window.confirm("มีข้อมูลรถสินค้าอยู่แล้ว จะแทนที่ด้วยข้อมูลจากเอกสาร?")) {
+        if (cargoDocInputRef.current) cargoDocInputRef.current.value = "";
+        return;
+      }
+    }
+    setCargoDocBusy(true);
+    setCargoDocMsg(null);
+    try {
+      const fd = new FormData();
+      fd.append("file", file);
+      const result = await apiFormJson<CargoParseResult>("/api/missions/cargo-trucks/parse", fd);
+      if (result.cargoRoles?.length) setCargoRoleMasters(result.cargoRoles);
+      if (result.createdPersonnel?.length) {
+        setPersonnel((prev) => {
+          const ids = new Set(prev.map((p) => p.id));
+          return [...prev, ...result.createdPersonnel!.filter((p) => !ids.has(p.id))];
+        });
+      }
+      const roles = result.cargoRoles?.length ? result.cargoRoles : cargoRoleMasters;
+      const next = (result.trucks ?? []).map((raw) => {
+        let row = toCargoTruckForm(raw);
+        const tractorId = matchTractorVehicleId(vehicles, row.tractorVehicleId, row.tractorPlate);
+        const vehicle = vehicles.find((v) => v.id === tractorId);
+        if (tractorId) row = withCargoTractor(row, tractorId, vehicle);
+        const roleId = matchCargoRoleId(roles, row.roleId, row.role);
+        if (roleId) row = withCargoRole(row, roleId, roles);
+        return row;
+      });
+      setCargoTruckRows(next.length ? next : [blankCargoTruck()]);
+      const goodsRoleId = vehicleRoleMasters.find((r) => r.name === "สินค้า")?.id;
+      const spareRoleId = vehicleRoleMasters.find((r) => r.name === "หัวลากสำรอง")?.id;
+      ensureVehiclesInMission(
+        next
+          .filter((r) => r.tractorVehicleId)
+          .map((r) => ({
+            vehicleId: r.tractorVehicleId,
+            vehicleRoleId: /หัวลาก/.test(r.role) ? spareRoleId : goodsRoleId,
+            callSign: r.role,
+          })),
+      );
+      const matchedHead = next.filter((r) => r.tractorVehicleId).length;
+      const added = result.createdPersonnel?.length ?? 0;
+      setCargoDocMsg(
+        added
+          ? `อ่านได้ ${next.length} คัน · จับคู่หัวลาก ${matchedHead}/${next.length} · เพิ่มกำลังพลใหม่ ${added} คน`
+          : `อ่านได้ ${next.length} คัน · จับคู่หัวลาก ${matchedHead}/${next.length}`,
+      );
+    } catch (e) {
+      setCargoDocMsg(e instanceof Error ? e.message : "อ่านเอกสารไม่สำเร็จ");
+    } finally {
+      setCargoDocBusy(false);
+      if (cargoDocInputRef.current) cargoDocInputRef.current.value = "";
+    }
   };
 
   const setCargoDriver = (rowId: string, slot: 1 | 2, personnelId: string) => {
@@ -1284,8 +1369,8 @@ export function MissionFormPage() {
           />
         </div>
 
-        <div className="sticky top-0 z-10 border-b border-slate-200 bg-white/95 px-4 py-2 backdrop-blur sm:px-5">
-          <div className="flex flex-wrap gap-2">
+        <div className="sticky top-0 z-10 border-b border-slate-200 bg-white/95 px-4 py-1.5 backdrop-blur sm:px-5">
+          <div className="flex flex-wrap gap-1">
             {steps.map((label, i) => {
               const tabAmount = formatStepTabAmount(stepExpenseSummaries[i]?.amount ?? 0);
               return (
@@ -1293,16 +1378,16 @@ export function MissionFormPage() {
                   key={label}
                   type="button"
                   onClick={() => setStep(i)}
-                  className={`inline-flex max-w-full flex-col items-start gap-0.5 rounded-lg px-3 py-1.5 text-left sm:flex-row sm:items-center sm:gap-2 ${
+                  className={`inline-flex max-w-full items-center gap-1 rounded-md px-2 py-1 text-left ${
                     step === i ? "bg-[#0000BF] text-white" : "bg-slate-100 text-slate-700 hover:text-[#2e2a58]"
                   }`}
                 >
-                  <span className="text-sm font-medium">
+                  <span className="text-[11px] font-medium leading-none">
                     {i + 1}. {label}
                   </span>
                   {tabAmount ? (
                     <span
-                      className={`text-[11px] font-bold tabular-nums ${
+                      className={`text-[10px] font-bold tabular-nums leading-none ${
                         step === i ? "text-white/90" : "text-[#0000BF]"
                       }`}
                     >
@@ -1314,9 +1399,9 @@ export function MissionFormPage() {
             })}
           </div>
           {stepExpenseSummaries[step]?.amount > 0 ? (
-            <div className="mt-2 flex flex-wrap items-center justify-between gap-2 rounded-lg border border-[#0000BF]/15 bg-[#0000BF]/5 px-3 py-2">
-              <p className="text-sm font-semibold text-[#2e2a58]">{steps[step]}</p>
-              <p className="text-sm text-slate-700">
+            <div className="mt-1.5 flex flex-wrap items-center justify-between gap-2 rounded-md border border-[#0000BF]/15 bg-[#0000BF]/5 px-2.5 py-1">
+              <p className="text-[11px] font-semibold text-[#2e2a58]">{steps[step]}</p>
+              <p className="text-[11px] text-slate-700">
                 {stepExpenseSummaries[step].label}{" "}
                 <span className="font-black tabular-nums text-[#0000BF]">
                   {formatBaht(stepExpenseSummaries[step].amount)} บาท
@@ -1467,48 +1552,55 @@ export function MissionFormPage() {
 
             {step === STEP_CARGO && (
               <div className="space-y-2">
-                <div className="flex flex-wrap items-center justify-between gap-2">
-                <p className="text-[11px] text-slate-500">
-                  ส่วนหัวเลือกจากยานพาหนะ — กรอกส่วนหาง และเลือกบทบาท (เช่น สินค้า 1) · กดไอคอนบุคลากรเพื่อเลือกคนขับจากกำลังพลประเภท «ขับรถสินค้า» และดูจนท.ปฏิบัติการพิเศษขาไป
-                  {cargoTruckDriverCount(cargoTruckRows) > 0
-                    ? ` · คนขับ ${cargoTruckDriverCount(cargoTruckRows)} นาย`
-                    : ""}
-                  {cargoDriverOptions.length === 0
-                    ? " · ยังไม่มีรายชื่อประเภทนี้ในกำลังพล — เพิ่มก่อนแล้วกลับมาเลือก"
-                    : ""}
-                  {" · "}ไม่มีค่าตอบแทนรายคน รวมในค่าจ้างรถบรรทุกแล้ว
-                </p>
-                  <div className="flex shrink-0 flex-wrap items-center gap-2">
+                <div className="flex flex-wrap items-center justify-end gap-1.5">
+                    <input
+                      ref={cargoDocInputRef}
+                      type="file"
+                      accept="application/pdf,image/png,image/jpeg,image/webp,image/tiff,.pdf,.png,.jpg,.jpeg,.webp,.tif,.tiff"
+                      className="sr-only"
+                      onChange={(e) => {
+                        const file = e.target.files?.[0];
+                        if (file) void applyCargoDocument(file);
+                        else e.target.value = "";
+                      }}
+                    />
                     <button
                       type="button"
-                      className="rounded-lg border border-slate-200 px-2.5 py-1 text-xs font-medium text-[#4d47b6] hover:bg-slate-100"
+                      disabled={cargoDocBusy}
+                      className="rounded-md border border-slate-200 px-2 py-0.5 text-[11px] font-medium text-[#4d47b6] hover:bg-slate-100 disabled:opacity-50"
+                      onClick={() => cargoDocInputRef.current?.click()}
+                    >
+                      {cargoDocBusy ? "กำลังอ่าน…" : "อัปโหลดเอกสาร"}
+                    </button>
+                    <button
+                      type="button"
+                      className="rounded-md border border-slate-200 px-2 py-0.5 text-[11px] font-medium text-[#4d47b6] hover:bg-slate-100"
                       onClick={() => setCrudCargoRoleOpen(true)}
                     >
-                      จัดการบทบาท…
+                      จัดการบทบาท
                     </button>
-                    <button
-                      type="button"
-                      className="text-[11px] font-semibold text-[#0000BF] hover:underline"
-                      onClick={() => setStep(STEP_VEHICLES)}
-                    >
-                      ไปยานพาหนะ →
-                    </button>
-                    <Link to="/personnel" className="text-[11px] font-semibold text-[#0000BF] hover:underline">
-                      ไปทะเบียนกำลังพล →
-                    </Link>
-                  </div>
                 </div>
+                {cargoDocMsg ? (
+                  <p className={`text-[11px] ${/ไม่สำเร็จ|ไม่อ่าน/.test(cargoDocMsg) ? "text-rose-600" : "text-emerald-700"}`}>
+                    {cargoDocMsg}
+                  </p>
+                ) : null}
+                {cargoDriverOptions.length === 0 ? (
+                  <p className="text-[11px] text-amber-700">ยังไม่มีกำลังพลประเภทขับรถสินค้า</p>
+                ) : null}
                 <div className="overflow-x-auto rounded-lg border border-slate-200">
-                  <div className="hidden min-w-[52rem] grid-cols-[2.2rem_minmax(8rem,1.2fr)_minmax(6.5rem,0.7fr)_minmax(6.5rem,0.7fr)_minmax(7rem,0.8fr)_2.4rem_2.5rem] gap-1.5 border-b border-slate-200 bg-slate-50 px-2 py-1.5 text-[10px] font-bold uppercase tracking-wide text-slate-600 sm:grid">
+                  <div className="hidden min-w-[68rem] grid-cols-[2rem_minmax(7rem,1fr)_minmax(5.2rem,0.55fr)_minmax(5.2rem,0.55fr)_minmax(8rem,1.15fr)_minmax(8rem,1.15fr)_minmax(5.5rem,0.7fr)_2.2rem_2.3rem] gap-1.5 border-b border-slate-200 bg-slate-50 px-2 py-1.5 text-[10px] font-bold uppercase tracking-wide text-slate-600 sm:grid">
                     <span>ที่</span>
                     <span>รถส่วนหัว</span>
                     <span>ส่วนหาง</span>
                     <span>บทบาท</span>
+                    <span>คนขับ 1</span>
+                    <span>คนขับ 2</span>
                     <span>หมายเหตุ</span>
-                    <span className="sr-only">บุคลากร</span>
+                    <span className="sr-only">ผู้โดยสาร</span>
                     <span className="sr-only">ลบ</span>
                   </div>
-                  <ul className="min-w-[52rem] divide-y divide-slate-100">
+                  <ul className="min-w-[68rem] divide-y divide-slate-100">
                     {cargoTruckRows.length === 0 ? (
                       <li className="px-3 py-4 text-center text-xs text-slate-500">
                         ยังไม่มีรายการ — กด «+ เพิ่มคัน»
@@ -1541,22 +1633,82 @@ export function MissionFormPage() {
                           }
                         };
                         const riders = crewByCargoTruck.get(cargoSeatKey(row)) ?? [];
-                        const crewCount = cargoTruckDriverNames(row).length + riders.length;
+                        const driverCount = [row.driver1Name, row.driver2Name].filter((n) => n.trim()).length;
+                        const crewCount = driverCount + riders.length;
+                        const usedDrivers = new Set(
+                          cargoTruckRows.flatMap((r) =>
+                            r.id === row.id ? [] : [r.driver1PersonnelId, r.driver2PersonnelId].filter(Boolean),
+                          ),
+                        );
+                        const driverSelect = (slot: 1 | 2) => {
+                          const currentId = slot === 1 ? row.driver1PersonnelId : row.driver2PersonnelId;
+                          const otherId = slot === 1 ? row.driver2PersonnelId : row.driver1PersonnelId;
+                          const name = (slot === 1 ? row.driver1Name : row.driver2Name).trim();
+                          const person = personnel.find((p) => p.id === currentId);
+                          const unregistered =
+                            (slot === 1 ? row.driver1Unregistered : row.driver2Unregistered) ||
+                            isCargoDocImported(person?.remarks) ||
+                            Boolean(name && !currentId);
+                          const driverOpts = [
+                            ...(currentId && !cargoDriverOptions.some((o) => o.value === currentId)
+                              ? [
+                                  {
+                                    value: currentId,
+                                    label: name || (person ? personnelSelectLabel(person) : currentId),
+                                    keywords: `${name} ${person?.phone ?? ""} ${person?.idNumber ?? ""}`,
+                                  },
+                                ]
+                              : []),
+                            ...cargoDriverOptions.filter(
+                              (o) => o.value === currentId || (o.value !== otherId && !usedDrivers.has(o.value)),
+                            ),
+                          ];
+                          return (
+                            <div className="flex min-w-0 items-start gap-0.5">
+                              <div className="min-w-0 flex-1">
+                                <SearchableSelect
+                                  value={currentId}
+                                  onChange={(v) => setCargoDriver(row.id, slot, v)}
+                                  options={driverOpts}
+                                  emptyLabel={`— คนขับ ${slot} —`}
+                                  allowEmpty
+                                  aria-label={`คนขับ ${slot} คัน ${idx + 1}`}
+                                  inputClassName="mt-0.5 w-full rounded-md border border-slate-200 bg-white px-1.5 py-1 text-sm text-slate-900"
+                                />
+                              </div>
+                              {unregistered ? (
+                                <span
+                                  className="mt-1.5 shrink-0 text-amber-500"
+                                  title="ไม่มีในทะเบียนกำลังพล — เพิ่มจากเอกสาร"
+                                >
+                                  {NavIcons.alert({ className: "h-3.5 w-3.5" })}
+                                </span>
+                              ) : null}
+                            </div>
+                          );
+                        };
                         return (
                           <li
                             key={row.id || `cargo-truck-${idx}`}
-                            className="grid grid-cols-[2.2rem_minmax(8rem,1.2fr)_minmax(6.5rem,0.7fr)_minmax(6.5rem,0.7fr)_minmax(7rem,0.8fr)_2.4rem_2.5rem] items-start gap-1.5 px-2 py-1.5"
+                            className="grid grid-cols-[2rem_minmax(7rem,1fr)_minmax(5.2rem,0.55fr)_minmax(5.2rem,0.55fr)_minmax(8rem,1.15fr)_minmax(8rem,1.15fr)_minmax(5.5rem,0.7fr)_2.2rem_2.3rem] items-start gap-1.5 px-2 py-1.5"
                           >
                             <span className="pt-1.5 text-center text-xs tabular-nums text-slate-500">{idx + 1}</span>
+                            <div>
                             <SearchableSelect
                               value={row.tractorVehicleId}
                               onChange={setTractor}
                               options={tractorOpts}
-                              emptyLabel="— หัวลากจากยานพาหนะ —"
+                              emptyLabel="— หัวลาก —"
                               allowEmpty
                               aria-label={`รถส่วนหัว คัน ${idx + 1}`}
                               inputClassName="mt-0.5 w-full rounded-md border border-slate-200 bg-white px-1.5 py-1 text-sm text-slate-900"
                             />
+                            {!row.tractorVehicleId && row.tractorPlate.trim() ? (
+                              <p className="mt-0.5 px-0.5 text-[10px] text-amber-700">
+                                {row.tractorPlate} — ไม่พบในยานพาหนะ
+                              </p>
+                            ) : null}
+                            </div>
                             <input
                               aria-label={`ทะเบียนหางลาก คัน ${idx + 1}`}
                               className="mt-0.5 w-full rounded-md border border-slate-200 px-1.5 py-1 text-sm tabular-nums text-slate-900"
@@ -1580,6 +1732,8 @@ export function MissionFormPage() {
                                 </option>
                               ))}
                             </select>
+                            {driverSelect(1)}
+                            {driverSelect(2)}
                             <input
                               aria-label={`หมายเหตุ คัน ${idx + 1}`}
                               className="mt-0.5 w-full rounded-md border border-slate-200 px-1.5 py-1 text-xs text-slate-800"
@@ -1594,10 +1748,8 @@ export function MissionFormPage() {
                                   ? "text-[#0000BF] hover:bg-[#0000BF]/10"
                                   : "text-slate-400 hover:bg-slate-100 hover:text-slate-600"
                               }`}
-                              aria-label={
-                                crewCount ? `บุคลากร ${crewCount} คน` : "ดูบุคลากร — ยังไม่ระบุ"
-                              }
-                              title="บุคลากร"
+                              aria-label={crewCount ? `บุคลากร ${crewCount} คน` : "ดูคนขับและผู้โดยสาร"}
+                              title="คนขับ / ผู้โดยสาร"
                               onClick={() => setCrewPopupCargoId(row.id)}
                             >
                               {NavIcons.personnel({ className: "h-4 w-4" })}
@@ -1646,7 +1798,7 @@ export function MissionFormPage() {
                     })
                   }
                 >
-                  + เพิ่มคัน (หัวลาก / หางลาก)
+                  + เพิ่มคัน
                 </button>
               </div>
             )}
@@ -1678,7 +1830,7 @@ export function MissionFormPage() {
                         type="button"
                         role="tab"
                         aria-selected={active}
-                        className={`inline-flex flex-col items-start gap-0.5 rounded-lg px-2.5 py-1.5 text-xs font-semibold transition sm:flex-row sm:items-center ${
+                        className={`inline-flex items-center gap-1 rounded-md px-2 py-1 text-[11px] font-semibold transition ${
                           active
                             ? "bg-[#0000BF] text-white shadow-sm"
                             : "text-slate-700 hover:bg-white hover:text-[#0000BF]"
@@ -1709,17 +1861,9 @@ export function MissionFormPage() {
                   })}
                 </div>
 
-                {(personnelTab === "crime" || personnelTab === "highway" || personnelTab === "special") && (
-                  <p className="text-[11px] text-slate-500">
-                    แถบนี้เรียงตามยศอัตโนมัติ (สูง→ต่ำ) เมื่อเลือกบุคลากร
-                  </p>
-                )}
                 {tabUsesGoReturnVehicles(personnelTab) ? (
                   <p className="text-[11px] text-slate-500">
-                    ประจำรถขาไปเลือกจากขั้นยานพาหนะ — ติ๊ก «เหมือนขาไป» หากโดยสารคันเดิม
-                    {personnelTab === "special"
-                      ? " · ถ้านั่งหัวลากสินค้าขาไป ขากลับต้องเลือกยานพาหนะคุ้มกัน"
-                      : ""}
+                    {personnelTab === "special" ? "ขาไปนั่งรถสินค้าได้ · ขากลับเลือกจากยานพาหนะ" : "ประจำรถขาไป / ขากลับ"}
                   </p>
                 ) : null}
 
@@ -2139,9 +2283,7 @@ export function MissionFormPage() {
             {step === STEP_VEHICLES && (
               <div className="space-y-3">
                 <div className="flex flex-wrap items-center justify-between gap-2">
-                  <p className="text-[11px] text-slate-600">
-                    กรอก <span className="font-semibold text-[#4d47b6]">ค่าน้ำมัน</span> แต่ละคันและราคาต่อลิตร — ระบบคำนวณลิตร (ปัดเป็นจำนวนเต็ม) ตามชนิดน้ำมันอัตโนมัติ
-                  </p>
+                  <p className="text-[11px] text-slate-600">กรอกค่าน้ำมันแต่ละคัน — ระบบคำนวณลิตรตามชนิดน้ำมัน</p>
                   <button
                     type="button"
                     className="shrink-0 rounded-lg border border-slate-200 px-2.5 py-1 text-xs font-medium text-[#4d47b6] hover:bg-slate-100"
@@ -2174,10 +2316,7 @@ export function MissionFormPage() {
                     />
                   </label>
                 </div>
-                <p className="text-[11px] text-slate-500">
-                  เรียงอัตโนมัติตามรูปขบวนคุ้มกัน (ขาไป): ส่วนล่วงหน้า → นำขบวน → ประสานท้องที่ → คุ้มกันหน้า →
-                  คุ้มกันหลัง → ปิดท้าย · ส่วนหัวรถสินค้าเลือกจากรายการนี้ แล้วกรอกหาง/บทบาทในขั้น «ข้อมูลรถสินค้า»
-                </p>
+                <p className="text-[11px] text-slate-500">เรียงตามรูปขบวนอัตโนมัติ</p>
                 <div className="overflow-x-auto rounded-lg border border-slate-200 pr-1">
                   <div className="hidden min-w-[63rem] grid-cols-[minmax(0,1.15fr)_minmax(6rem,0.75fr)_7rem_5rem_5rem_minmax(8rem,0.9fr)_2.4rem_2.75rem] gap-2 border-b border-slate-200 bg-slate-50 px-3 py-1.5 text-[10px] font-bold uppercase tracking-wide text-slate-600 sm:grid">
                     <span>ยานพาหนะ</span>
@@ -2517,45 +2656,48 @@ export function MissionFormPage() {
               <div className="space-y-2">
                 {([1, 2] as const).map((slot) => {
                   const currentId = slot === 1 ? crewPopupCargo.driver1PersonnelId : crewPopupCargo.driver2PersonnelId;
-                  const otherId = slot === 1 ? crewPopupCargo.driver2PersonnelId : crewPopupCargo.driver1PersonnelId;
+                  const name = (slot === 1 ? crewPopupCargo.driver1Name : crewPopupCargo.driver2Name).trim();
                   const phone = slot === 1 ? crewPopupCargo.driver1Phone : crewPopupCargo.driver2Phone;
-                  const usedDrivers = new Set(
-                    cargoTruckRows.flatMap((r) =>
-                      r.id === crewPopupCargo.id ? [] : [r.driver1PersonnelId, r.driver2PersonnelId].filter(Boolean),
-                    ),
-                  );
-                  const driverOpts = cargoDriverOptions.filter(
-                    (o) => o.value === currentId || (o.value !== otherId && !usedDrivers.has(o.value)),
-                  );
+                  const idNumber = slot === 1 ? crewPopupCargo.driver1IdNumber : crewPopupCargo.driver2IdNumber;
+                  const person = personnel.find((p) => p.id === currentId);
+                  const unregistered =
+                    (slot === 1 ? crewPopupCargo.driver1Unregistered : crewPopupCargo.driver2Unregistered) ||
+                    isCargoDocImported(person?.remarks) ||
+                    Boolean(name && !currentId);
                   return (
-                    <div key={slot}>
-                      <SearchableSelect
-                        value={currentId}
-                        onChange={(v) => setCargoDriver(crewPopupCargo.id, slot, v)}
-                        options={driverOpts}
-                        emptyLabel={`— คนขับ ${slot} จากกำลังพล —`}
-                        allowEmpty
-                        aria-label={`คนขับ ${slot}`}
-                        inputClassName="w-full rounded-md border border-slate-200 bg-white px-1.5 py-1 text-sm text-slate-900"
-                      />
-                      {phone ? <p className="mt-0.5 px-0.5 text-[10px] text-slate-500">{phone}</p> : null}
+                    <div key={slot} className="rounded-lg border border-slate-200 px-2.5 py-2">
+                      <p className="flex items-center gap-1 text-sm font-medium text-slate-900">
+                        {name || `คนขับ ${slot} — ยังไม่ระบุ`}
+                        {unregistered ? (
+                          <span className="text-amber-500" title="ไม่มีในทะเบียนกำลังพล — เพิ่มจากเอกสาร">
+                            {NavIcons.alert({ className: "h-3.5 w-3.5" })}
+                          </span>
+                        ) : null}
+                      </p>
+                      <div className="mt-0.5 space-y-0.5 text-[11px] text-slate-600">
+                        {phone ? <p>โทร {phone}</p> : null}
+                        {idNumber ? <p>บัตร {idNumber}</p> : null}
+                        {unregistered ? <p className="text-amber-700">เพิ่มจากเอกสาร — ยังไม่มีในทะเบียนเดิม</p> : null}
+                      </div>
                     </div>
                   );
                 })}
               </div>
             </div>
             <div>
-              <p className="mb-1.5 text-xs font-bold uppercase tracking-wide text-slate-500">ปฏิบัติการพิเศษขาไป</p>
+              <p className="mb-1.5 text-xs font-bold uppercase tracking-wide text-slate-500">ผู้โดยสาร</p>
               {crewPopupCargoRiders.length ? (
                 <ul className="space-y-1">
-                  {crewPopupCargoRiders.map((n, i) => (
-                    <li key={`${n}-${i}`} className="rounded-lg bg-slate-50 px-2.5 py-1.5 text-sm text-slate-800">
-                      {n}
+                  {crewPopupCargoRiders.map((r, i) => (
+                    <li key={`${r.name}-${i}`} className="rounded-lg bg-slate-50 px-2.5 py-1.5 text-sm text-slate-800">
+                      <p>{r.name}</p>
+                      {r.phone ? <p className="text-[11px] text-slate-600">โทร {r.phone}</p> : null}
+                      {r.idNumber ? <p className="text-[11px] text-slate-600">บัตร {r.idNumber}</p> : null}
                     </li>
                   ))}
                 </ul>
               ) : (
-                <p className="text-sm text-slate-500">ยังไม่ระบุ</p>
+                <p className="text-sm text-slate-500">ยังไม่มีผู้โดยสาร</p>
               )}
             </div>
             <button
@@ -2567,7 +2709,7 @@ export function MissionFormPage() {
                 setStep(STEP_PERSONNEL);
               }}
             >
-              กำหนดในบุคลากร →
+              กำหนดผู้โดยสารในบุคลากร →
             </button>
           </div>
         ) : null}
