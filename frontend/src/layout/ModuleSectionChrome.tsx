@@ -53,7 +53,7 @@ function moduleTabItems(group: NavGroup, viewer?: PermissionViewer) {
 
 function ModuleTabs({ group, viewer }: { group: NavGroup; viewer?: PermissionViewer }) {
   if (group.id === "budget") {
-    return <BudgetModuleTabs isAdmin={viewer?.role === "ADMIN"} />;
+    return <BudgetModuleTabs />;
   }
 
   const { pathname } = useLocation();
@@ -101,7 +101,7 @@ export function ModuleHeaderBarNav({ viewer }: { viewer?: PermissionViewer }) {
         aria-label={`เมนู${group.titleTh}`}
       >
         {isBudget ? (
-          <BudgetModuleTabs isAdmin={viewer?.role === "ADMIN"} compact />
+          <BudgetModuleTabs compact />
         ) : (
           <ul className="flex gap-0.5 sm:gap-1">
             {items.map((item) => {

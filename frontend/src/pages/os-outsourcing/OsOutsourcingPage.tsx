@@ -5,7 +5,7 @@ import { CommaNumberInput } from "../../components/CommaNumberInput";
 import { Modal, ModalFormActions, ModalFormBody } from "../../components/Modal";
 import { ModuleDocumentsModal } from "../../components/ModuleDocumentsModal";
 import { PageHeaderBar } from "../../components/PageHeaderBar";
-import { useAuth } from "../../context/AuthContext";
+import { usePagePermission } from "../../lib/usePagePermission";
 import { MODULE_DOCUMENT_CATEGORIES } from "../../lib/moduleDocumentCategories";
 import type { LoadOptions } from "../../lib/loadOptions";
 import { setLoadBusy } from "../../lib/loadOptions";
@@ -377,8 +377,7 @@ function RecordOnlyNote({ className = "" }: { className?: string }) {
 }
 
 export function OsOutsourcingPage() {
-  const { user } = useAuth();
-  const isAdmin = user?.role === "ADMIN";
+  const { canEdit, canDelete } = usePagePermission();
 
   const [groups, setGroups] = useState<OsAreaGroup[]>([]);
   const [selectedGroupId, setSelectedGroupId] = useState("");
@@ -579,6 +578,7 @@ export function OsOutsourcingPage() {
   }
 
   async function removeContract(c: OsContract) {
+    if (!canDelete) return;
     if (!confirm(`ลบสัญญา «${c.vendorName}» ? รายการตรวจรับและเอกสารของสัญญานี้จะถูกลบด้วย`)) return;
     setErr(null);
     try {
@@ -592,8 +592,8 @@ export function OsOutsourcingPage() {
   }
 
   function openAccept(monthYm: string) {
-    if (!isAdmin) {
-      setErr("การบันทึกตรวจรับต้องเป็นผู้ดูแลระบบ");
+    if (!canEdit) {
+      setErr("ไม่มีสิทธิ์บันทึกตรวจรับในส่วนนี้");
       return;
     }
     if (!selectedContract) return;
@@ -607,8 +607,8 @@ export function OsOutsourcingPage() {
   }
 
   function openEditAccept(a: OsMonthlyAcceptance) {
-    if (!isAdmin) {
-      setErr("แก้ไขตรวจรับต้องเป็นผู้ดูแลระบบ");
+    if (!canEdit) {
+      setErr("ไม่มีสิทธิ์แก้ไขตรวจรับในส่วนนี้");
       return;
     }
     setAcceptModal({ mode: "edit", monthYm: a.monthYm, id: a.id });
@@ -663,8 +663,8 @@ export function OsOutsourcingPage() {
   }
 
   async function revokeAccept(a: OsMonthlyAcceptance) {
-    if (!isAdmin) {
-      setErr("การยกเลิกตรวจรับต้องเป็นผู้ดูแลระบบ");
+    if (!canDelete) {
+      setErr("ไม่มีสิทธิ์ลบ/ยกเลิกตรวจรับในส่วนนี้");
       return;
     }
     if (!confirm(`ยกเลิกบันทึกตรวจรับ ${monthLabel(a.monthYm)} ? เอกสารแนบของเดือนนี้จะถูกลบด้วย`)) return;
@@ -679,8 +679,8 @@ export function OsOutsourcingPage() {
   }
 
   function pickAttachDoc(acceptanceId: string) {
-    if (!isAdmin) {
-      setErr("แนบเอกสารตรวจรับต้องเป็นผู้ดูแลระบบ");
+    if (!canEdit) {
+      setErr("ไม่มีสิทธิ์แนบเอกสารตรวจรับในส่วนนี้");
       return;
     }
     attachTargetIdRef.current = acceptanceId;
@@ -711,7 +711,7 @@ export function OsOutsourcingPage() {
   }
 
   async function removeAcceptanceDoc(acceptanceId: string, linkId: string, title: string) {
-    if (!isAdmin) return;
+    if (!canDelete) return;
     if (!confirm(`ลบเอกสาร «${title}» จากตรวจรับและคลังเอกสาร?`)) return;
     setErr(null);
     try {
@@ -726,8 +726,8 @@ export function OsOutsourcingPage() {
   }
 
   function pickContractAttachDoc() {
-    if (!isAdmin) {
-      setErr("แนบเอกสารสัญญาต้องเป็นผู้ดูแลระบบ");
+    if (!canEdit) {
+      setErr("ไม่มีสิทธิ์แนบเอกสารสัญญาในส่วนนี้");
       return;
     }
     if (!selectedContractId) return;
@@ -753,7 +753,7 @@ export function OsOutsourcingPage() {
   }
 
   async function removeContractDoc(linkId: string, title: string) {
-    if (!isAdmin || !selectedContractId) return;
+    if (!canDelete || !selectedContractId) return;
     if (!confirm(`ลบเอกสาร «${title}» จากสัญญาและคลังเอกสาร?`)) return;
     setErr(null);
     try {
@@ -806,10 +806,12 @@ export function OsOutsourcingPage() {
           </button>
         }
         primary={
-          <button type="button" className={toolbarPrimaryBtnClass} onClick={openCreateContract}>
-            <Icon name="plus" className="mr-1 inline h-3.5 w-3.5" />
-            เพิ่มสัญญา
-          </button>
+          canEdit ? (
+            <button type="button" className={toolbarPrimaryBtnClass} onClick={openCreateContract}>
+              <Icon name="plus" className="mr-1 inline h-3.5 w-3.5" />
+              เพิ่มสัญญา
+            </button>
+          ) : undefined
         }
       />
 
@@ -902,24 +904,28 @@ export function OsOutsourcingPage() {
                         ))}
                       </select>
                     ) : null}
-                    {selectedContract ? (
+                    {selectedContract && (canEdit || canDelete) ? (
                       <div className="flex flex-wrap justify-end gap-1.5">
-                        <button
-                          type="button"
-                          className="inline-flex items-center gap-1 rounded-full border border-amber-200 bg-amber-50 px-3 py-1 text-xs font-bold text-amber-800 hover:bg-amber-100"
-                          onClick={() => openEditContract(selectedContract)}
-                        >
-                          <Icon name="pencil" className="h-3.5 w-3.5" />
-                          แก้ไขสัญญา
-                        </button>
-                        <button
-                          type="button"
-                          className="inline-flex items-center gap-1 rounded-full border border-rose-200 bg-rose-50 px-3 py-1 text-xs font-bold text-rose-600 hover:bg-rose-100"
-                          onClick={() => void removeContract(selectedContract)}
-                        >
-                          <Icon name="trash" className="h-3.5 w-3.5" />
-                          ลบ
-                        </button>
+                        {canEdit ? (
+                          <button
+                            type="button"
+                            className="inline-flex items-center gap-1 rounded-full border border-amber-200 bg-amber-50 px-3 py-1 text-xs font-bold text-amber-800 hover:bg-amber-100"
+                            onClick={() => openEditContract(selectedContract)}
+                          >
+                            <Icon name="pencil" className="h-3.5 w-3.5" />
+                            แก้ไขสัญญา
+                          </button>
+                        ) : null}
+                        {canDelete ? (
+                          <button
+                            type="button"
+                            className="inline-flex items-center gap-1 rounded-full border border-rose-200 bg-rose-50 px-3 py-1 text-xs font-bold text-rose-600 hover:bg-rose-100"
+                            onClick={() => void removeContract(selectedContract)}
+                          >
+                            <Icon name="trash" className="h-3.5 w-3.5" />
+                            ลบ
+                          </button>
+                        ) : null}
                       </div>
                     ) : null}
                   </div>
@@ -993,13 +999,13 @@ export function OsOutsourcingPage() {
                       {(selectedContract.documents ?? []).length ? (
                         <ul className="flex min-w-0 flex-wrap items-baseline gap-x-4 gap-y-1">
                           {(selectedContract.documents ?? []).map((d) => (
-                            <DocRow key={d.id} doc={d} onRemove={isAdmin ? () => void removeContractDoc(d.id, d.title) : undefined} />
+                            <DocRow key={d.id} doc={d} onRemove={canDelete ? () => void removeContractDoc(d.id, d.title) : undefined} />
                           ))}
                         </ul>
                       ) : (
                         <span className="text-slate-400">ยังไม่มี</span>
                       )}
-                      {isAdmin ? (
+                      {canEdit ? (
                         <button
                           type="button"
                           disabled={contractDocUploading}
@@ -1115,7 +1121,7 @@ export function OsOutsourcingPage() {
                               <span className="flex shrink-0 items-center gap-2 text-[11px] font-semibold">
                                 <button
                                   type="button"
-                                  disabled={!isAdmin}
+                                  disabled={!canEdit}
                                   className="text-amber-700 hover:underline disabled:opacity-40"
                                   onClick={() => openEditAccept(row)}
                                 >
@@ -1123,7 +1129,7 @@ export function OsOutsourcingPage() {
                                 </button>
                                 <button
                                   type="button"
-                                  disabled={!isAdmin || docUploadingId === row.id}
+                                  disabled={!canEdit || docUploadingId === row.id}
                                   className="text-[#0000BF] hover:underline disabled:opacity-40"
                                   onClick={() => pickAttachDoc(row.id)}
                                 >
@@ -1131,7 +1137,7 @@ export function OsOutsourcingPage() {
                                 </button>
                                 <button
                                   type="button"
-                                  disabled={!isAdmin}
+                                  disabled={!canDelete}
                                   className="text-rose-600 hover:underline disabled:opacity-40"
                                   onClick={() => void revokeAccept(row)}
                                 >
@@ -1141,7 +1147,7 @@ export function OsOutsourcingPage() {
                             ) : (
                               <button
                                 type="button"
-                                disabled={!isAdmin}
+                                disabled={!canEdit}
                                 className="shrink-0 rounded-full bg-gradient-to-r from-[#0000BF] via-[#8b5cf6] to-[#ec4899] px-2.5 py-0.5 text-[11px] font-bold text-white shadow-sm transition hover:brightness-110 disabled:opacity-40"
                                 onClick={() => openAccept(monthYm)}
                               >
@@ -1160,7 +1166,7 @@ export function OsOutsourcingPage() {
                                 key={d.id}
                                 doc={d}
                                 compact
-                                onRemove={isAdmin ? () => void removeAcceptanceDoc(row.id, d.id, d.title) : undefined}
+                                onRemove={canDelete ? () => void removeAcceptanceDoc(row.id, d.id, d.title) : undefined}
                               />
                             ))}
                           </ul>
@@ -1170,9 +1176,9 @@ export function OsOutsourcingPage() {
                   );
                 })}
               </div>
-              {!isAdmin ? (
+              {!canEdit ? (
                 <p className="border-t border-[#ecebff] bg-white/60 px-4 py-2 text-center text-[11px] text-slate-500">
-                  การบันทึก / แก้ไขตรวจรับ ทำได้เฉพาะผู้ดูแลระบบ (ADMIN)
+                  สิทธิ์อ่านอย่างเดียว — บันทึกหรือแก้ไขตรวจรับไม่ได้
                 </p>
               ) : null}
             </section>

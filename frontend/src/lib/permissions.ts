@@ -76,6 +76,14 @@ export function canViewPath(viewer: PermissionViewer, pathname: string): boolean
   return lv == null || lv !== "none";
 }
 
+export function canEditLevel(level: PermissionLevel | null | undefined): boolean {
+  return level === "edit" || level === "delete";
+}
+
+export function canDeleteLevel(level: PermissionLevel | null | undefined): boolean {
+  return level === "delete";
+}
+
 export function fullPermissions(level: PermissionLevel): PermissionMap {
   return Object.fromEntries(PERMISSION_MODULES.map((m) => [m.key, level]));
 }

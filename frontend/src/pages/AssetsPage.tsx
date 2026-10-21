@@ -25,6 +25,7 @@ import {
   toolbarPrimaryBtnClass,
 } from "../lib/uiTokens";
 import { useAuth } from "../context/AuthContext";
+import { usePagePermission } from "../lib/usePagePermission";
 
 function isoToDateInput(iso: string | null | undefined): string {
   if (!iso) return "";
@@ -84,6 +85,7 @@ function emptyForm() {
 
 export function AssetsPage() {
   const { user } = useAuth();
+  const { canDelete } = usePagePermission();
   const [searchParams, setSearchParams] = useSearchParams();
   const [rows, setRows] = useState<Asset[]>([]);
   const [categories, setCategories] = useState<NameMasterRow[]>([]);
@@ -532,7 +534,7 @@ export function AssetsPage() {
                 >
                   แก้ไข
                 </button>
-                {user?.role === "ADMIN" ? (
+                {canDelete ? (
                   <button
                     type="button"
                     className="rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-medium text-rose-600 hover:bg-slate-100"

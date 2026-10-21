@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { NavLink, useLocation, useNavigate } from "react-router-dom";
 import { apiJson } from "../api/client";
+import { usePagePermission } from "../lib/usePagePermission";
 import { itemMatchesPath, type NavItem } from "../lib/navConfig";
 import { itemVisual, NavGlyph } from "../lib/navVisuals";
 import {
@@ -42,12 +43,11 @@ function bucketToNavItem(b: YearBucket): NavItem {
 }
 
 export function BudgetModuleTabs({
-  isAdmin,
   compact = false,
 }: {
-  isAdmin?: boolean;
   compact?: boolean;
 }) {
+  const { canEdit } = usePagePermission();
   const { pathname } = useLocation();
   const navigate = useNavigate();
   const [buckets, setBuckets] = useState<YearBucket[]>(fallbackBuckets);
@@ -79,7 +79,7 @@ export function BudgetModuleTabs({
   const canCreateNext = nextYearBe <= maxAllowedYearBe;
 
   async function createNextYear() {
-    if (!isAdmin || busy) return;
+    if (!canEdit || busy) return;
     if (!canCreateNext) {
       window.alert(`ยังสร้างปี ${nextYearBe} ไม่ได้ — สร้างล่วงหน้าได้ถึงปี ${maxAllowedYearBe}`);
       return;
@@ -142,7 +142,7 @@ export function BudgetModuleTabs({
             </li>
           );
         })}
-        {isAdmin ? (
+        {canEdit ? (
           <li className="shrink-0">
             <button
               type="button"
@@ -187,7 +187,7 @@ export function BudgetModuleTabs({
             </li>
           );
         })}
-        {isAdmin ? (
+        {canEdit ? (
           <li className="min-w-[7rem] flex-1 sm:min-w-0 sm:flex-none">
             <button
               type="button"

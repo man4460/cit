@@ -7,7 +7,7 @@ import { notifyBudgetYearsChanged } from "../../components/BudgetModuleTabs";
 import { FitSingleLine } from "../../components/FitSingleLine";
 import { ModuleDocumentsModal } from "../../components/ModuleDocumentsModal";
 import { apiFormJson, apiJson } from "../../api/client";
-import { useAuth } from "../../context/AuthContext";
+import { usePagePermission } from "../../lib/usePagePermission";
 import { MODULE_DOCUMENT_CATEGORIES } from "../../lib/moduleDocumentCategories";
 import { NavGlyph } from "../../lib/navVisuals";
 import { rowMatchesFilter } from "../../lib/searchNormalize";
@@ -161,8 +161,7 @@ export function BudgetYearPage() {
   const fundingType: BudgetFundingType =
     searchParams.get("funding") === "commitment" ? "COMMITMENT" : "ANNUAL";
   const isCommitment = fundingType === "COMMITMENT";
-  const { user } = useAuth();
-  const isAdmin = user?.role === "ADMIN";
+  const { canEdit, canDelete } = usePagePermission();
   const [yearCount, setYearCount] = useState(2);
   const [maxYearBe, setMaxYearBe] = useState<number | null>(2570);
   const isNewestYear = maxYearBe != null && yearBe === maxYearBe && yearCount > 1;
@@ -390,7 +389,7 @@ export function BudgetYearPage() {
   };
 
   const importMainSystemFile = async (file: File) => {
-    if (!isAdmin) return;
+    if (!canEdit) return;
     setImporting(true);
     setErr(null);
     try {
@@ -440,7 +439,7 @@ export function BudgetYearPage() {
   };
 
   const saveSnap = async () => {
-    if (!selected || !isAdmin || !snapForm) return;
+    if (!selected || !canEdit || !snapForm) return;
     const amount = Number(snapForm.amount.replace(/,/g, ""));
     if (!Number.isFinite(amount)) {
       setErr("ระบุยอดใช้ไป");
@@ -472,7 +471,7 @@ export function BudgetYearPage() {
   };
 
   const deleteSnap = async (snapId: string) => {
-    if (!selected || !isAdmin) return;
+    if (!selected || !canDelete) return;
     if (!window.confirm("ลบยอดตัดของวันที่นี้?")) return;
     try {
       await apiJson(`/api/budget/year-lines/${selected.id}/snapshots/${snapId}`, { method: "DELETE" });
@@ -499,7 +498,7 @@ export function BudgetYearPage() {
   };
 
   const saveTx = async () => {
-    if (!selected || !isAdmin || !allowSpend) return;
+    if (!selected || !canEdit || !allowSpend) return;
     const amount = Number(txAmount.replace(/,/g, ""));
     if (!Number.isFinite(amount) || amount === 0) {
       setErr("ระบุจำนวนเงินที่ใช้จ่าย");
@@ -537,7 +536,7 @@ export function BudgetYearPage() {
   };
 
   const deleteTx = async (txId: string) => {
-    if (!selected || !isAdmin) return;
+    if (!selected || !canDelete) return;
     if (!window.confirm("ลบรายการใช้จ่ายนี้?")) return;
     try {
       await apiJson(`/api/budget/year-lines/${selected.id}/transactions/${txId}`, { method: "DELETE" });
@@ -592,7 +591,7 @@ export function BudgetYearPage() {
   };
 
   const saveLineForm = async () => {
-    if (!isAdmin || !lineForm) return;
+    if (!canEdit || !lineForm) return;
     const name = lineForm.name.trim();
     if (!name) {
       setErr("กรุณาระบุชื่อรายการ");
@@ -690,7 +689,7 @@ export function BudgetYearPage() {
   };
 
   const saveCategory = async () => {
-    if (!isAdmin || !catForm) return;
+    if (!canEdit || !catForm) return;
     const name = catForm.name.trim();
     if (!name) {
       setErr("กรุณาระบุชื่อหมวดหมู่");
@@ -720,7 +719,7 @@ export function BudgetYearPage() {
   };
 
   const deleteCategory = async (cat: BudgetCategoryRow) => {
-    if (!isAdmin) return;
+    if (!canDelete) return;
     if (!window.confirm(`ลบหมวด «${cat.name}» ?`)) return;
     setSaving(true);
     setErr(null);
@@ -735,7 +734,7 @@ export function BudgetYearPage() {
   };
 
   const deleteLine = async (row: BudgetYearLineRow) => {
-    if (!isAdmin || !isRealBudgetLine(row) || row.isSummary) return;
+    if (!canDelete || !isRealBudgetLine(row) || row.isSummary) return;
     if (!window.confirm(`ลบรายการ «${row.name}» ?`)) return;
     setSaving(true);
     setErr(null);
@@ -829,7 +828,7 @@ export function BudgetYearPage() {
             <Link to="/budget/overview/2569" className={toolbarLinkBtnClass}>
               ← สรุปภาพรวม
             </Link>
-            {!isAdmin ? (
+            {!canEdit ? (
               <button type="button" className={toolbarLinkBtnClass} onClick={() => setDocsOpen(true)}>
                 เอกสาร
               </button>
@@ -837,7 +836,7 @@ export function BudgetYearPage() {
           </>
         }
         primary={
-          isAdmin ? (
+          canEdit ? (
             <div className="flex flex-wrap items-center gap-1">
               <button
                 type="button"
@@ -909,7 +908,7 @@ export function BudgetYearPage() {
             <Link to={`/budget/year/${yearBe + 1}`} className={toolbarLinkBtnClass}>
               ไปปี {yearBe + 1}
             </Link>
-            {isAdmin ? (
+            {canEdit ? (
               <button
                 type="button"
                 className={toolbarLinkBtnClass}
@@ -1202,7 +1201,7 @@ export function BudgetYearPage() {
                   <h2 className="mt-1 text-base font-black leading-snug text-[#1e1b4b]">{popupMajor.name}</h2>
                 </div>
                 <div className="flex shrink-0 items-center gap-1">
-                  {isAdmin ? (
+                  {canEdit ? (
                     <button
                       type="button"
                       className={toolbarPrimaryBtnClass}
@@ -1316,7 +1315,7 @@ export function BudgetYearPage() {
                                 >
                                   {label}
                                 </span>
-                                {!nested && isAdmin && openable ? (
+                                {!nested && canEdit && openable ? (
                                   <button
                                     type="button"
                                     className="shrink-0 text-[10px] font-semibold text-[#4d47b6]/80 hover:text-[#0000BF] hover:underline"
@@ -1391,7 +1390,7 @@ export function BudgetYearPage() {
                                   </div>
                                 </div>
                               ) : null}
-                              {isAdmin && openable ? (
+                              {canEdit && openable ? (
                                 <div className="flex flex-col items-end gap-0.5">
                                   <button
                                     type="button"
@@ -1400,13 +1399,15 @@ export function BudgetYearPage() {
                                   >
                                     แก้ไข
                                   </button>
-                                  <button
-                                    type="button"
-                                    className="text-[11px] font-bold text-rose-600 hover:underline"
-                                    onClick={() => void deleteLine(row)}
-                                  >
-                                    ลบ
-                                  </button>
+                                  {canDelete ? (
+                                    <button
+                                      type="button"
+                                      className="text-[11px] font-bold text-rose-600 hover:underline"
+                                      onClick={() => void deleteLine(row)}
+                                    >
+                                      ลบ
+                                    </button>
+                                  ) : null}
                                 </div>
                               ) : null}
                               {openable && allowSpend ? (
@@ -1464,7 +1465,7 @@ export function BudgetYearPage() {
                                     <div className="font-semibold tabular-nums text-amber-800">{fmt(gapSpent)}</div>
                                   </div>
                                 ) : null}
-                                {isAdmin ? <div className="w-[2.6rem]" /> : null}
+                                {canEdit ? <div className="w-[2.6rem]" /> : null}
                                 {allowSpend ? <div className="w-[2.6rem]" /> : null}
                               </div>
                             </li>
@@ -1477,7 +1478,7 @@ export function BudgetYearPage() {
               ) : (
                 <div className="space-y-2 py-4 text-center">
                   <p className="text-sm text-slate-500">ยังไม่มีรายการในหมวดนี้</p>
-                  {isAdmin && popupMajor.catId !== "orphan" ? (
+                  {canEdit && popupMajor.catId !== "orphan" ? (
                     <button
                       type="button"
                       className={toolbarPrimaryBtnClass}
@@ -1590,14 +1591,16 @@ export function BudgetYearPage() {
                     </div>
                     <div className="shrink-0 text-right">
                       <div className="font-semibold tabular-nums">{fmt(s.spentAmount)}</div>
-                      {isAdmin && editable ? (
+                      {canEdit && editable ? (
                         <div className="mt-0.5 flex justify-end gap-2">
                           <button type="button" className="text-[11px] font-bold text-[#4d47b6]" onClick={() => startEditSnap(s)}>
                             แก้ไข
                           </button>
-                          <button type="button" className="text-[11px] font-bold text-rose-600" onClick={() => void deleteSnap(s.id)}>
-                            ลบ
-                          </button>
+                          {canDelete ? (
+                            <button type="button" className="text-[11px] font-bold text-rose-600" onClick={() => void deleteSnap(s.id)}>
+                              ลบ
+                            </button>
+                          ) : null}
                         </div>
                       ) : null}
                     </div>
@@ -1642,7 +1645,7 @@ export function BudgetYearPage() {
                     <div className="rounded-xl border border-amber-200 bg-amber-50/30 p-2.5">
                       <div className="flex items-center justify-between gap-2">
                         <span className="text-[11px] font-black text-amber-900">บันทึกเอง · ยอดใช้ไป ณ วันที่</span>
-                        {isAdmin && !snapForm ? (
+                        {canEdit && !snapForm ? (
                           <button type="button" className="text-[11px] font-bold text-[#4d47b6]" onClick={() => startEditSnap(null)}>
                             + เพิ่ม
                           </button>
@@ -1736,7 +1739,7 @@ export function BudgetYearPage() {
                       </div>
                       <div className="text-right">
                         <div className={`font-semibold ${covered ? "line-through decoration-slate-300" : ""}`}>{fmt(t.amount)}</div>
-                        {isAdmin ? (
+                        {canEdit ? (
                           <div className="mt-0.5 flex justify-end gap-2">
                             <button
                               type="button"
@@ -1745,13 +1748,15 @@ export function BudgetYearPage() {
                             >
                               แก้ไข
                             </button>
-                            <button
-                              type="button"
-                              className="text-[11px] font-bold text-rose-600"
-                              onClick={() => void deleteTx(t.id)}
-                            >
-                              ลบ
-                            </button>
+                            {canDelete ? (
+                              <button
+                                type="button"
+                                className="text-[11px] font-bold text-rose-600"
+                                onClick={() => void deleteTx(t.id)}
+                              >
+                                ลบ
+                              </button>
+                            ) : null}
                           </div>
                         ) : null}
                       </div>
@@ -1762,7 +1767,7 @@ export function BudgetYearPage() {
                 </ul>
               </section>
 
-              {isAdmin && allowSpend && !selected.isSummary ? (
+              {canEdit && allowSpend && !selected.isSummary ? (
                 <section className="space-y-2 rounded-xl border border-[#e8e6fc] bg-[#faf9ff]/80 p-3">
                   <h3 className="text-xs font-black uppercase tracking-wide text-[#66638c]">
                     {editingTxId ? "แก้ไขการใช้จ่าย" : "เพิ่มการใช้จ่าย"}
@@ -2001,7 +2006,7 @@ export function BudgetYearPage() {
             <div className="flex items-center justify-between gap-2 border-b border-[#ecebff] px-4 py-3">
               <h2 className="text-base font-black text-[#1e1b4b]">จัดการหมวดหมู่</h2>
               <div className="flex items-center gap-1">
-                {isAdmin ? (
+                {canEdit ? (
                   <button
                     type="button"
                     className={toolbarPrimaryBtnClass}
@@ -2071,7 +2076,7 @@ export function BudgetYearPage() {
                           <div className="truncate text-sm font-bold text-[#1e1b4b]">{c.name}</div>
                           <div className="text-[10px] text-slate-400">{c.accountCount ?? 0} รายการ</div>
                         </div>
-                        {isAdmin ? (
+                        {canEdit ? (
                           <div className="flex shrink-0 gap-2">
                             <button
                               type="button"
@@ -2082,13 +2087,15 @@ export function BudgetYearPage() {
                             >
                               แก้ไข
                             </button>
-                            <button
-                              type="button"
-                              className="text-[11px] font-bold text-rose-600 hover:underline"
-                              onClick={() => void deleteCategory(c)}
-                            >
-                              ลบ
-                            </button>
+                            {canDelete ? (
+                              <button
+                                type="button"
+                                className="text-[11px] font-bold text-rose-600 hover:underline"
+                                onClick={() => void deleteCategory(c)}
+                              >
+                                ลบ
+                              </button>
+                            ) : null}
                           </div>
                         ) : null}
                       </li>

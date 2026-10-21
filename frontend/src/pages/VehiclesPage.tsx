@@ -26,7 +26,7 @@ import type { Vehicle, VehicleDetail, VehicleDispositionLogEntry, VehicleStatus,
 import { vehicleDisplayLabel } from "../types";
 import { formatVehiclePurchaseDateTh, vehicleAgeCompletedYears } from "../lib/vehicleAge";
 import { parsePurchaseDdMmYyyyFromNotes, stripPurchaseLineFromNotes } from "../lib/parseVehiclePurchaseFromNotes";
-import { useAuth } from "../context/AuthContext";
+import { usePagePermission } from "../lib/usePagePermission";
 
 type FleetView = "active" | "disposed";
 
@@ -97,7 +97,7 @@ function emptyForm() {
 }
 
 export function VehiclesPage() {
-  const { user } = useAuth();
+  const { canDelete } = usePagePermission();
   const [searchParams, setSearchParams] = useSearchParams();
   const fleetView: FleetView = searchParams.get("view") === "disposed" ? "disposed" : "active";
   const [rows, setRows] = useState<Vehicle[]>([]);
@@ -717,7 +717,7 @@ export function VehiclesPage() {
                         >
                           ตรวจรายสัปดาห์
                         </Link>
-                        {user?.role === "ADMIN" ? (
+                        {canDelete ? (
                           <button
                             type="button"
                             className={btnDanger}

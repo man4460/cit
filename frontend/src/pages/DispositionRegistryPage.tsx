@@ -3,7 +3,7 @@ import { Link } from "react-router-dom";
 import { apiJson } from "../api/client";
 import { Modal, ModalFormBody } from "../components/Modal";
 import { PageHeaderBar } from "../components/PageHeaderBar";
-import { useAuth } from "../context/AuthContext";
+import { usePagePermission } from "../lib/usePagePermission";
 import { rowMatchesFilter } from "../lib/searchNormalize";
 import type { LoadOptions } from "../lib/loadOptions";
 import { setLoadBusy } from "../lib/loadOptions";
@@ -82,8 +82,7 @@ const primarySoftBtn =
   "inline-flex h-7 items-center rounded-lg border border-[#0000BF]/25 bg-[#0000BF]/8 px-2.5 text-[11px] font-bold text-[#4d47b6] hover:bg-[#0000BF]/12";
 
 export function DispositionRegistryPage() {
-  const { user } = useAuth();
-  const isAdmin = user?.role === "ADMIN";
+  const { canDelete } = usePagePermission();
 
   const [tab, setTab] = useState<Tab>("vehicles");
   const [listFilter, setListFilter] = useState("");
@@ -176,7 +175,7 @@ export function DispositionRegistryPage() {
   );
 
   async function deleteVehicleEntity(v: Vehicle) {
-    if (!isAdmin) return;
+    if (!canDelete) return;
     if (!confirm(`ลบยานพาหนะทะเบียน «${v.licensePlate}» ? รูปและประวัติที่เกี่ยวข้องจะถูกลบด้วย`)) return;
     try {
       await apiJson(`/api/vehicles/${v.id}`, { method: "DELETE" });
@@ -188,7 +187,7 @@ export function DispositionRegistryPage() {
   }
 
   async function deleteAssetEntity(a: Asset) {
-    if (!isAdmin) return;
+    if (!canDelete) return;
     if (!confirm(`ลบครุภัณฑ์ «${a.itemName}» (${a.serialNumber}) ?`)) return;
     try {
       await apiJson(`/api/assets/${a.id}`, { method: "DELETE" });
@@ -200,7 +199,7 @@ export function DispositionRegistryPage() {
   }
 
   async function deleteVehicleLogEntry(row: VehicleDispositionLogEntry) {
-    if (!isAdmin) return;
+    if (!canDelete) return;
     if (!confirm("ลบแถวประวัตินี้จากทะเบียน? (ข้อมูลรถไม่ถูกลบ)")) return;
     try {
       await apiJson(`/api/vehicles/registry/disposition-log/${row.id}`, { method: "DELETE" });
@@ -212,7 +211,7 @@ export function DispositionRegistryPage() {
   }
 
   async function deleteAssetLogEntry(row: AssetDispositionLogEntry) {
-    if (!isAdmin) return;
+    if (!canDelete) return;
     if (!confirm("ลบแถวประวัตินี้จากทะเบียน? (ข้อมูลครุภัณฑ์ไม่ถูกลบ)")) return;
     try {
       await apiJson(`/api/assets/registry/disposition-log/${row.id}`, { method: "DELETE" });
@@ -578,7 +577,7 @@ export function DispositionRegistryPage() {
               >
                 บำรุงรักษา
               </Link>
-              {isAdmin ? (
+              {canDelete ? (
                 <button type="button" className={dangerBtn} onClick={() => void deleteVehicleEntity(vehicleEntity)}>
                   ลบรถ
                 </button>
@@ -680,7 +679,7 @@ export function DispositionRegistryPage() {
               >
                 แก้ไข
               </Link>
-              {isAdmin ? (
+              {canDelete ? (
                 <button type="button" className={dangerBtn} onClick={() => void deleteVehicleLogEntry(vehicleLogRow)}>
                   ลบประวัติ
                 </button>
@@ -706,7 +705,7 @@ export function DispositionRegistryPage() {
               >
                 แก้ไข
               </Link>
-              {isAdmin ? (
+              {canDelete ? (
                 <button type="button" className={dangerBtn} onClick={() => void deleteAssetEntity(assetEntity)}>
                   ลบครุภัณฑ์
                 </button>
@@ -789,7 +788,7 @@ export function DispositionRegistryPage() {
               >
                 แก้ไข
               </Link>
-              {isAdmin ? (
+              {canDelete ? (
                 <button type="button" className={dangerBtn} onClick={() => void deleteAssetLogEntry(assetLogRow)}>
                   ลบประวัติ
                 </button>

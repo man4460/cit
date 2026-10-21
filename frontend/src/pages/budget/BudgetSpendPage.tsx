@@ -3,7 +3,7 @@ import { useSearchParams } from "react-router-dom";
 import { PageHeaderBar } from "../../components/PageHeaderBar";
 import { BudgetSubNav } from "../../components/BudgetSubNav";
 import { apiJson } from "../../api/client";
-import { useAuth } from "../../context/AuthContext";
+import { usePagePermission } from "../../lib/usePagePermission";
 import { rowMatchesFilter } from "../../lib/searchNormalize";
 import { toolbarMasterGroupClass, toolbarPrimaryBtnClass } from "../../lib/uiTokens";
 import type { LoadOptions } from "../../lib/loadOptions";
@@ -31,8 +31,7 @@ function parseBucketParam(raw: string | null): BudgetBucket {
 }
 
 export function BudgetSpendPage() {
-  const { user } = useAuth();
-  const isAdmin = user?.role === "ADMIN";
+  const { canEdit, canDelete } = usePagePermission();
   const [searchParams, setSearchParams] = useSearchParams();
   const [bucket, setBucketState] = useState<BudgetBucket>(() => parseBucketParam(searchParams.get("bucket")));
   const setBucket = (b: BudgetBucket) => {
@@ -114,7 +113,7 @@ export function BudgetSpendPage() {
   };
 
   const saveTx = async () => {
-    if (!selected || !isAdmin) return;
+    if (!selected || !canEdit) return;
     const amount = Number(txAmount.replace(/,/g, ""));
     if (!Number.isFinite(amount) || amount === 0) return;
     setSaving(true);
@@ -152,7 +151,7 @@ export function BudgetSpendPage() {
   };
 
   const deleteTx = async (txId: string) => {
-    if (!selected || !isAdmin) return;
+    if (!selected || !canDelete) return;
     if (!window.confirm("ลบรายการใช้จ่ายนี้?")) return;
     try {
       await apiJson(`/api/budget/year-lines/${selected.id}/transactions/${txId}`, { method: "DELETE" });
@@ -377,7 +376,7 @@ export function BudgetSpendPage() {
                           </div>
                           <div className="text-right">
                             <span className="font-semibold">{formatBaht(t.amount)}</span>
-                            {isAdmin ? (
+                            {canEdit ? (
                               <div className="mt-0.5 flex justify-end gap-2">
                                 <button
                                   type="button"
@@ -386,13 +385,15 @@ export function BudgetSpendPage() {
                                 >
                                   แก้ไข
                                 </button>
-                                <button
-                                  type="button"
-                                  className="text-[11px] font-bold text-rose-600"
-                                  onClick={() => void deleteTx(t.id)}
-                                >
-                                  ลบ
-                                </button>
+                                {canDelete ? (
+                                  <button
+                                    type="button"
+                                    className="text-[11px] font-bold text-rose-600"
+                                    onClick={() => void deleteTx(t.id)}
+                                  >
+                                    ลบ
+                                  </button>
+                                ) : null}
                               </div>
                             ) : null}
                           </div>
@@ -400,7 +401,7 @@ export function BudgetSpendPage() {
                       ))}
                       {!txs.length ? <li className="text-slate-500">ยังไม่มีรายการ</li> : null}
                     </ul>
-                    {isAdmin ? (
+                    {canEdit ? (
                       <div className="mt-3 space-y-2 rounded-xl border border-[#e8e6fc] bg-[#faf9ff]/80 p-3">
                         <p className="text-[11px] font-bold text-[#66638c]">
                           {editingTxId ? "แก้ไขการใช้จ่าย" : "เพิ่มการใช้จ่าย"}
