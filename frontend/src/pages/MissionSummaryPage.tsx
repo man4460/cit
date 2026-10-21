@@ -5,11 +5,108 @@ import { MissionIncidentsPanel } from "../components/MissionIncidentsPanel";
 import { MissionInsuranceExportModal } from "../components/MissionInsuranceExportModal";
 import { MissionReportModal } from "../components/MissionReportModal";
 import { MissionRouteMapButton } from "../components/MissionRouteMapButton";
+import { gradeSortValue, policeRankIndex } from "../lib/allowanceDocs";
 import { filterBotAllowancePersonnel } from "../lib/botAllowancePrint";
 import { formatBaht, formatInt, formatLiters } from "../lib/formatNumber";
+import { compareConvoyOrder } from "../lib/missionConvoyOrder";
+import {
+  MISSION_PERSONNEL_TABS,
+  missionPersonnelTabByCategory,
+  type MissionPersonnelTabKey,
+} from "../lib/missionPersonnelTabs";
 import { filterPoliceAllowancePersonnel } from "../lib/policeAllowancePrint";
 import { mediaUrl } from "../lib/uiTokens";
 import type { MissionStatus, MissionSummary } from "../types";
+
+type SummaryPerson = NonNullable<MissionSummary["personnel"]>[number];
+type SummaryVehicle = NonNullable<MissionSummary["vehicles"]>[number];
+
+const PERSONNEL_TAB_ORDER: MissionPersonnelTabKey[] = ["bot", "crime", "highway", "special", "driver"];
+
+function summaryPersonTab(p: SummaryPerson): MissionPersonnelTabKey {
+  const byCat = missionPersonnelTabByCategory(p.personnelCategoryName);
+  if (byCat) return byCat;
+  const role = p.roleName ?? "";
+  if (/คนขับ|พนักงานขับรถสินค้า|ขับรถสินค้า/.test(role)) return "driver";
+  if (/กองปราบ/.test(role)) return "crime";
+  if (/ทางหลวง/.test(role)) return "highway";
+  if (/อรินทราช|หนุมาน|ปฏิบัติการพิเศษ/.test(role)) return "special";
+  return "bot";
+}
+
+function tabLabel(key: MissionPersonnelTabKey): string {
+  return MISSION_PERSONNEL_TABS.find((t) => t.key === key)?.label ?? key;
+}
+
+const TAB_CHIP: Record<MissionPersonnelTabKey, string> = {
+  bot: "bg-[#0000BF]/8 text-[#0000BF] ring-[#0000BF]/20",
+  crime: "bg-amber-50 text-amber-800 ring-amber-200",
+  highway: "bg-sky-50 text-sky-800 ring-sky-200",
+  special: "bg-violet-50 text-violet-800 ring-violet-200",
+  driver: "bg-orange-50 text-orange-800 ring-orange-200",
+};
+
+const TAB_SECTION: Record<MissionPersonnelTabKey, string> = {
+  bot: "border-[#0000BF]/25 bg-[#0000BF]/[0.04] text-[#0000BF]",
+  crime: "border-amber-200 bg-amber-50/80 text-amber-900",
+  highway: "border-sky-200 bg-sky-50/80 text-sky-900",
+  special: "border-violet-200 bg-violet-50/80 text-violet-900",
+  driver: "border-orange-200 bg-orange-50/80 text-orange-900",
+};
+
+function personDisplayName(p: SummaryPerson): string {
+  return [p.rank, p.fullName].filter(Boolean).join(" ");
+}
+
+/** เรียง: ธปท. → กองปราบ → ทางหลวง → ปฏิบัติการพิเศษ → ขับรถสินค้า · ในกลุ่มตำรวจเรียงยศ · ธปท.เรียงชั้น */
+function sortSummaryPersonnel(list: SummaryPerson[]): SummaryPerson[] {
+  return list.slice().sort((a, b) => {
+    const ta = PERSONNEL_TAB_ORDER.indexOf(summaryPersonTab(a));
+    const tb = PERSONNEL_TAB_ORDER.indexOf(summaryPersonTab(b));
+    const ia = ta < 0 ? 99 : ta;
+    const ib = tb < 0 ? 99 : tb;
+    if (ia !== ib) return ia - ib;
+    const tab = summaryPersonTab(a);
+    if (tab === "crime" || tab === "highway" || tab === "special") {
+      return (
+        policeRankIndex(a.rank ?? "") - policeRankIndex(b.rank ?? "") ||
+        personDisplayName(a).localeCompare(personDisplayName(b), "th")
+      );
+    }
+    if (tab === "bot") {
+      return (
+        gradeSortValue(b.gradeLevel) - gradeSortValue(a.gradeLevel) ||
+        (a.roleName ?? "").localeCompare(b.roleName ?? "", "th") ||
+        personDisplayName(a).localeCompare(personDisplayName(b), "th")
+      );
+    }
+    return (
+      (a.roleName ?? "").localeCompare(b.roleName ?? "", "th") ||
+      personDisplayName(a).localeCompare(personDisplayName(b), "th")
+    );
+  });
+}
+
+function sortSummaryVehicles(list: SummaryVehicle[]): SummaryVehicle[] {
+  return list.slice().sort((a, b) =>
+    compareConvoyOrder(
+      { roleName: a.roleName, callSign: a.callSign },
+      { roleName: b.roleName, callSign: b.callSign },
+      "go",
+    ),
+  );
+}
+
+function groupPersonnelByTab(list: SummaryPerson[]): { tab: MissionPersonnelTabKey; people: SummaryPerson[] }[] {
+  const groups: { tab: MissionPersonnelTabKey; people: SummaryPerson[] }[] = [];
+  for (const p of list) {
+    const tab = summaryPersonTab(p);
+    const last = groups[groups.length - 1];
+    if (last && last.tab === tab) last.people.push(p);
+    else groups.push({ tab, people: [p] });
+  }
+  return groups;
+}
 
 const statusLabel: Record<MissionStatus, string> = {
   DRAFT: "แบบร่าง",
@@ -105,7 +202,7 @@ export function MissionSummaryPage() {
     <button
       type="button"
       onClick={goBack}
-      className="inline-flex items-center gap-1.5 rounded-full border border-slate-200 bg-white px-3.5 py-1.5 text-sm font-semibold text-slate-700 shadow-sm hover:bg-slate-50"
+      className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-sm font-semibold text-slate-700 shadow-sm transition hover:bg-slate-50"
     >
       <span aria-hidden>←</span> ย้อนกลับ
     </button>
@@ -128,8 +225,9 @@ export function MissionSummaryPage() {
     );
   }
 
-  const personnel = summary.personnel ?? [];
-  const vehicles = summary.vehicles ?? [];
+  const personnel = sortSummaryPersonnel(summary.personnel ?? []);
+  const personnelGroups = groupPersonnelByTab(personnel);
+  const vehicles = sortSummaryVehicles(summary.vehicles ?? []);
   const destinations = (summary.destinations ?? []).filter((d) => d.address.trim());
   const policeStations = summary.policeStations ?? [];
   const attachments = summary.attachments ?? [];
@@ -163,103 +261,111 @@ export function MissionSummaryPage() {
     .map((s) => (s ?? "").trim())
     .filter(Boolean)
     .filter((s, i, arr) => i === 0 || s !== arr[i - 1]);
+
   return (
     <div className="space-y-5 print:hidden">
       <div className="flex flex-wrap items-center justify-between gap-2">
         {backButton}
         <Link
           to={`/missions/${summary.missionId}/edit`}
-          className="rounded-full border border-amber-200 bg-amber-50 px-3.5 py-1.5 text-sm font-semibold text-amber-800 hover:bg-amber-100"
+          className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-1.5 text-sm font-semibold text-amber-800 transition hover:bg-amber-100"
         >
           แก้ไขภารกิจ
         </Link>
       </div>
 
-      <header className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-        <div className="flex flex-wrap items-center gap-2">
-          {summary.code ? (
-            <span className="font-mono text-xs font-bold tracking-wide text-indigo-600">{summary.code}</span>
-          ) : null}
-          <span className={`rounded-full px-2.5 py-0.5 text-[11px] font-bold ring-1 ${statusChip[status]}`}>
-            {statusLabel[status]}
-          </span>
-          {incidentCount ? (
-            <span className="rounded-full bg-rose-50 px-2.5 py-0.5 text-[11px] font-bold text-rose-700 ring-1 ring-rose-200">
-              เหตุการณ์ไม่ปกติ {incidentCount}
+      <header className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+        <div className="border-l-4 border-l-[#0000BF] px-5 py-5 sm:px-6">
+          <div className="flex flex-wrap items-center gap-2">
+            {summary.code ? (
+              <span className="font-mono text-xs font-bold tracking-wide text-[#0000BF]">{summary.code}</span>
+            ) : null}
+            <span className={`rounded-md px-2 py-0.5 text-[11px] font-bold ring-1 ${statusChip[status]}`}>
+              {statusLabel[status]}
             </span>
+            {incidentCount ? (
+              <span className="rounded-md bg-rose-50 px-2 py-0.5 text-[11px] font-bold text-rose-700 ring-1 ring-rose-200">
+                เหตุการณ์ไม่ปกติ {incidentCount}
+              </span>
+            ) : null}
+          </div>
+          <h1 className="mt-2 text-xl font-black leading-snug text-slate-900 sm:text-2xl">
+            {summary.title?.trim() || "ภารกิจ"}
+          </h1>
+          <p className="mt-1 text-sm text-slate-600">
+            {formatDate(summary.plannedStart)} – {formatDate(summary.plannedEnd)}
+            {days ? <span className="text-slate-400"> · {days} วัน</span> : null}
+          </p>
+
+          {routeStops.length ? (
+            <div className="mt-3 flex flex-wrap items-center gap-1.5 text-sm">
+              {routeStops.map((s, i) => (
+                <span key={`${s}-${i}`} className="inline-flex items-center gap-1.5">
+                  {i > 0 ? <span className="text-slate-300">→</span> : null}
+                  <span
+                    className={`rounded-md px-2 py-0.5 font-semibold ${
+                      i === 0 || i === routeStops.length - 1
+                        ? "bg-[#0000BF]/8 text-[#0000BF]"
+                        : "bg-slate-50 text-slate-700 ring-1 ring-slate-200"
+                    }`}
+                  >
+                    {s}
+                  </span>
+                </span>
+              ))}
+            </div>
           ) : null}
         </div>
-        <h1 className="mt-1.5 text-xl font-black leading-snug text-slate-900 sm:text-2xl">
-          {summary.title?.trim() || "ภารกิจ"}
-        </h1>
-        <p className="mt-1 text-sm text-slate-600">
-          {formatDate(summary.plannedStart)} – {formatDate(summary.plannedEnd)}
-          {days ? <span className="text-slate-400"> · {days} วัน</span> : null}
-        </p>
 
-        {routeStops.length ? (
-          <div className="mt-3 flex flex-wrap items-center gap-1.5 text-sm">
-            {routeStops.map((s, i) => (
-              <span key={`${s}-${i}`} className="inline-flex items-center gap-1.5">
-                {i > 0 ? <span className="text-slate-300">→</span> : null}
-                <span
-                  className={`rounded-lg px-2.5 py-1 font-semibold ${
-                    i === 0 || i === routeStops.length - 1
-                      ? "bg-indigo-50 text-indigo-800"
-                      : "bg-slate-50 text-slate-700 ring-1 ring-slate-200"
-                  }`}
-                >
-                  {s}
-                </span>
-              </span>
-            ))}
-          </div>
-        ) : null}
-
-        <div className="mt-4 flex flex-wrap gap-2 border-t border-slate-100 pt-4">
-          {status === "IN_PROGRESS" && summary.route?.id ? (
+        <div className="space-y-3 border-t border-slate-100 bg-slate-50/60 px-5 py-4 sm:px-6">
+          <ActionRow label="แผนที่">
+            {status === "IN_PROGRESS" && summary.route?.id ? (
+              <MissionRouteMapButton
+                routeId={summary.route.id}
+                autoStartNav
+                label="🧭 นำทางตามเส้นทาง"
+                className="rounded-lg border border-emerald-300 bg-emerald-600 px-3 py-1.5 text-xs font-bold text-white shadow-sm transition hover:bg-emerald-700 disabled:opacity-60 sm:text-sm"
+              />
+            ) : null}
             <MissionRouteMapButton
-              routeId={summary.route.id}
-              autoStartNav
-              label="🧭 นำทางตามเส้นทาง"
-              className="rounded-full border border-emerald-300 bg-emerald-600 px-3.5 py-1.5 text-xs font-bold text-white shadow-sm hover:bg-emerald-700 disabled:opacity-60 sm:text-sm"
+              routeId={summary.route?.id}
+              label="แผนที่เส้นทาง"
+              className="rounded-lg border border-sky-200 bg-white px-3 py-1.5 text-xs font-bold text-sky-700 shadow-sm transition hover:bg-sky-50 disabled:opacity-60 sm:text-sm"
             />
-          ) : null}
-          <MissionRouteMapButton
-            routeId={summary.route?.id}
-            label="แผนที่เส้นทาง"
-            className="rounded-full border border-sky-200 bg-white px-3.5 py-1.5 text-xs font-bold text-sky-700 shadow-sm hover:bg-sky-50 disabled:opacity-60 sm:text-sm"
-          />
-          <ActionButton tone="indigo" onClick={() => navigate(`/missions/${summary.missionId}/bot-allowance`)}>
-            พิมพ์รายการเบี้ยเลี้ยง ธปท.{botCount ? ` (${botCount})` : ""}
-          </ActionButton>
-          <ActionButton tone="amber" onClick={() => navigate(`/missions/${summary.missionId}/police-allowance`)}>
-            พิมพ์ค่าตอบแทนบุคคลภายนอก{policeCount ? ` (${policeCount})` : ""}
-          </ActionButton>
-          <ActionButton tone="emerald" onClick={() => setInsuranceOpen(true)}>
-            ไฟล์ประกัน
-          </ActionButton>
-          <ActionButton tone="violet" onClick={() => navigate(`/missions/${summary.missionId}/evaluation`)}>
-            QR ประเมินภารกิจ
-          </ActionButton>
-          <ActionButton tone="rose" onClick={() => setReportOpen(true)}>
-            รายงานผลการปฏิบัติ
-          </ActionButton>
-          <ActionButton tone="slate" onClick={() => navigate(`/missions/${summary.missionId}/central-memo`)}>
-            ระบบกลาง: อนุมัติภารกิจ
-          </ActionButton>
-          <ActionButton tone="slate" onClick={() => navigate(`/missions/${summary.missionId}/travel-plan-memo`)}>
-            ระบบกลาง: อนุมัติแผนเดินทาง
-          </ActionButton>
+          </ActionRow>
+          <ActionRow label="เอกสารพิมพ์">
+            <ActionButton tone="indigo" onClick={() => navigate(`/missions/${summary.missionId}/bot-allowance`)}>
+              พิมพ์รายการเบี้ยเลี้ยง ธปท.{botCount ? ` (${botCount})` : ""}
+            </ActionButton>
+            <ActionButton tone="amber" onClick={() => navigate(`/missions/${summary.missionId}/police-allowance`)}>
+              พิมพ์ค่าตอบแทนบุคคลภายนอก{policeCount ? ` (${policeCount})` : ""}
+            </ActionButton>
+            <ActionButton tone="emerald" onClick={() => setInsuranceOpen(true)}>
+              ไฟล์ประกัน
+            </ActionButton>
+            <ActionButton tone="violet" onClick={() => navigate(`/missions/${summary.missionId}/evaluation`)}>
+              QR ประเมินภารกิจ
+            </ActionButton>
+            <ActionButton tone="rose" onClick={() => setReportOpen(true)}>
+              รายงานผลการปฏิบัติ
+            </ActionButton>
+          </ActionRow>
+          <ActionRow label="ระบบกลาง">
+            <ActionButton tone="slate" onClick={() => navigate(`/missions/${summary.missionId}/central-memo`)}>
+              อนุมัติภารกิจ
+            </ActionButton>
+            <ActionButton tone="slate" onClick={() => navigate(`/missions/${summary.missionId}/travel-plan-memo`)}>
+              อนุมัติแผนเดินทาง
+            </ActionButton>
+          </ActionRow>
         </div>
       </header>
 
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-        <Kpi label="มูลค่าสินค้า" value={`${formatBaht(summary.totalCargoValue)} ฿`} accent="border-l-indigo-400" />
+        <Kpi label="มูลค่าสินค้า" value={`${formatBaht(summary.totalCargoValue)} ฿`} />
         <Kpi
           label="รวมรายจ่าย"
           value={`${formatBaht(summary.totalExpenses)} ฿`}
-          accent="border-l-pink-400"
           sub={
             summary.expenseToCargoPercent != null
               ? `${summary.expenseToCargoPercent.toLocaleString("th-TH", { maximumFractionDigits: 2 })}% ของมูลค่าสินค้า`
@@ -269,13 +375,11 @@ export function MissionSummaryPage() {
         <Kpi
           label="ค่าตอบแทนบุคลากร"
           value={`${formatBaht(summary.personnelCompensationTotal ?? compensationTotal)} ฿`}
-          accent="border-l-violet-400"
           sub={`${formatInt(personnel.length)} คน`}
         />
         <Kpi
           label="ยานพาหนะ / ตู้สินค้า"
           value={`${formatInt(vehicles.length)} คัน · ${formatInt(totalContainers)} ตู้`}
-          accent="border-l-teal-400"
           sub={`${formatInt(destinations.length)} จุดส่ง`}
         />
       </div>
@@ -288,42 +392,80 @@ export function MissionSummaryPage() {
             plannedEnd={summary.plannedEnd}
             onCountChange={setIncidentCount}
           />
+
           <Panel title="บุคลากร" count={personnel.length}>
             {personnel.length ? (
-              <Table head={["#", "ชื่อ - สกุล", "ประเภท", "หน้าที่", "ค่าตอบแทน (฿)"]} alignRight={[4]}>
-                {personnel.map((p, i) => (
-                  <tr key={p.personnelId} className="hover:bg-slate-50/70">
-                    <Td className="w-10 text-slate-400">{i + 1}</Td>
-                    <Td>
-                      <Link
-                        to={`/personnel?highlight=${p.personnelId}`}
-                        className="flex items-center gap-2.5 font-semibold text-slate-800 hover:text-indigo-700"
+              <>
+                <div className="space-y-4 p-4">
+                  {personnelGroups.map(({ tab, people }) => (
+                    <div key={tab}>
+                      <div
+                        className={`mb-2.5 flex items-center justify-between gap-2 rounded-lg border px-3 py-1.5 text-xs font-bold ${TAB_SECTION[tab]}`}
                       >
-                        <Thumb src={p.photoUrl} alt={p.fullName} round fallback={p.fullName.trim().charAt(0)} />
-                        <span className="min-w-0">
-                          <span className="block truncate hover:underline">
-                            {[p.rank, p.fullName].filter(Boolean).join(" ")}
-                          </span>
-                          {p.position ? (
-                            <span className="block truncate text-xs font-normal text-slate-400">{p.position}</span>
-                          ) : null}
-                        </span>
-                      </Link>
-                    </Td>
-                    <Td className="text-slate-600">{p.personnelCategoryName || "—"}</Td>
-                    <Td className="text-slate-600">{p.roleName}</Td>
-                    <Td className="text-right font-semibold tabular-nums text-slate-800">
-                      {formatBaht(p.compensationRate)}
-                    </Td>
-                  </tr>
-                ))}
-                <tr className="bg-slate-50 font-bold">
-                  <Td className="text-slate-500" colSpan={4}>
-                    รวม {formatInt(personnel.length)} คน
-                  </Td>
-                  <Td className="text-right tabular-nums text-violet-700">{formatBaht(compensationTotal)}</Td>
-                </tr>
-              </Table>
+                        <span>{tabLabel(tab)}</span>
+                        <span className="tabular-nums opacity-70">{formatInt(people.length)} คน</span>
+                      </div>
+                      <ul className="grid gap-2.5 sm:grid-cols-2">
+                        {people.map((p) => {
+                          const catLabel = p.personnelCategoryName?.trim() || tabLabel(tab);
+                          return (
+                            <li key={p.personnelId}>
+                              <Link
+                                to={`/personnel?highlight=${p.personnelId}`}
+                                className="flex h-full items-start gap-3 rounded-xl border border-slate-200 bg-white p-3 transition hover:border-slate-300 hover:bg-slate-50/80"
+                              >
+                                <Thumb
+                                  src={p.photoUrl}
+                                  alt={p.fullName}
+                                  round
+                                  fallback={p.fullName.trim().charAt(0) || "?"}
+                                />
+                                <div className="min-w-0 flex-1">
+                                  <div className="flex flex-wrap items-center gap-1.5">
+                                    <span className="text-sm font-bold text-slate-900">{personDisplayName(p)}</span>
+                                    <span
+                                      className={`rounded-md px-1.5 py-0.5 text-[10px] font-bold ring-1 ${TAB_CHIP[tab]}`}
+                                    >
+                                      {catLabel}
+                                    </span>
+                                  </div>
+                                  <dl className="mt-1 space-y-0.5 text-xs">
+                                    {p.roleName ? (
+                                      <div className="flex gap-1.5">
+                                        <dt className="shrink-0 text-slate-400">หน้าที่</dt>
+                                        <dd className="truncate font-medium text-slate-700">{p.roleName}</dd>
+                                      </div>
+                                    ) : null}
+                                    {p.position ? (
+                                      <div className="flex gap-1.5">
+                                        <dt className="shrink-0 text-slate-400">ตำแหน่ง</dt>
+                                        <dd className="truncate font-medium text-slate-700">{p.position}</dd>
+                                      </div>
+                                    ) : null}
+                                    {p.gradeLevel ? (
+                                      <div className="flex gap-1.5">
+                                        <dt className="shrink-0 text-slate-400">ชั้น</dt>
+                                        <dd className="font-medium text-slate-700">{p.gradeLevel}</dd>
+                                      </div>
+                                    ) : null}
+                                  </dl>
+                                  <p className="mt-1.5 text-xs font-semibold tabular-nums text-[#0000BF]">
+                                    ค่าตอบแทน {formatBaht(p.compensationRate)} ฿
+                                  </p>
+                                </div>
+                              </Link>
+                            </li>
+                          );
+                        })}
+                      </ul>
+                    </div>
+                  ))}
+                </div>
+                <div className="flex items-center justify-between gap-2 border-t border-slate-100 bg-slate-50/80 px-4 py-2.5 text-sm font-bold">
+                  <span className="text-slate-500">รวม {formatInt(personnel.length)} คน</span>
+                  <span className="tabular-nums text-[#0000BF]">{formatBaht(compensationTotal)} ฿</span>
+                </div>
+              </>
             ) : (
               <Empty>ยังไม่มีบุคลากร</Empty>
             )}
@@ -331,7 +473,7 @@ export function MissionSummaryPage() {
 
           <Panel title="ยานพาหนะ" count={vehicles.length}>
             {vehicles.length ? (
-              <ul className="divide-y divide-slate-100">
+              <ul className="grid gap-2.5 p-4 sm:grid-cols-2">
                 {vehicles.map((v) => {
                   const fuel = v.fuelType === "DIESEL" ? "ดีเซล" : v.fuelType === "GASOLINE" ? "เบนซิน" : null;
                   const details: [string, string | null | undefined][] = [
@@ -346,34 +488,44 @@ export function MissionSummaryPage() {
                     ],
                     [
                       "เชื้อเพลิง",
-                      [fuel, v.fuelLiters ? `${formatLiters(v.fuelLiters)} ล.` : null, v.fuelAmount && Number(v.fuelAmount) > 0 ? `${formatBaht(v.fuelAmount)} ฿` : null]
+                      [
+                        fuel,
+                        v.fuelLiters ? `${formatLiters(v.fuelLiters)} ล.` : null,
+                        v.fuelAmount && Number(v.fuelAmount) > 0 ? `${formatBaht(v.fuelAmount)} ฿` : null,
+                      ]
                         .filter(Boolean)
                         .join(" · ") || null,
                     ],
                   ];
+                  const plateLabel = v.callSign?.trim()
+                    ? `${v.licensePlate}(${v.callSign.trim()})`
+                    : v.licensePlate;
                   return (
-                    <li key={v.vehicleId} className="flex items-start gap-3 px-4 py-3">
+                    <li
+                      key={v.vehicleId}
+                      className="flex items-start gap-3 rounded-xl border border-slate-200 bg-white p-3"
+                    >
                       <Thumb src={v.photoUrl} alt={v.licensePlate} size="h-14 w-20" fallback="รถ" />
                       <div className="min-w-0 flex-1">
-                        <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
-                          <span className="font-bold text-slate-900">{v.licensePlate}</span>
-                          <span className="rounded-full bg-teal-50 px-2 py-0.5 text-[11px] font-bold text-teal-700 ring-1 ring-teal-200">
+                        <div className="flex flex-wrap items-center gap-1.5">
+                          <span className="text-sm font-bold text-slate-900">{plateLabel}</span>
+                          <span className="rounded-md bg-teal-50 px-1.5 py-0.5 text-[10px] font-bold text-teal-700 ring-1 ring-teal-200">
                             {v.roleName}
                           </span>
-                          {v.brandModel ? <span className="text-sm text-slate-500">{v.brandModel}</span> : null}
                         </div>
-                        <dl className="mt-1 flex flex-wrap gap-x-4 gap-y-0.5 text-xs">
+                        {v.brandModel ? <p className="mt-0.5 text-xs text-slate-500">{v.brandModel}</p> : null}
+                        <dl className="mt-1.5 space-y-0.5 text-xs">
                           {details
                             .filter(([, val]) => val)
                             .map(([k, val]) => (
-                              <div key={k} className="flex gap-1">
-                                <dt className="text-slate-400">{k}</dt>
-                                <dd className="font-medium text-slate-700">{val}</dd>
+                              <div key={k} className="flex gap-1.5">
+                                <dt className="shrink-0 text-slate-400">{k}</dt>
+                                <dd className="truncate font-medium text-slate-700">{val}</dd>
                               </div>
                             ))}
                         </dl>
                         {v.crew?.length ? (
-                          <p className="mt-1 text-xs text-slate-500">
+                          <p className="mt-1.5 text-xs text-slate-500">
                             <span className="text-slate-400">ประจำรถ </span>
                             {v.crew.map((c) => `${c.name} (${c.roleName})`).join(", ")}
                           </p>
@@ -389,25 +541,30 @@ export function MissionSummaryPage() {
           </Panel>
         </div>
 
-        <div className="space-y-5">
+        <div className="space-y-4">
           <Panel title="จุดส่งสินค้า" count={destinations.length}>
             {destinations.length ? (
-              <Table head={["ปลายทาง", "ตู้", "มูลค่า (฿)"]} alignRight={[1, 2]}>
-                {destinations.map((d, i) => (
-                  <tr key={`${d.address}-${i}`}>
-                    <Td className="font-semibold text-slate-800">{d.address}</Td>
-                    <Td className="text-right tabular-nums">{formatInt(d.containerCount)}</Td>
-                    <Td className="text-right tabular-nums text-indigo-700">
-                      {Number(d.cargoValue) > 0 ? formatBaht(d.cargoValue) : "—"}
-                    </Td>
-                  </tr>
-                ))}
-                <tr className="bg-slate-50 font-bold">
-                  <Td className="text-slate-500">รวม</Td>
-                  <Td className="text-right tabular-nums">{formatInt(totalContainers)}</Td>
-                  <Td className="text-right tabular-nums text-indigo-700">{formatBaht(summary.totalCargoValue)}</Td>
-                </tr>
-              </Table>
+              <>
+                <ul className="divide-y divide-slate-100">
+                  {destinations.map((d, i) => (
+                    <li key={`${d.address}-${i}`} className="px-4 py-3">
+                      <p className="text-sm font-semibold leading-snug text-slate-800">{d.address}</p>
+                      <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-xs">
+                        <span className="tabular-nums text-slate-500">
+                          {formatInt(d.containerCount)} ตู้
+                        </span>
+                        <span className="font-semibold tabular-nums text-[#0000BF]">
+                          {Number(d.cargoValue) > 0 ? `${formatBaht(d.cargoValue)} ฿` : "—"}
+                        </span>
+                      </div>
+                    </li>
+                  ))}
+                </ul>
+                <div className="flex items-center justify-between gap-2 border-t border-slate-100 bg-slate-50/80 px-4 py-2 text-sm font-bold">
+                  <span className="text-slate-500">รวม {formatInt(totalContainers)} ตู้</span>
+                  <span className="tabular-nums text-[#0000BF]">{formatBaht(summary.totalCargoValue)} ฿</span>
+                </div>
+              </>
             ) : (
               <Empty>ไม่มีจุดส่งสินค้า</Empty>
             )}
@@ -419,7 +576,7 @@ export function MissionSummaryPage() {
                 <Row label="งบประมาณ" value={`${formatBaht(budget)} ฿`} />
                 <Row label="ใช้ไป" value={`${formatBaht(spent)} ฿`} />
                 {budgetPct != null ? (
-                  <div className="h-2 overflow-hidden rounded-full bg-slate-100">
+                  <div className="h-1.5 overflow-hidden rounded-full bg-slate-100">
                     <div
                       className={`h-full rounded-full ${summary.overBudget ? "bg-rose-400" : "bg-emerald-400"}`}
                       style={{ width: `${budgetPct}%` }}
@@ -440,22 +597,25 @@ export function MissionSummaryPage() {
           <Panel title="ค่าจ้างรถบรรทุก">
             {truckHire > 0 ? (
               <div className="space-y-1.5 px-4 py-3 text-sm">
-                <p className="text-2xl font-black tabular-nums text-orange-700">{formatBaht(truckHire)} ฿</p>
+                <p className="text-xl font-black tabular-nums text-orange-700">{formatBaht(truckHire)} ฿</p>
                 {spent > 0 ? (
-                  <Row label="สัดส่วนของรายจ่ายทั้งหมด" value={`${((truckHire / spent) * 100).toLocaleString("th-TH", { maximumFractionDigits: 1 })}%`} />
+                  <Row
+                    label="สัดส่วนของรายจ่ายทั้งหมด"
+                    value={`${((truckHire / spent) * 100).toLocaleString("th-TH", { maximumFractionDigits: 1 })}%`}
+                  />
                 ) : null}
                 {totalContainers > 0 ? (
                   <Row label="เฉลี่ยต่อตู้" value={`${formatBaht(truckHire / totalContainers)} ฿`} />
                 ) : null}
               </div>
             ) : (
-              <Empty>ยังไม่มีค่าจ้างรถบรรทุก</Empty>
+              <Empty compact>ยังไม่มีค่าจ้างรถบรรทุก</Empty>
             )}
           </Panel>
 
           <Panel title="ค่าใช้จ่ายอื่น" count={expenseEntries.length}>
             {expenseEntries.length ? (
-              <ul className="space-y-2.5 px-4 py-3">
+              <ul className="space-y-2 px-4 py-3">
                 {expenseEntries.map(([k, v]) => (
                   <li key={k}>
                     <div className="flex items-baseline justify-between gap-2 text-sm">
@@ -464,24 +624,31 @@ export function MissionSummaryPage() {
                       </span>
                       <span className="shrink-0 font-semibold tabular-nums text-slate-800">{formatBaht(v)}</span>
                     </div>
-                    <div className="mt-1 h-1.5 overflow-hidden rounded-full bg-slate-100">
-                      <div className="h-full rounded-full bg-pink-300" style={{ width: `${(v / maxExpense) * 100}%` }} />
+                    <div className="mt-1 h-1 overflow-hidden rounded-full bg-slate-100">
+                      <div
+                        className="h-full rounded-full bg-[#0000BF]/40"
+                        style={{ width: `${(v / maxExpense) * 100}%` }}
+                      />
                     </div>
                   </li>
                 ))}
                 <li className="flex justify-between border-t border-slate-100 pt-2 text-sm font-bold">
                   <span className="text-slate-500">รวมค่าใช้จ่ายอื่น</span>
-                  <span className="tabular-nums text-pink-700">{formatBaht(otherExpenseTotal)} ฿</span>
+                  <span className="tabular-nums text-slate-800">{formatBaht(otherExpenseTotal)} ฿</span>
                 </li>
                 {truckHire > 0 ? (
-                  <li className="space-y-1 rounded-lg bg-slate-50 px-3 py-2 text-sm">
+                  <li className="space-y-1 rounded-lg bg-slate-50 px-2.5 py-2 text-sm">
                     <Row label="+ ค่าจ้างรถบรรทุก" value={`${formatBaht(truckHire)} ฿`} valueClass="text-orange-700" />
-                    <Row label="รวมรายจ่ายทั้งหมด" value={`${formatBaht(summary.totalExpenses)} ฿`} valueClass="font-black text-slate-900" />
+                    <Row
+                      label="รวมรายจ่ายทั้งหมด"
+                      value={`${formatBaht(summary.totalExpenses)} ฿`}
+                      valueClass="font-black text-slate-900"
+                    />
                   </li>
                 ) : null}
               </ul>
             ) : (
-              <Empty>ยังไม่มีค่าใช้จ่าย</Empty>
+              <Empty compact>ยังไม่มีค่าใช้จ่าย</Empty>
             )}
           </Panel>
 
@@ -500,7 +667,7 @@ export function MissionSummaryPage() {
                   </li>
                 ))}
                 {policeTotal > 0 ? (
-                  <li className="flex justify-between bg-slate-50 px-4 py-2 text-sm font-bold">
+                  <li className="flex justify-between bg-slate-50/80 px-4 py-2 text-sm font-bold">
                     <span className="text-slate-500">รวม</span>
                     <span className="tabular-nums text-sky-700">{formatBaht(policeTotal)} ฿</span>
                   </li>
@@ -511,7 +678,7 @@ export function MissionSummaryPage() {
 
           <Panel title="ไฟล์แนบ" count={attachments.length}>
             <div className="space-y-2 px-4 py-3">
-              <label className="flex cursor-pointer items-center justify-center rounded-lg border border-dashed border-indigo-200 bg-indigo-50/40 px-3 py-2.5 text-sm font-semibold text-indigo-700 hover:bg-indigo-50">
+              <label className="flex cursor-pointer items-center justify-center rounded-lg border border-dashed border-[#0000BF]/30 bg-[#0000BF]/[0.04] px-3 py-2 text-sm font-semibold text-[#0000BF] transition hover:bg-[#0000BF]/[0.08]">
                 {uploading ? "กำลังอัปโหลด…" : "+ แนบไฟล์"}
                 <input
                   type="file"
@@ -533,7 +700,7 @@ export function MissionSummaryPage() {
                         href={attachmentHref(a.fileUrl)}
                         target="_blank"
                         rel="noopener noreferrer"
-                        className="min-w-0 truncate text-indigo-600 hover:underline"
+                        className="min-w-0 truncate text-[#0000BF] hover:underline"
                       >
                         {a.originalName?.trim() || "เปิดไฟล์"}
                       </a>
@@ -573,6 +740,17 @@ const actionTones = {
   rose: "border-rose-200 text-rose-700 hover:bg-rose-50",
 } as const;
 
+function ActionRow({ label, children }: { label: string; children: ReactNode }) {
+  return (
+    <div className="flex flex-col gap-1.5 sm:flex-row sm:items-start sm:gap-3">
+      <span className="shrink-0 pt-1 text-[11px] font-bold uppercase tracking-wide text-slate-400 sm:w-24">
+        {label}
+      </span>
+      <div className="flex min-w-0 flex-wrap gap-1.5">{children}</div>
+    </div>
+  );
+}
+
 function ActionButton({
   tone,
   onClick,
@@ -586,19 +764,19 @@ function ActionButton({
     <button
       type="button"
       onClick={onClick}
-      className={`rounded-full border bg-white px-3.5 py-1.5 text-xs font-bold shadow-sm sm:text-sm ${actionTones[tone]}`}
+      className={`rounded-lg border bg-white px-3 py-1.5 text-xs font-bold shadow-sm transition sm:text-sm ${actionTones[tone]}`}
     >
       {children}
     </button>
   );
 }
 
-function Kpi({ label, value, sub, accent }: { label: string; value: string; sub?: string; accent: string }) {
+function Kpi({ label, value, sub }: { label: string; value: string; sub?: string }) {
   return (
-    <div className={`rounded-xl border border-slate-200 border-l-4 ${accent} bg-white px-4 py-3 shadow-sm`}>
-      <p className="text-xs font-semibold text-slate-500">{label}</p>
-      <p className="mt-0.5 text-lg font-black tabular-nums text-slate-900">{value}</p>
-      {sub ? <p className="text-xs text-slate-400">{sub}</p> : null}
+    <div className="rounded-xl border border-slate-200 bg-white px-4 py-3.5 shadow-sm">
+      <p className="text-[11px] font-bold uppercase tracking-wide text-slate-400">{label}</p>
+      <p className="mt-1 text-lg font-black tabular-nums leading-tight text-slate-900">{value}</p>
+      {sub ? <p className="mt-0.5 text-xs text-slate-400">{sub}</p> : null}
     </div>
   );
 }
@@ -606,10 +784,12 @@ function Kpi({ label, value, sub, accent }: { label: string; value: string; sub?
 function Panel({ title, count, children }: { title: string; count?: number; children: ReactNode }) {
   return (
     <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
-      <h2 className="flex items-center gap-2 border-b border-slate-100 px-4 py-2.5 text-sm font-bold text-slate-800">
+      <h2 className="flex items-center gap-2 border-b border-slate-100 bg-slate-50/50 px-4 py-2.5 text-sm font-bold text-slate-800">
         {title}
         {count != null ? (
-          <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-bold text-slate-500">{count}</span>
+          <span className="rounded-md bg-slate-200/70 px-1.5 py-0.5 text-[11px] font-bold tabular-nums text-slate-600">
+            {count}
+          </span>
         ) : null}
       </h2>
       {children}
@@ -617,36 +797,9 @@ function Panel({ title, count, children }: { title: string; count?: number; chil
   );
 }
 
-function Table({ head, alignRight = [], children }: { head: string[]; alignRight?: number[]; children: ReactNode }) {
-  return (
-    <div className="overflow-x-auto">
-      <table className="w-full text-sm">
-        <thead className="bg-slate-50/80 text-xs text-slate-500">
-          <tr>
-            {head.map((h, i) => (
-              <th key={h} className={`px-4 py-2 font-semibold ${alignRight.includes(i) ? "text-right" : "text-left"}`}>
-                {h}
-              </th>
-            ))}
-          </tr>
-        </thead>
-        <tbody className="divide-y divide-slate-100">{children}</tbody>
-      </table>
-    </div>
-  );
-}
-
-function Td({ children, className = "", colSpan }: { children: ReactNode; className?: string; colSpan?: number }) {
-  return (
-    <td colSpan={colSpan} className={`px-4 py-2 ${className}`}>
-      {children}
-    </td>
-  );
-}
-
 function Row({ label, value, valueClass = "text-slate-800" }: { label: string; value: string; valueClass?: string }) {
   return (
-    <div className="flex justify-between gap-2">
+    <div className="flex justify-between gap-2 text-sm">
       <span className="text-slate-500">{label}</span>
       <span className={`font-semibold tabular-nums ${valueClass}`}>{value}</span>
     </div>
@@ -689,6 +842,8 @@ function Thumb({
   );
 }
 
-function Empty({ children }: { children: ReactNode }) {
-  return <p className="px-4 py-6 text-center text-sm text-slate-400">{children}</p>;
+function Empty({ children, compact }: { children: ReactNode; compact?: boolean }) {
+  return (
+    <p className={`text-center text-sm text-slate-400 ${compact ? "px-4 py-4" : "px-4 py-6"}`}>{children}</p>
+  );
 }

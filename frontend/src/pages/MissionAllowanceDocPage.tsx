@@ -7,13 +7,14 @@ import { MissionBotAllowancePrintSheet } from "../components/MissionBotAllowance
 import { MissionPoliceAllowancePrintSheet } from "../components/MissionPoliceAllowancePrintSheet";
 import { PageHeaderBar } from "../components/PageHeaderBar";
 import {
+  allowanceSourceSig,
   botRowTotal,
   buildBotAllowanceDoc,
   buildPoliceAllowanceDoc,
   clearAllowanceDraft,
-  loadAllowanceDraft,
   newRowKey,
   policeDocTotal,
+  resolveAllowanceDoc,
   saveAllowanceDraft,
   type AllowanceDocSource,
   type AllowanceSigner,
@@ -58,49 +59,79 @@ function summarySource(s: MissionSummary): AllowanceDocSource {
   };
 }
 
-/** โหลดสรุปภารกิจ + แบบร่างที่เคยแก้ในเครื่องนี้ แล้วบันทึกอัตโนมัติเมื่อแก้ไข */
+/** โหลดสรุปภารกิจ + แบบร่างในเครื่อง (ซิงก์แถวเมื่อภารกิจเปลี่ยน) */
 function useAllowanceDoc<T>(kind: Kind, build: (src: AllowanceDocSource) => T) {
   const { id = "" } = useParams();
   const [summary, setSummary] = useState<MissionSummary | null>(null);
   const [doc, setDoc] = useState<T | null>(null);
   const [edited, setEdited] = useState(false);
+  const [sourceSig, setSourceSig] = useState("");
   const [err, setErr] = useState<string | null>(null);
 
+  const applySummary = useCallback(
+    (s: MissionSummary) => {
+      const src = summarySource(s);
+      const resolved = resolveAllowanceDoc(kind, id, src, build);
+      setSummary(s);
+      setDoc(resolved.doc);
+      setEdited(resolved.edited);
+      setSourceSig(resolved.sourceSig);
+      setErr(null);
+    },
+    [build, id, kind],
+  );
+
+  const reload = useCallback(
+    (opts?: { quiet?: boolean }) => {
+      apiJson<MissionSummary>(`/api/missions/${id}/summary`, { skipCache: true })
+        .then((s) => applySummary(s))
+        .catch((e) => {
+          if (!opts?.quiet) setErr(e instanceof Error ? e.message : "โหลดข้อมูลภารกิจไม่สำเร็จ");
+        });
+    },
+    [applySummary, id],
+  );
+
   useEffect(() => {
-    let cancelled = false;
-    apiJson<MissionSummary>(`/api/missions/${id}/summary`, { skipCache: true })
-      .then((s) => {
-        if (cancelled) return;
-        setSummary(s);
-        const draft = loadAllowanceDraft<T>(kind, id);
-        setDoc(draft ?? build(summarySource(s)));
-        setEdited(Boolean(draft));
-      })
-      .catch((e) => !cancelled && setErr(e instanceof Error ? e.message : "โหลดข้อมูลภารกิจไม่สำเร็จ"));
-    return () => {
-      cancelled = true;
+    reload();
+  }, [reload]);
+
+  /* กลับมาที่แท็บหลังสลับไปหน้าอื่น — ดึงภารกิจใหม่ กันรายชื่อ/ยอดค้าง */
+  useEffect(() => {
+    const onVis = () => {
+      if (document.visibilityState === "visible") reload({ quiet: true });
     };
-  }, [id, kind, build]);
+    document.addEventListener("visibilitychange", onVis);
+    return () => document.removeEventListener("visibilitychange", onVis);
+  }, [reload]);
 
   const update = useCallback(
     (fn: (d: T) => T) => {
       setDoc((cur) => {
         if (!cur) return cur;
         const next = fn(cur);
-        saveAllowanceDraft(kind, id, next);
+        saveAllowanceDraft(kind, id, next, sourceSig);
         return next;
       });
       setEdited(true);
     },
-    [id, kind],
+    [id, kind, sourceSig],
   );
 
-  function reset() {
-    if (!summary) return;
-    if (!confirm("ล้างการแก้ไข แล้วดึงข้อมูลจากภารกิจใหม่?")) return;
+  async function reset() {
+    if (!confirm("ล้างการแก้ไขในเครื่องนี้ แล้วดึงรายชื่อ/ยอดจากภารกิจใหม่?")) return;
     clearAllowanceDraft(kind, id);
-    setDoc(build(summarySource(summary)));
-    setEdited(false);
+    try {
+      const s = await apiJson<MissionSummary>(`/api/missions/${id}/summary`, { skipCache: true });
+      const src = summarySource(s);
+      setSummary(s);
+      setDoc(build(src));
+      setEdited(false);
+      setSourceSig(allowanceSourceSig(kind, src));
+      setErr(null);
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : "โหลดข้อมูลภารกิจไม่สำเร็จ");
+    }
   }
 
   return { id, summary, doc, edited, err, update, reset };
@@ -133,7 +164,11 @@ function DocShell({
           summary ? (
             <span className="text-xs">
               {[summary.code, summary.title?.trim()].filter(Boolean).join(" · ") || "ภารกิจ"}
-              {edited ? <span className="ml-2 font-semibold text-amber-700">· แก้ไขแล้ว (บันทึกในเครื่องนี้อัตโนมัติ)</span> : null}
+              {edited ? (
+                <span className="ml-2 font-semibold text-amber-700">
+                  · มีแก้ไขในเครื่องนี้ · รายชื่อ/ยอดจะตามภารกิจเมื่อข้อมูลบุคลากรเปลี่ยน
+                </span>
+              ) : null}
             </span>
           ) : null
         }

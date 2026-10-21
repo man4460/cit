@@ -6,7 +6,12 @@ import {
   missionInclusiveDays,
   type BotAllowancePerson,
 } from "./botAllowancePrint";
-import { buildPolicePrintGroups, type MissionPoliceStationRow, type PoliceAllowancePerson } from "./policeAllowancePrint";
+import {
+  buildPolicePrintGroups,
+  filterPoliceAllowancePersonnel,
+  type MissionPoliceStationRow,
+  type PoliceAllowancePerson,
+} from "./policeAllowancePrint";
 
 export type AllowanceDocSource = {
   missionId: string;
@@ -199,18 +204,193 @@ export function policeDocTotal(doc: PoliceAllowanceDoc): number {
 
 const draftKey = (kind: "bot" | "police", missionId: string) => `cit.allowanceDoc.${kind}.${missionId}`;
 
+type AllowanceDraftEnvelope<T> = { v: 2; sourceSig: string; doc: T };
+
+function isDraftEnvelope(x: unknown): x is AllowanceDraftEnvelope<unknown> {
+  return Boolean(
+    x &&
+      typeof x === "object" &&
+      (x as AllowanceDraftEnvelope<unknown>).v === 2 &&
+      typeof (x as AllowanceDraftEnvelope<unknown>).sourceSig === "string" &&
+      "doc" in (x as object),
+  );
+}
+
+/** ลายนิ้วมือจากข้อมูลภารกิจที่ใช้สร้างตาราง — เปลี่ยนแล้วทิ้งแถวเก่าในแบบร่าง */
+export function allowanceSourceSig(kind: "bot" | "police", src: AllowanceDocSource): string {
+  const head = [
+    src.plannedStart ?? "",
+    src.plannedEnd ?? "",
+    String(src.routeMissionDays ?? ""),
+    (src.routeLabel ?? "").trim(),
+    (src.code ?? "").trim(),
+    (src.title ?? "").trim(),
+  ].join("|");
+
+  if (kind === "bot") {
+    const people = filterBotAllowancePersonnel(src.personnel)
+      .map((p) =>
+        [
+          p.personnelId,
+          p.fullName,
+          p.rank ?? "",
+          p.employeeCode ?? "",
+          p.position ?? "",
+          p.gradeLevel ?? "",
+          String(p.perDiemRate ?? ""),
+          String(p.vehicleTravelAllowance ?? ""),
+        ].join("~"),
+      )
+      .sort()
+      .join(";");
+    return `bot:v1:${head}#${people}`;
+  }
+
+  const people = filterPoliceAllowancePersonnel(src.personnel as PoliceAllowancePerson[])
+    .map((p) =>
+      [
+        p.personnelId,
+        p.fullName,
+        p.rank ?? "",
+        p.idNumber ?? "",
+        p.position ?? "",
+        p.policeStationName ?? "",
+        p.personnelCategoryName ?? "",
+        String(p.compensationRate ?? ""),
+      ].join("~"),
+    )
+    .sort()
+    .join(";");
+  const stations = (src.policeStations ?? [])
+    .map((s) => [s.policeStationId, s.name, String(s.amount ?? ""), s.vendorCode ?? ""].join("~"))
+    .sort()
+    .join(";");
+  return `police:v1:${head}#${people}#${stations}`;
+}
+
+function mergeBotEditorial(fresh: BotAllowanceDoc, draft: BotAllowanceDoc): BotAllowanceDoc {
+  return {
+    ...fresh,
+    heading: draft.heading?.trim() ? draft.heading : fresh.heading,
+    orgLine: draft.orgLine?.trim() ? draft.orgLine : fresh.orgLine,
+    note: draft.note ?? fresh.note,
+    rules: draft.rules?.trim() ? draft.rules : fresh.rules,
+    signer: draft.signer ?? fresh.signer,
+  };
+}
+
+function mergePoliceEditorial(fresh: PoliceAllowanceDoc, draft: PoliceAllowanceDoc): PoliceAllowanceDoc {
+  return {
+    ...fresh,
+    heading: draft.heading?.trim() ? draft.heading : fresh.heading,
+    orgLine: draft.orgLine?.trim() ? draft.orgLine : fresh.orgLine,
+    note: draft.note ?? fresh.note,
+    signer: draft.signer ?? fresh.signer,
+  };
+}
+
+export type ResolvedAllowanceDoc<T> = {
+  doc: T;
+  /** มีการแก้หัวเอกสาร/ลงนามค้างในเครื่อง (แถวตรงกับภารกิจแล้ว) */
+  edited: boolean;
+  sourceSig: string;
+};
+
+/**
+ * สร้างเอกสารจากภารกิจ แล้วผสานแบบร่างในเครื่อง:
+ * - ลายนิ้วมือตรงกัน → ใช้แบบร่างทั้งฉบับ (รวมแถวที่แก้เอง)
+ * - ภารกิจเปลี่ยน / แบบร่างเก่าไม่มีลายนิ้วมือ → ดึงแถวจากภารกิจใหม่ เก็บแค่หัวเอกสาร/ลงนาม
+ */
+export function resolveAllowanceDoc<T>(
+  kind: "bot" | "police",
+  missionId: string,
+  src: AllowanceDocSource,
+  build: (src: AllowanceDocSource) => T,
+): ResolvedAllowanceDoc<T> {
+  const sourceSig = allowanceSourceSig(kind, src);
+  const fresh = build(src);
+  let raw: unknown = null;
+  try {
+    const text = localStorage.getItem(draftKey(kind, missionId));
+    raw = text ? JSON.parse(text) : null;
+  } catch {
+    raw = null;
+  }
+  if (!raw) return { doc: fresh, edited: false, sourceSig };
+
+  const envelope = isDraftEnvelope(raw) ? (raw as AllowanceDraftEnvelope<T>) : null;
+  const draftDoc = (envelope ? envelope.doc : raw) as T;
+  const draftSig = envelope?.sourceSig ?? "";
+
+  if (draftSig && draftSig === sourceSig) {
+    return { doc: draftDoc, edited: true, sourceSig };
+  }
+
+  /* ภารกิจเปลี่ยน หรือแบบร่างเก่า — แถว/ยอดใช้ของใหม่จากภารกิจ */
+  const merged =
+    kind === "bot"
+      ? (mergeBotEditorial(fresh as BotAllowanceDoc, draftDoc as BotAllowanceDoc) as T)
+      : (mergePoliceEditorial(fresh as PoliceAllowanceDoc, draftDoc as PoliceAllowanceDoc) as T);
+
+  const editorialKept =
+    kind === "bot"
+      ? JSON.stringify({
+          h: (merged as BotAllowanceDoc).heading,
+          o: (merged as BotAllowanceDoc).orgLine,
+          n: (merged as BotAllowanceDoc).note,
+          r: (merged as BotAllowanceDoc).rules,
+          s: (merged as BotAllowanceDoc).signer,
+        }) !==
+        JSON.stringify({
+          h: (fresh as BotAllowanceDoc).heading,
+          o: (fresh as BotAllowanceDoc).orgLine,
+          n: (fresh as BotAllowanceDoc).note,
+          r: (fresh as BotAllowanceDoc).rules,
+          s: (fresh as BotAllowanceDoc).signer,
+        })
+      : JSON.stringify({
+          h: (merged as PoliceAllowanceDoc).heading,
+          o: (merged as PoliceAllowanceDoc).orgLine,
+          n: (merged as PoliceAllowanceDoc).note,
+          s: (merged as PoliceAllowanceDoc).signer,
+        }) !==
+        JSON.stringify({
+          h: (fresh as PoliceAllowanceDoc).heading,
+          o: (fresh as PoliceAllowanceDoc).orgLine,
+          n: (fresh as PoliceAllowanceDoc).note,
+          s: (fresh as PoliceAllowanceDoc).signer,
+        });
+
+  try {
+    localStorage.setItem(draftKey(kind, missionId), JSON.stringify({ v: 2, sourceSig, doc: merged } satisfies AllowanceDraftEnvelope<T>));
+  } catch {
+    /* ignore */
+  }
+
+  return { doc: merged, edited: editorialKept, sourceSig };
+}
+
+/** @deprecated ใช้ resolveAllowanceDoc — คงไว้เผื่อโค้ดเก่า */
 export function loadAllowanceDraft<T>(kind: "bot" | "police", missionId: string): T | null {
   try {
     const raw = localStorage.getItem(draftKey(kind, missionId));
-    return raw ? (JSON.parse(raw) as T) : null;
+    if (!raw) return null;
+    const parsed: unknown = JSON.parse(raw);
+    if (isDraftEnvelope(parsed)) return parsed.doc as T;
+    return parsed as T;
   } catch {
     return null;
   }
 }
 
-export function saveAllowanceDraft(kind: "bot" | "police", missionId: string, doc: unknown): void {
+export function saveAllowanceDraft(kind: "bot" | "police", missionId: string, doc: unknown, sourceSig?: string): void {
   try {
-    localStorage.setItem(draftKey(kind, missionId), JSON.stringify(doc));
+    if (sourceSig) {
+      localStorage.setItem(draftKey(kind, missionId), JSON.stringify({ v: 2, sourceSig, doc } satisfies AllowanceDraftEnvelope<unknown>));
+    } else {
+      /* ไม่มีลายนิ้วมือ — เก็บแบบ envelope ว่าง เพื่อรอบถัดไปจะ sync จากภารกิจ */
+      localStorage.setItem(draftKey(kind, missionId), JSON.stringify({ v: 2, sourceSig: "", doc } satisfies AllowanceDraftEnvelope<unknown>));
+    }
   } catch {
     /* storage เต็ม/ปิดไว้ — ข้ามได้ */
   }

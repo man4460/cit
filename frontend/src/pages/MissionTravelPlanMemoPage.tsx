@@ -590,14 +590,33 @@ export function MissionTravelPlanMemoPage() {
       leg: "return",
     });
 
-    const roleOrder = (role: string) =>
-      isDirectorRole(role) ? (isAssistantRole(role) ? 1 : 0) : 2;
+    /**
+     * เรียงข้อ (4) ฝรภ.: ผอ.เดินทาง → ผช.ผอ.เดินทาง → ส่วนล่วงหน้า → คุ้มกันหน้า → คุ้มกันหลัง → สื่อสาร
+     * (ไม่ใช้ isAssistantRole เปล่าๆ — จะไปจับ «ผู้ช่วยหัวหน้าส่วนล่วงหน้า»)
+     */
+    const botStaffRoleOrder = (role: string): [number, number] => {
+      const r = role.trim();
+      if (isDirectorRole(r) && !isAssistantRole(r)) return [0, 0];
+      if (isDirectorRole(r) && isAssistantRole(r)) return [1, 0];
+      if (/ส่วนล่วงหน้า/.test(r)) {
+        const sub = /หัวหน้า/.test(r) && !/ผู้ช่วย/.test(r) ? 0 : /ผู้ช่วย/.test(r) ? 1 : 2;
+        return [2, sub];
+      }
+      if (/คุ้มกันหน้า/.test(r) && !/คุ้มกันหลัง/.test(r)) return [3, 0];
+      if (/คุ้มกันหลัง/.test(r)) return [4, 0];
+      if (/สื่อสาร/.test(r)) return [5, /ขับรถ/.test(r) ? 1 : 0];
+      return [6, 0];
+    };
 
     /** ตารางเจ้าหน้าที่ ฝรภ. = แท็บ ธปท. ตามที่บันทึก */
     const botPeople = people
       .filter((p) => personTab(p) === "bot")
       .slice()
-      .sort((a, b) => roleOrder(a.roleName) - roleOrder(b.roleName) || personName(a).localeCompare(personName(b), "th"));
+      .sort((a, b) => {
+        const [ga, sa] = botStaffRoleOrder(a.roleName);
+        const [gb, sb] = botStaffRoleOrder(b.roleName);
+        return ga - gb || sa - sb || personName(a).localeCompare(personName(b), "th");
+      });
 
     const staffRows = botPeople.map((p, i) => {
       const duty = dutyFromRole(p.roleName);
