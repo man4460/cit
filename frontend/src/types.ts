@@ -1032,6 +1032,7 @@ export interface MissionDetail {
     assignedCargoTruckId?: string | null;
     returnVehicleSameAsGo?: boolean;
     assignedVehicleReturnId?: string | null;
+    controlsReturnConvoy?: boolean;
   }>;
   cargoTrucks?: MissionCargoTruck[];
   vehicles: Array<{
@@ -1106,6 +1107,7 @@ export interface MissionSummary {
     assignedCargoTruckId?: string | null;
     returnVehicleSameAsGo?: boolean;
     assignedVehicleReturnId?: string | null;
+    controlsReturnConvoy?: boolean;
   }>;
   cargoTrucks?: MissionCargoTruck[];
   policeStations?: Array<{

@@ -9,6 +9,7 @@ import {
   daysBetween,
   defaultMissionDates,
   fullDate,
+  canControlReturnConvoy,
   isAssistantRole,
   isDirectorRole,
   millions,
@@ -312,7 +313,7 @@ function missionCrewSig(s: MissionSummary) {
   const people = (s.personnel ?? [])
     .map((p) => {
       const same = p.returnVehicleSameAsGo !== false ? "1" : "0";
-      return `${p.personnelId}|${p.personnelCategoryName ?? ""}|${p.roleName}|${p.assignedVehicleId ?? ""}|${p.assignedCargoTruckId ?? ""}|${same}|${p.assignedVehicleReturnId ?? ""}`;
+      return `${p.personnelId}|${p.personnelCategoryName ?? ""}|${p.roleName}|${p.assignedVehicleId ?? ""}|${p.assignedCargoTruckId ?? ""}|${same}|${p.assignedVehicleReturnId ?? ""}|${p.controlsReturnConvoy ? "1" : "0"}`;
     })
     .sort()
     .join(";");
@@ -609,7 +610,10 @@ export function MissionTravelPlanMemoPage() {
         setSummary(s);
         setLocations(locs);
         const spare = (s.title ?? "").match(/หัวลากสำรอง\s*(\d+)/)?.[1] ?? "0";
-        const director = (s.personnel ?? []).find((p) => isDirectorRole(p.roleName) && !isAssistantRole(p.roleName));
+        const people = s.personnel ?? [];
+        const ticked = people.find((p) => p.controlsReturnConvoy && canControlReturnConvoy(p.roleName));
+        const director = people.find((p) => isDirectorRole(p.roleName) && !isAssistantRole(p.roleName));
+        const fromMission = ticked ? personName(ticked) : "";
         const dataSig = missionCrewSig(s);
         const saved = readJson<PlanState>(stateKey(id));
         const overrides = { ...(saved?.overrides ?? {}) };
@@ -620,11 +624,11 @@ export function MissionTravelPlanMemoPage() {
           fdMemoNo: "",
           missionMemoNo: "",
           spareTractors: spare,
-          returnLeader: director ? personName(director) : "",
           times: DEFAULT_TIMES,
           ...(saved ?? {}),
           overrides,
           dataSig,
+          returnLeader: fromMission || saved?.returnLeader || (director ? personName(director) : ""),
         });
       })
       .catch((e) => alive && setErr(e instanceof Error ? e.message : "โหลดข้อมูลไม่สำเร็จ"));
@@ -927,7 +931,12 @@ export function MissionTravelPlanMemoPage() {
           <SmallInput label="เลขที่ใบงานอนุมัติภารกิจ" value={st.missionMemoNo} placeholder="MM2026…" onChange={(v) => patch({ missionMemoNo: v })} />
         </div>
         <div className="mt-3 grid gap-3 sm:grid-cols-5">
-          <SmallInput label="ผู้ควบคุมขบวนเดินทางกลับ" value={st.returnLeader} onChange={(v) => patch({ returnLeader: v })} />
+          <SmallInput
+            label="ผู้ควบคุมขบวนเดินทางกลับ"
+            value={st.returnLeader}
+            onChange={(v) => patch({ returnLeader: v })}
+            placeholder="ติ๊กจากขั้นบุคลากรภารกิจ"
+          />
           <SmallInput label="เวลาตรวจสภาพรถ (วันโหลด)" value={st.times.inspect} onChange={(v) => patch({ times: { ...st.times, inspect: v } })} />
           <SmallInput label="เวลารับมอบตู้ (วันโหลด)" value={st.times.receive} onChange={(v) => patch({ times: { ...st.times, receive: v } })} />
           <SmallInput label="เวลาประชุม/ออกเดินทาง" value={st.times.briefing} onChange={(v) => patch({ times: { ...st.times, briefing: v } })} />

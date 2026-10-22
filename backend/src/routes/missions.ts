@@ -270,6 +270,7 @@ async function missionSummary(missionId: string) {
       assignedCargoTruckId: p.assignedCargoTruckId ?? null,
       returnVehicleSameAsGo: p.returnVehicleSameAsGo !== false,
       assignedVehicleReturnId: p.assignedVehicleReturnId ?? null,
+      controlsReturnConvoy: Boolean(p.controlsReturnConvoy),
     })),
     cargoTrucks: mission.cargoTrucks.map(serializeCargoTruck),
     policeStations: mission.policeStations.map((s) => ({
@@ -1671,6 +1672,7 @@ type PersonnelIn = {
   assignedCargoTruckId?: string | null;
   returnVehicleSameAsGo?: boolean | null;
   assignedVehicleReturnId?: string | null;
+  controlsReturnConvoy?: boolean | null;
 };
 
 /** ประจำรถได้เฉพาะรถที่อยู่ในรายการยานพาหนะของภารกิจ */
@@ -1701,7 +1703,13 @@ function personnelVehicleFields(
     assignedCargoTruckId: cargo,
     returnVehicleSameAsGo: same,
     assignedVehicleReturnId: same ? null : assignedVehicleOf(p.assignedVehicleReturnId, vehicles),
+    controlsReturnConvoy: Boolean(p.controlsReturnConvoy),
   };
+}
+
+function withSingleReturnConvoyController(arr: PersonnelIn[]): PersonnelIn[] {
+  const keep = arr.findIndex((p) => p.controlsReturnConvoy);
+  return arr.map((p, i) => ({ ...p, controlsReturnConvoy: keep >= 0 && i === keep }));
 }
 
 type CargoTruckIn = {
@@ -2059,7 +2067,7 @@ missionsRouter.post("/", async (req, res, next) => {
     if (!(await allIdsExist("policeStation", policeStationArr.map((s) => s.policeStationId))))
       return res.status(400).json({ error: "Invalid police station" });
 
-    const personnelToSave = await excludeCargoDriverPersonnel(personnelArr);
+    const personnelToSave = withSingleReturnConvoyController(await excludeCargoDriverPersonnel(personnelArr));
     const cargoTruckIds = new Set(cargoTruckArr.map((t) => t.id).filter((id): id is string => Boolean(id)));
     const cargoByTractor = new Map(
       cargoTruckArr
@@ -2222,7 +2230,7 @@ missionsRouter.put("/:id", async (req, res, next) => {
     if (!(await allIdsExist("policeStation", policeStationArr.map((s) => s.policeStationId))))
       return res.status(400).json({ error: "Invalid police station" });
 
-    const personnelToSave = await excludeCargoDriverPersonnel(personnelArr);
+    const personnelToSave = withSingleReturnConvoyController(await excludeCargoDriverPersonnel(personnelArr));
     const cargoTruckIds = new Set(cargoTruckArr.map((t) => t.id).filter((id): id is string => Boolean(id)));
     const cargoByTractor = new Map(
       cargoTruckArr

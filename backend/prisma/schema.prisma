@@ -1023,6 +1023,9 @@ model MissionPersonnel {
   assignedVehicleReturnId String?
   assignedVehicleReturn   Vehicle? @relation("MissionPersonnelVehicleReturn", fields: [assignedVehicleReturnId], references: [id], onDelete: SetNull)
 
+  /// true = ผู้ควบคุมขบวนเดินทางกลับ (แผนเดินทาง) — ติ๊กได้คนเดียวต่อภารกิจ
+  controlsReturnConvoy Boolean @default(false)
+
   @@unique([missionId, personnelId])
 }
 

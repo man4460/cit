@@ -115,6 +115,14 @@ export function personName(p: { rank: string | null; fullName: string }) {
 export const isDirectorRole = (role: string) => /ผอ\.?\s*เดินทาง|ผู้อำนวยการเดินทาง/.test(role);
 export const isAssistantRole = (role: string) => /ผช|ผู้ช่วย/.test(role);
 
+/** ผอ.เดินทาง / ผช.ผอ.เดินทาง / หัวหน้าส่วนล่วงหน้า — ติ๊กเป็นผู้ควบคุมขบวนขากลับได้ */
+export function canControlReturnConvoy(roleName?: string | null): boolean {
+  const r = (roleName ?? "").trim();
+  if (!r) return false;
+  if (isDirectorRole(r)) return true;
+  return /หัวหน้า(?:ชุด)?ส่วนล่วงหน้า/.test(r) && !/ผู้ช่วย/.test(r);
+}
+
 function escapeHtml(s: string) {
   return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 }

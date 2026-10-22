@@ -20,6 +20,7 @@ import { MissionsSubNav } from "../components/MissionsSubNav";
 import { NavIcons } from "../lib/navVisuals";
 import { SearchableSelect, personnelSelectLabel } from "../components/SearchableSelect";
 import { EMPTY_BOT_LINE_AMOUNTS, type BotLineAmounts } from "../lib/estimatePersonCounts";
+import { canControlReturnConvoy } from "../lib/centralMemo";
 import { formatBaht, formatInt, parseLooseNumber } from "../lib/formatNumber";
 import {
   BOT_SPECIAL_ALLOWANCE_PER_DAY,
@@ -90,6 +91,8 @@ type PRow = {
   returnVehicleSameAsGo?: boolean;
   /** รถประจำขากลับ — ใช้เมื่อไม่ติ๊กเหมือนขาไป */
   assignedVehicleReturnId?: string;
+  /** ผู้ควบคุมขบวนเดินทางกลับ — ลิงก์ไปแผนเดินทาง */
+  controlsReturnConvoy?: boolean;
 };
 
 function tabUsesGoReturnVehicles(tab: MissionPersonnelTabKey) {
@@ -975,10 +978,15 @@ export function MissionFormPage() {
           return row;
         })
         .filter(cargoTruckFilled);
+      let returnLeadTaken = false;
       const mappedPeople = personRows.map((p) => {
         const person = personnel.find((x) => x.id === p.personnelId);
         const tabKey = missionPersonnelTabByCategory(person?.personnelCategory?.name) ?? "bot";
         const cargo = findAssignedCargoTruck(savedTrucks, p.assignedCargoTruckId, p.assignedVehicleId);
+        const roleName = personnelRoleMasters.find((r) => r.id === p.personnelRoleId)?.name ?? "";
+        const lead =
+          Boolean(p.controlsReturnConvoy) && canControlReturnConvoy(roleName) && !returnLeadTaken;
+        if (lead) returnLeadTaken = true;
         return {
           personnelId: p.personnelId,
           personnelRoleId: p.personnelRoleId,
@@ -988,6 +996,7 @@ export function MissionFormPage() {
           assignedCargoTruckId: cargo?.id ?? "",
           returnVehicleSameAsGo: cargo ? false : p.returnVehicleSameAsGo !== false,
           assignedVehicleReturnId: p.assignedVehicleReturnId ?? "",
+          controlsReturnConvoy: lead,
         };
       });
       const staffRows = mappedPeople.filter((r) => r.tabKey !== "driver");
@@ -1200,6 +1209,7 @@ export function MissionFormPage() {
           assignedCargoTruckId: cargoId,
           returnVehicleSameAsGo: same,
           assignedVehicleReturnId: ret,
+          controlsReturnConvoy: Boolean(r.controlsReturnConvoy),
         };
       }),
       cargoTrucks: cargoTrucksPayload,
@@ -1923,13 +1933,21 @@ export function MissionFormPage() {
                   <p className="text-[11px] text-slate-500">
                     {personnelTab === "special"
                       ? "ขาไปเลือกจากข้อมูลรถสินค้า · ขากลับเลือกจากยานพาหนะคุ้มกัน"
-                      : "ประจำรถขาไป / ขากลับ"}
+                      : personnelTab === "bot"
+                        ? "ประจำรถขาไป / ขากลับ · ติ๊กผู้ควบคุมขบวนขากลับ (ผอ. / ผช.ผอ. / หัวหน้าส่วนล่วงหน้า)"
+                        : "ประจำรถขาไป / ขากลับ"}
                   </p>
                 ) : null}
 
                 <div className="overflow-x-auto rounded-lg border border-slate-200">
                   {tabUsesGoReturnVehicles(personnelTab) ? (
-                    <div className="hidden min-w-[56rem] grid-cols-[minmax(0,1.2fr)_minmax(6.5rem,0.7fr)_minmax(8rem,1fr)_auto_minmax(8rem,1fr)_5.5rem_2.5rem] gap-1.5 border-b border-slate-200 bg-slate-50 px-2 py-1.5 text-[10px] font-bold uppercase tracking-wide text-slate-600 sm:grid">
+                    <div
+                      className={`hidden gap-1.5 border-b border-slate-200 bg-slate-50 px-2 py-1.5 text-[10px] font-bold uppercase tracking-wide text-slate-600 sm:grid ${
+                        personnelTab === "bot"
+                          ? "min-w-[62rem] grid-cols-[minmax(0,1.2fr)_minmax(6.5rem,0.7fr)_minmax(8rem,1fr)_auto_minmax(8rem,1fr)_4.6rem_5.5rem_2.5rem]"
+                          : "min-w-[56rem] grid-cols-[minmax(0,1.2fr)_minmax(6.5rem,0.7fr)_minmax(8rem,1fr)_auto_minmax(8rem,1fr)_5.5rem_2.5rem]"
+                      }`}
+                    >
                       <span>บุคลากร</span>
                       <span>บทบาท</span>
                       <span className="flex items-center justify-between gap-1">
@@ -1944,6 +1962,20 @@ export function MissionFormPage() {
                       </span>
                       <span className="text-center normal-case tracking-normal">เหมือนขาไป</span>
                       <span>ประจำรถขากลับ</span>
+                      {personnelTab === "bot" ? (
+                        <span className="text-center normal-case tracking-normal">
+                          ควบคุมขากลับ
+                          {editingMissionId ? (
+                            <button
+                              type="button"
+                              className="mt-0.5 block w-full font-semibold text-[#0000BF] hover:underline"
+                              onClick={() => navigate(`/missions/${editingMissionId}/travel-plan-memo`)}
+                            >
+                              แผนเดินทาง →
+                            </button>
+                          ) : null}
+                        </span>
+                      ) : null}
                       <span>ค่าตอบแทน</span>
                       <span className="sr-only">ลบ</span>
                     </div>
@@ -1967,7 +1999,11 @@ export function MissionFormPage() {
                   )}
                   <ul
                     className={`divide-y divide-slate-100 ${
-                      tabUsesGoReturnVehicles(personnelTab) ? "min-w-[56rem]" : "min-w-[48rem]"
+                      personnelTab === "bot"
+                        ? "min-w-[62rem]"
+                        : tabUsesGoReturnVehicles(personnelTab)
+                          ? "min-w-[56rem]"
+                          : "min-w-[48rem]"
                     }`}
                   >
                     {pRowsInActiveTab.length === 0 ? (
@@ -1997,13 +2033,17 @@ export function MissionFormPage() {
                         const goInvalid = Boolean(
                           !onCargo && row.assignedVehicleId && !missionVehicleIds.has(row.assignedVehicleId),
                         );
+                        const roleName = personnelRoleMasters.find((r) => r.id === row.personnelRoleId)?.name ?? "";
+                        const canLeadReturn = row.tabKey === "bot" && canControlReturnConvoy(roleName);
                         return (
                         <li
                           key={`${row.tabKey}-${idx}`}
                           className={
-                            dual
-                              ? "grid grid-cols-[minmax(0,1.2fr)_minmax(6.5rem,0.7fr)_minmax(8rem,1fr)_auto_minmax(8rem,1fr)_5.5rem_2.5rem] items-center gap-1.5 px-2 py-1"
-                              : "grid grid-cols-[minmax(0,1.3fr)_minmax(7rem,0.8fr)_minmax(9rem,1fr)_5.5rem_2.5rem] items-center gap-1.5 px-2 py-1"
+                            dual && row.tabKey === "bot"
+                              ? "grid grid-cols-[minmax(0,1.2fr)_minmax(6.5rem,0.7fr)_minmax(8rem,1fr)_auto_minmax(8rem,1fr)_4.6rem_5.5rem_2.5rem] items-center gap-1.5 px-2 py-1"
+                              : dual
+                                ? "grid grid-cols-[minmax(0,1.2fr)_minmax(6.5rem,0.7fr)_minmax(8rem,1fr)_auto_minmax(8rem,1fr)_5.5rem_2.5rem] items-center gap-1.5 px-2 py-1"
+                                : "grid grid-cols-[minmax(0,1.3fr)_minmax(7rem,0.8fr)_minmax(9rem,1fr)_5.5rem_2.5rem] items-center gap-1.5 px-2 py-1"
                           }
                         >
                           <SearchableSelect
@@ -2035,8 +2075,16 @@ export function MissionFormPage() {
                             className="w-full rounded-md border border-slate-200 bg-white px-2 py-1 text-sm text-slate-900"
                             value={row.personnelRoleId}
                             onChange={(e) => {
+                              const nextRoleId = e.target.value;
+                              const nextRoleName = personnelRoleMasters.find((r) => r.id === nextRoleId)?.name ?? "";
                               const next = [...pRows];
-                              next[idx] = { ...row, personnelRoleId: e.target.value };
+                              next[idx] = {
+                                ...row,
+                                personnelRoleId: nextRoleId,
+                                controlsReturnConvoy: canControlReturnConvoy(nextRoleName)
+                                  ? row.controlsReturnConvoy
+                                  : false,
+                              };
                               setPRows(orderPersonnelRows(next));
                             }}
                           >
@@ -2096,6 +2144,35 @@ export function MissionFormPage() {
                                 }`}
                               />
                             </>
+                          ) : null}
+                          {dual && row.tabKey === "bot" ? (
+                            <label
+                              className={`flex items-center justify-center ${
+                                canLeadReturn ? "cursor-pointer" : "cursor-not-allowed opacity-30"
+                              }`}
+                              title={
+                                canLeadReturn
+                                  ? "ติ๊กเป็นผู้ควบคุมขบวนเดินทางกลับ — ใช้ในแผนเดินทาง"
+                                  : "ติ๊กได้เฉพาะ ผอ.เดินทาง ผช.ผอ.เดินทาง และหัวหน้าส่วนล่วงหน้า"
+                              }
+                            >
+                              <input
+                                type="checkbox"
+                                className="h-3.5 w-3.5 rounded border-slate-300 text-[#0000BF]"
+                                checked={Boolean(row.controlsReturnConvoy) && canLeadReturn}
+                                disabled={!canLeadReturn}
+                                onChange={(e) => {
+                                  const on = e.target.checked;
+                                  setPRows((prev) =>
+                                    prev.map((r, i) => ({
+                                      ...r,
+                                      controlsReturnConvoy: on && i === idx,
+                                    })),
+                                  );
+                                }}
+                                aria-label={`ควบคุมขบวนขากลับแถว ${idx + 1}`}
+                              />
+                            </label>
                           ) : null}
                           <CommaNumberInput
                             aria-label={`ค่าตอบแทนแถว ${idx + 1}`}
