@@ -1,6 +1,7 @@
 import { Modal } from "./Modal";
 import { formatBaht, formatInt, parseLooseNumber } from "../lib/formatNumber";
 import {
+  groupSubtotal,
   computeEstimateTotals,
   isEstimateItemLine,
   lineCurrentAmount,
@@ -84,6 +85,7 @@ export function MissionEstimatePreviewModal({
                 const previous = parseLooseNumber(line.previousAmount);
                 const delta =
                   Number.isFinite(current) && Number.isFinite(previous) ? current - previous : NaN;
+                const groupSum = groupSubtotal(line, lines);
                 const isGroup = line.kind === "GROUP";
                 const isItem = isEstimateItemLine(line);
                 return (
@@ -111,7 +113,7 @@ export function MissionEstimatePreviewModal({
                       {isItem ? formatBaht(line.unitPrice, { empty: "" }) : ""}
                     </td>
                     <td className="border-b border-slate-100 px-2 py-1.5 text-right tabular-nums font-semibold">
-                      {line.includeInTotal === false ? "" : formatBaht(current)}
+                      {groupSum != null ? formatBaht(groupSum) : line.includeInTotal === false ? "" : formatBaht(current)}
                     </td>
                     <td className="border-b border-slate-100 px-2 py-1.5 text-right tabular-nums text-slate-600">
                       {line.includeInTotal === false ? "" : formatBaht(previous, { empty: "—" })}

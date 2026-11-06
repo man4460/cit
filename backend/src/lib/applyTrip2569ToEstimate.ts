@@ -64,7 +64,7 @@ export function applyTrip2569ToTemplate(template: EstimateTemplate, trip: Trip25
     if (code === "2.7") {
       return applyQtyRateAmount(line, raw);
     }
-    if (code.startsWith("1.") || code === "5.1" || code === "5.2" || code === "8.1") {
+    if (code.startsWith("1.") || code === "5.1" || code === "5.2" || code === "5.4") {
       return applyQtyRateAmount(line, raw);
     }
     if (code === "5.3") {

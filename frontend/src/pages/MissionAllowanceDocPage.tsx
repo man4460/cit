@@ -2,15 +2,22 @@ import { useCallback, useEffect, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { useParams } from "react-router-dom";
 import { apiJson } from "../api/client";
+import { AllowanceTemplateModal } from "../components/AllowanceTemplateModal";
 import { CommaNumberInput } from "../components/CommaNumberInput";
 import { MissionBotAllowancePrintSheet } from "../components/MissionBotAllowancePrintSheet";
 import { MissionPoliceAllowancePrintSheet } from "../components/MissionPoliceAllowancePrintSheet";
 import { PageHeaderBar } from "../components/PageHeaderBar";
 import {
+  applyAllowanceTemplate,
+  fetchAllowanceTemplate,
   allowanceSourceSig,
   botRowTotal,
   buildBotAllowanceDoc,
   buildPoliceAllowanceDoc,
+  deleteAllowanceDocFromServer,
+  fetchAllowanceDoc,
+  mergeStoredDoc,
+  saveAllowanceDocToServer,
   clearAllowanceDraft,
   newRowKey,
   policeDocTotal,
@@ -22,6 +29,7 @@ import {
   type BotDocRow,
   type PoliceAllowanceDoc,
   type PoliceDocRow,
+  type StoredAllowanceDoc,
 } from "../lib/allowanceDocs";
 import { formatBahtPlain } from "../lib/botAllowancePrint";
 import { policeGroupColor } from "../lib/policeAllowancePrint";
@@ -60,22 +68,53 @@ function summarySource(s: MissionSummary): AllowanceDocSource {
 }
 
 /** โหลดสรุปภารกิจ + แบบร่างในเครื่อง (ซิงก์แถวเมื่อภารกิจเปลี่ยน) */
+/** โหลดสรุปภารกิจ + เอกสารที่บันทึกในฐานข้อมูล (แถว/ยอดซิงก์กับภารกิจเมื่อเขาเปลี่ยน) */
 function useAllowanceDoc<T>(kind: Kind, build: (src: AllowanceDocSource) => T) {
   const { id = "" } = useParams();
   const [summary, setSummary] = useState<MissionSummary | null>(null);
   const [doc, setDoc] = useState<T | null>(null);
   const [edited, setEdited] = useState(false);
   const [sourceSig, setSourceSig] = useState("");
+  const [dbUpdatedAt, setDbUpdatedAt] = useState<string | null>(null);
+  const [dirty, setDirty] = useState(false);
+  const [saving, setSaving] = useState(false);
   const [err, setErr] = useState<string | null>(null);
 
+  /**
+   * เอกสารมาจากฐานข้อมูลเป็นหลัก — ถ้าฐานข้อมูลไม่มี (เช่นยังไม่เคยบันทึก/ออฟไลน์)
+   * จึงใช้แบบร่างในเครื่องนี้เป็นตัวสำรอง กันงานที่ยังไม่ได้บันทึกหายระหว่างรอเน็ต
+   */
   const applySummary = useCallback(
-    (s: MissionSummary) => {
+    async (s: MissionSummary) => {
       const src = summarySource(s);
-      const resolved = resolveAllowanceDoc(kind, id, src, build);
+
+      /* 1) เอกสารที่บันทึกไว้ของภารกิจนี้ · 2) ข้อความตั้งต้นที่ผู้ดูแลแก้ไว้ (ใช้ร่วมทุกภารกิจ) */
+      let stored: StoredAllowanceDoc<T> | null = null;
+      let template: T | null = null;
+      try {
+        const [docRes, tplRes] = await Promise.all([
+          fetchAllowanceDoc<T>(kind, id),
+          fetchAllowanceTemplate<T>(kind).catch(() => null),
+        ]);
+        stored = docRes;
+        template = tplRes?.doc ?? null;
+      } catch {
+        stored = null;
+      }
+
+      const resolved = stored
+        ? mergeStoredDoc(kind, stored, src, build)
+        : resolveAllowanceDoc(kind, id, src, build);
+      const withTemplate = stored
+        ? resolved
+        : { ...resolved, doc: applyAllowanceTemplate(kind, resolved.doc, template) };
+
       setSummary(s);
-      setDoc(resolved.doc);
-      setEdited(resolved.edited);
-      setSourceSig(resolved.sourceSig);
+      setDoc(withTemplate.doc);
+      setEdited(withTemplate.edited);
+      setSourceSig(withTemplate.sourceSig);
+      setDbUpdatedAt(stored?.updatedAt ?? null);
+      setDirty(false);
       setErr(null);
     },
     [build, id, kind],
@@ -96,31 +135,52 @@ function useAllowanceDoc<T>(kind: Kind, build: (src: AllowanceDocSource) => T) {
     reload();
   }, [reload]);
 
-  /* กลับมาที่แท็บหลังสลับไปหน้าอื่น — ดึงภารกิจใหม่ กันรายชื่อ/ยอดค้าง */
+  /* กลับมาที่แท็บหลังสลับไปหน้าอื่น — ดึงเฉพาะตอนไม่มีการแก้ที่ยังไม่บันทึก กันทับงานที่กำลังทำ */
   useEffect(() => {
     const onVis = () => {
-      if (document.visibilityState === "visible") reload({ quiet: true });
+      if (document.visibilityState === "visible" && !dirty) reload({ quiet: true });
     };
     document.addEventListener("visibilitychange", onVis);
     return () => document.removeEventListener("visibilitychange", onVis);
-  }, [reload]);
+  }, [dirty, reload]);
 
   const update = useCallback(
     (fn: (d: T) => T) => {
-      setDoc((cur) => {
-        if (!cur) return cur;
-        const next = fn(cur);
-        saveAllowanceDraft(kind, id, next, sourceSig);
-        return next;
-      });
+      setDoc((cur) => (cur ? fn(cur) : cur));
       setEdited(true);
+      setDirty(true);
     },
-    [id, kind, sourceSig],
+    [],
   );
 
+  /** บันทึกลงฐานข้อมูล — คืน true เมื่อสำเร็จ */
+  const save = useCallback(async (): Promise<boolean> => {
+    if (!doc) return false;
+    setSaving(true);
+    try {
+      const stored = await saveAllowanceDocToServer(kind, id, doc, sourceSig);
+      /* เก็บสำเนาในเครื่องไว้เป็นตัวสำรองด้วย */
+      saveAllowanceDraft(kind, id, doc, sourceSig);
+      setDbUpdatedAt(stored.updatedAt);
+      setDirty(false);
+      setErr(null);
+      return true;
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : "บันทึกไม่สำเร็จ");
+      return false;
+    } finally {
+      setSaving(false);
+    }
+  }, [doc, id, kind, sourceSig]);
+
   async function reset() {
-    if (!confirm("ล้างการแก้ไขในเครื่องนี้ แล้วดึงรายชื่อ/ยอดจากภารกิจใหม่?")) return;
+    if (!confirm("ลบเอกสารที่บันทึกไว้ แล้วสร้างใหม่จากข้อมูลภารกิจ?")) return;
     clearAllowanceDraft(kind, id);
+    try {
+      await deleteAllowanceDocFromServer(kind, id);
+    } catch {
+      /* ไม่มีในฐานข้อมูลอยู่แล้ว — ดำเนินการต่อ */
+    }
     try {
       const s = await apiJson<MissionSummary>(`/api/missions/${id}/summary`, { skipCache: true });
       const src = summarySource(s);
@@ -128,32 +188,42 @@ function useAllowanceDoc<T>(kind: Kind, build: (src: AllowanceDocSource) => T) {
       setDoc(build(src));
       setEdited(false);
       setSourceSig(allowanceSourceSig(kind, src));
+      setDbUpdatedAt(null);
+      setDirty(false);
       setErr(null);
     } catch (e) {
       setErr(e instanceof Error ? e.message : "โหลดข้อมูลภารกิจไม่สำเร็จ");
     }
   }
 
-  return { id, summary, doc, edited, err, update, reset };
+  return { id, summary, doc, edited, dirty, saving, dbUpdatedAt, err, update, save, reset };
 }
 
 function DocShell({
   title,
   missionId,
   summary,
-  edited,
+  dirty,
+  saving,
+  dbUpdatedAt,
   err,
+  onSave,
   onReset,
   onPrint,
+  extraTools,
   children,
 }: {
   title: string;
   missionId: string;
   summary: MissionSummary | null;
-  edited: boolean;
+  dirty: boolean;
+  saving: boolean;
+  dbUpdatedAt: string | null;
   err: string | null;
+  onSave: () => Promise<boolean>;
   onReset: () => void;
   onPrint: () => void;
+  extraTools?: ReactNode;
   children: ReactNode;
 }) {
   return (
@@ -164,9 +234,12 @@ function DocShell({
           summary ? (
             <span className="text-xs">
               {[summary.code, summary.title?.trim()].filter(Boolean).join(" · ") || "ภารกิจ"}
-              {edited ? (
-                <span className="ml-2 font-semibold text-amber-700">
-                  · มีแก้ไขในเครื่องนี้ · รายชื่อ/ยอดจะตามภารกิจเมื่อข้อมูลบุคลากรเปลี่ยน
+              {dirty ? (
+                <span className="ml-2 font-semibold text-amber-700">· มีการแก้ไข — ยังไม่บันทึก</span>
+              ) : dbUpdatedAt ? (
+                <span className="ml-2 text-slate-400">
+                  · บันทึกล่าสุด{" "}
+                  {new Date(dbUpdatedAt).toLocaleString("th-TH", { dateStyle: "medium", timeStyle: "short" })}
                 </span>
               ) : null}
             </span>
@@ -175,9 +248,20 @@ function DocShell({
         backTo={`/missions/${missionId}/summary`}
         extras={
           summary ? (
-            <button type="button" className={toolbarLinkBtnClass} onClick={onReset}>
-              คืนค่าจากภารกิจ
-            </button>
+            <>
+              <button
+                type="button"
+                className={toolbarPrimaryBtnClass}
+                onClick={() => void onSave()}
+                disabled={saving || !dirty}
+              >
+                {saving ? "กำลังบันทึก…" : dirty ? "บันทึก" : "บันทึกแล้ว"}
+              </button>
+              <button type="button" className={toolbarLinkBtnClass} onClick={onReset}>
+                คืนค่าจากภารกิจ
+              </button>
+              {extraTools}
+            </>
           ) : null
         }
         primary={
@@ -194,6 +278,7 @@ function DocShell({
     </div>
   );
 }
+
 
 function TextField({
   label,
@@ -253,7 +338,8 @@ function SignerSection({ signer, onChange }: { signer: AllowanceSigner; onChange
 /* ================= เบี้ยเลี้ยง ธปท. ================= */
 
 export function MissionBotAllowancePage() {
-  const { id, summary, doc, edited, err, update, reset } = useAllowanceDoc<BotAllowanceDoc>("bot", buildBotAllowanceDoc);
+  const { id, summary, doc, dirty, saving, dbUpdatedAt, err, update, save, reset } = useAllowanceDoc<BotAllowanceDoc>("bot", buildBotAllowanceDoc);
+  const [templateOpen, setTemplateOpen] = useState(false);
 
   const set = <K extends keyof BotAllowanceDoc>(k: K, v: BotAllowanceDoc[K]) => update((d) => ({ ...d, [k]: v }));
   const setRow = (key: string, patch: Partial<BotDocRow>) =>
@@ -273,14 +359,23 @@ export function MissionBotAllowancePage() {
   };
 
   return (
+    <>
     <DocShell
       title="รายการเบี้ยเลี้ยง ธปท."
       missionId={id}
       summary={summary}
-      edited={edited}
+      dirty={dirty}
+      saving={saving}
+      dbUpdatedAt={dbUpdatedAt}
       err={err}
       onReset={reset}
+      onSave={save}
       onPrint={print}
+      extraTools={
+        <button type="button" className={toolbarLinkBtnClass} onClick={() => setTemplateOpen(true)}>
+          ข้อความอ้างอิงตั้งต้น
+        </button>
+      }
     >
       {doc ? (
         <>
@@ -394,6 +489,8 @@ export function MissionBotAllowancePage() {
         </>
       ) : null}
     </DocShell>
+      <AllowanceTemplateModal kind="bot" open={templateOpen} onClose={() => setTemplateOpen(false)} />
+    </>
   );
 }
 
@@ -410,7 +507,7 @@ const emptyPoliceRow = (): PoliceDocRow => ({
 });
 
 export function MissionPoliceAllowancePage() {
-  const { id, summary, doc, edited, err, update, reset } = useAllowanceDoc<PoliceAllowanceDoc>("police", buildPoliceAllowanceDoc);
+  const { id, summary, doc, dirty, saving, dbUpdatedAt, err, update, save, reset } = useAllowanceDoc<PoliceAllowanceDoc>("police", buildPoliceAllowanceDoc);
 
   const set = <K extends keyof PoliceAllowanceDoc>(k: K, v: PoliceAllowanceDoc[K]) => update((d) => ({ ...d, [k]: v }));
   const setGroup = (gKey: string, fn: (rows: PoliceDocRow[]) => PoliceDocRow[], title?: string) =>
@@ -434,9 +531,12 @@ export function MissionPoliceAllowancePage() {
       title="ค่าตอบแทนบุคคลภายนอก"
       missionId={id}
       summary={summary}
-      edited={edited}
+      dirty={dirty}
+      saving={saving}
+      dbUpdatedAt={dbUpdatedAt}
       err={err}
       onReset={reset}
+      onSave={save}
       onPrint={print}
     >
       {doc ? (

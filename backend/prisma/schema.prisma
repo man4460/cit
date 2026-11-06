@@ -886,6 +886,7 @@ model Mission {
   evaluationLink       MissionEvaluationLink?
   evaluationResponses  MissionEvaluationResponse[]
   incidents            MissionIncident[]
+  allowanceDocs        MissionAllowanceDoc[]
 }
 
 enum MissionIncidentSeverity {
@@ -962,6 +963,38 @@ model MissionEvaluationResponse {
   updatedAt     DateTime  @updatedAt
 
   @@unique([missionId, personnelId])
+  @@index([missionId])
+}
+
+/// ข้อความตั้งต้นของเอกสารเบิกเบี้ยเลี้ยง (ใช้ร่วมทุกภารกิจ) — แก้ที่เดียวมีผลกับทุกภารกิจที่ยังไม่บันทึกทับ
+model AllowanceDocTemplate {
+  /// bot | police
+  kind          String   @id
+  /// ค่าตั้งต้นของเอกสาร (note, rules …) ที่ผสานทับค่าที่สร้างจากภารกิจ
+  doc           Json
+  updatedById   String?
+  updatedByName String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+}
+
+/// เอกสารเบิกเบี้ยเลี้ยงของภารกิจ (แบบแก้ไขได้) — เก็บทั้งฉบับเป็น JSON
+model MissionAllowanceDoc {
+  id            String   @id @default(uuid())
+  missionId     String
+  mission       Mission  @relation(fields: [missionId], references: [id], onDelete: Cascade)
+  /// "bot" = เบี้ยเลี้ยง ธปท. · "police" = ค่าตอบแทนบุคคลภายนอก
+  kind          String
+  /// เอกสารที่แก้แล้วทั้งฉบับ (rows, note, rules, signer …)
+  doc           Json
+  /// ลายนิ้วมือของข้อมูลภารกิจตอนบันทึก — ใช้ตัดสินว่าต้องซิงก์แถวใหม่หรือไม่
+  sourceSig     String   @default("")
+  updatedById   String?
+  updatedByName String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@unique([missionId, kind])
   @@index([missionId])
 }
 

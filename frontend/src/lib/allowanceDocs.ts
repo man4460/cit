@@ -12,6 +12,7 @@ import {
   type MissionPoliceStationRow,
   type PoliceAllowancePerson,
 } from "./policeAllowancePrint";
+import { apiJson } from "../api/client";
 
 export type AllowanceDocSource = {
   missionId: string;
@@ -62,10 +63,10 @@ export type BotAllowanceDoc = {
 };
 
 const BOT_RULES = [
-  "ตามประกาศธนาคารแห่งประเทศไทย ที่ สนจ1. 14/2549 เรื่องอัตราเบี้ยเลี้ยงเดินทางไปปฏิบัติงานนอกที่ตั้งสำนักงาน และค่าใช้จ่ายในการเดินทางของพนักงานธนาคารแห่งประเทศไทย",
-  "ตามหนังสือฝ่ายบริหารทั่วไป ที่ ฝบท. 19/2566 ลงวันที่ 20 เมษายน 2566 เรื่องอัตราเบี้ยเลี้ยงในการเดินทางไปปฏิบัติงานเกี่ยวกับธนบัตรและเหรียญกษาปณ์",
-  "ตามหนังสือฝ่ายบริหารทั่วไป ที่ ฝบท. 65/2567 ลงวันที่ 22 พฤศจิกายน 2567 เรื่องการปรับปรุงอัตราเบี้ยเลี้ยงในการเดินทางไปปฏิบัติงานเกี่ยวกับธนบัตรและเหรียญกษาปณ์",
-  "ตามหนังสือฝ่ายบริหารทั่วไป ที่ ฝบท. 19/2568 ลงวันที่ 28 มีนาคม 2568 เรื่องอัตราเงินช่วยเหลือค่าพาหนะเดินทางไป-กลับในการปฏิบัติงานเกี่ยวกับธนบัตรและเหรียญกษาปณ์",
+  "การเบิกเบี้ยเลี้ยงเป็นไปตามระเบียบธนาคารแห่งประเทศไทย ที่ พ 93 / 2560 เรื่อง สิทธิประโยชน์ค่าใช้จ่ายเดินทางไปในงานของ ธปท. (เริ่มนับตั้งแต่ออกจากสถานที่อยู่เวลาประมาณ 03.00 น. เพื่อมาเตรียมอุปกรณ์)",
+  "การเบิกเบี้ยพิเศษสำหรับภารกิจขนส่งธนบัตร เป็นไปตามบันทึกเลขที่ 4/2566 ลงวันที่ 21 มิถุนายน 2566 เรื่อง ทบทวนหลักเกณฑ์การเบิกค่าใช้จ่ายงานขนส่งธนบัตร",
+  "การเบิกเงินช่วยเหลือค่าพาหนะ เป็นไปตามบันทึกเลขที่ 4/2566 ลงวันที่ 21 มิถุนายน 2566 เรื่อง ทบทวนหลักเกณฑ์การเบิกค่าใช้จ่ายงานขนส่งธนบัตร",
+  "ตามรายชื่อข้างต้นนี้ ได้มีคำสั่งให้ไปปฏิบัติหน้าที่จริง ตามภารกิจที่ได้รับมอบหมายจากผู้บังคับบัญชาและใช้เป็นเอกสารอ้างอิงในการเบิกค่าที่พัก ค่าเบี้ยเลี้ยง และค่าใช้จ่ายอื่น ๆ ที่เกี่ยวข้องในการปฏิบัติภารกิจในครั้งนี้",
 ].join("\n");
 
 export function botRowTotal(r: BotDocRow): number {
@@ -199,6 +200,107 @@ export function buildPoliceAllowanceDoc(src: AllowanceDocSource): PoliceAllowanc
 export function policeDocTotal(doc: PoliceAllowanceDoc): number {
   return doc.groups.reduce((s, g) => s + g.rows.reduce((t, r) => t + (Number.isFinite(r.amount) ? r.amount : 0), 0), 0);
 }
+
+/* ---------- เอกสารที่บันทึกในฐานข้อมูล ---------- */
+/* ---------- ข้อความตั้งต้นใช้ร่วมทุกภารกิจ (เก็บในฐานข้อมูล) ---------- */
+
+export type AllowanceTemplate<T> = {
+  kind: AllowanceDocKind;
+  doc: T | null;
+  updatedAt: string | null;
+  updatedByName: string | null;
+};
+
+/** ข้อความตั้งต้นที่ผู้ดูแลแก้ไว้ — doc = null แปลว่ายังไม่เคยตั้งค่า (ใช้ค่าจากโค้ด) */
+export async function fetchAllowanceTemplate<T>(kind: AllowanceDocKind): Promise<AllowanceTemplate<T>> {
+  return apiJson<AllowanceTemplate<T>>(`/api/missions/allowance-doc-template/${kind}`, { skipCache: true });
+}
+
+/** บันทึกข้อความตั้งต้น (เฉพาะผู้ดูแลระบบ) — มีผลกับทุกภารกิจที่ยังไม่บันทึกทับ */
+export async function saveAllowanceTemplate<T>(kind: AllowanceDocKind, doc: T): Promise<AllowanceTemplate<T>> {
+  return apiJson<AllowanceTemplate<T>>(`/api/missions/allowance-doc-template/${kind}`, {
+    method: "PUT",
+    body: JSON.stringify({ doc }),
+  });
+}
+
+/** ผสานข้อความตั้งต้นจากฐานข้อมูลทับค่าที่สร้างจากโค้ด (ฟิลด์ที่ตั้งไว้เท่านั้น) */
+export function applyAllowanceTemplate<T>(kind: AllowanceDocKind, base: T, template: T | null): T {
+  if (!template) return base;
+  const t = template as Record<string, unknown>;
+  const out = { ...(base as Record<string, unknown>) };
+  for (const key of kind === "bot" ? ["note", "rules"] : ["note"]) {
+    const v = t[key];
+    if (typeof v === "string" && v.trim()) out[key] = v;
+  }
+  return out as T;
+}
+
+
+
+export type AllowanceDocKind = "bot" | "police";
+
+export type StoredAllowanceDoc<T> = {
+  doc: T;
+  sourceSig: string;
+  updatedAt: string;
+  updatedByName: string | null;
+};
+
+/** ดึงเอกสารที่เคยบันทึกไว้ในฐานข้อมูล — null = ยังไม่เคยบันทึก */
+export async function fetchAllowanceDoc<T>(
+  kind: AllowanceDocKind,
+  missionId: string,
+): Promise<StoredAllowanceDoc<T> | null> {
+  try {
+    return await apiJson<StoredAllowanceDoc<T>>(`/api/missions/${missionId}/allowance-doc/${kind}`, {
+      skipCache: true,
+    });
+  } catch (e) {
+    /* 404 = ยังไม่มีเอกสาร — คืน null, error อื่นให้ผู้เรียกจัดการ */
+    if (e instanceof Error && /ยังไม่มีเอกสาร/.test(e.message)) return null;
+    throw e;
+  }
+}
+
+/** บันทึกเอกสารทั้งฉบับลงฐานข้อมูล (upsert ต่อภารกิจ + ประเภท) */
+export async function saveAllowanceDocToServer(
+  kind: AllowanceDocKind,
+  missionId: string,
+  doc: unknown,
+  sourceSig: string,
+): Promise<StoredAllowanceDoc<unknown>> {
+  return apiJson<StoredAllowanceDoc<unknown>>(`/api/missions/${missionId}/allowance-doc/${kind}`, {
+    method: "PUT",
+    body: JSON.stringify({ doc, sourceSig }),
+  });
+}
+
+/** ลบเอกสารที่บันทึกไว้ ให้กลับไปใช้ค่าที่สร้างจากภารกิจ */
+export async function deleteAllowanceDocFromServer(kind: AllowanceDocKind, missionId: string): Promise<void> {
+  await apiJson(`/api/missions/${missionId}/allowance-doc/${kind}`, { method: "DELETE" });
+}
+
+/** ผสานเอกสารจากฐานข้อมูลกับข้อมูลภารกิจปัจจุบัน (ลายนิ้วมือตรง = ใช้ที่บันทึกไว้ทั้งฉบับ) */
+export function mergeStoredDoc<T>(
+  kind: AllowanceDocKind,
+  stored: StoredAllowanceDoc<T> | null,
+  src: AllowanceDocSource,
+  build: (src: AllowanceDocSource) => T,
+): ResolvedAllowanceDoc<T> {
+  const sourceSig = allowanceSourceSig(kind, src);
+  const fresh = build(src);
+  if (!stored) return { doc: fresh, edited: false, sourceSig };
+  if (stored.sourceSig && stored.sourceSig === sourceSig) {
+    return { doc: stored.doc, edited: true, sourceSig };
+  }
+  const merged =
+    kind === "bot"
+      ? mergeBotEditorial(fresh as BotAllowanceDoc, stored.doc as BotAllowanceDoc)
+      : mergePoliceEditorial(fresh as PoliceAllowanceDoc, stored.doc as PoliceAllowanceDoc);
+  return { doc: merged as T, edited: true, sourceSig };
+}
+
 
 /* ---------- แบบร่างในเครื่อง ---------- */
 

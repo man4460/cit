@@ -270,6 +270,25 @@ export function roundToThousand(value: number): number {
   return Math.ceil(Math.round(value * 100) / 100 / 1000) * 1000;
 }
 
+/**
+ * ยอดรวมของหัวข้อใหญ่ — แสดงเฉพาะหัวข้อที่มีรายการย่อย เพราะยอดของหัวข้อที่ไม่มีรายการย่อย
+ * ซ้ำกับบรรทัดของหัวข้อเอง (และจะบวกซ้ำกับ "รวมขออนุมัติ" ที่รวมรายบรรทัดอยู่แล้ว)
+ */
+export function groupSubtotal(line: MissionEstimateLine, allLines: MissionEstimateLine[]): number | null {
+  if (line.kind !== "GROUP" || !line.groupCode) return null;
+  const hasItems = allLines.some((l) => l.kind === "ITEM" && l.groupCode === line.groupCode);
+  if (!hasItems) return null;
+  let sum = 0;
+  for (const l of allLines) {
+    if (l.kind !== "ITEM" || l.groupCode !== line.groupCode) continue;
+    if (l.includeInTotal === false) continue;
+    const v = Number(l.amount);
+    if (Number.isFinite(v)) sum += v;
+  }
+  return sum;
+}
+
+
 export function computeEstimateTotals(lines: MissionEstimateLine[]) {
   const groupSubtotals = new Map<string, { current: number; previous: number }>();
   let spend = 0;

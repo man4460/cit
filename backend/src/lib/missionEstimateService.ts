@@ -6,6 +6,7 @@ import {
   computeEstimateTotals,
   lineCurrentAmount,
   lineKey,
+  migrateEstimateLinesLayout,
   normalizeEstimatePayoutMethods,
   POLICE_COUNT_AMOUNT_ITEM_CODES,
   type EstimateLineInput,
@@ -173,7 +174,7 @@ export function serializeEstimate(row: {
     approvalTotal: toNumStr(row.approvalTotal),
     createdAt: row.createdAt.toISOString(),
     updatedAt: row.updatedAt.toISOString(),
-    lines: normalizeEstimatePayoutMethods(row.lines.map(serializeLine)),
+    lines: migrateEstimateLinesLayout(normalizeEstimatePayoutMethods(row.lines.map(serializeLine))),
     mission: row.mission
       ? {
           id: row.mission.id,

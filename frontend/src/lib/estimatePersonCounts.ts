@@ -73,9 +73,9 @@ export const ESTIMATE_QTY_SOURCE_BY_ITEM: Record<string, EstimateQtySource> = {
   "5.1": "bot",
 };
 
-/** รายการที่ลิงก์จากจนท.ธปท. — 5.1 จำนวนคน×อัตราที่พัก · 5.2–8.1 ยอดรวม
+/** รายการที่ลิงก์จากจนท.ธปท. — 5.1 จำนวนคน×อัตราที่พัก · 5.2–5.4 ยอดรวม
  *  หมายเหตุ: หน้าประมาณการส่ง defaultLodgingRate=1400 · หน้าค่าใช้จ่ายไม่ใช้ค่านี้ปนกัน */
-export const BOT_AMOUNT_ITEM_CODES = ["5.1", "5.2", "5.3", "8.1"] as const;
+export const BOT_AMOUNT_ITEM_CODES = ["5.1", "5.2", "5.3", "5.4"] as const;
 export type BotAmountItemCode = (typeof BOT_AMOUNT_ITEM_CODES)[number];
 
 export type BotLineAmounts = Record<BotAmountItemCode, number>;
@@ -84,7 +84,7 @@ export const EMPTY_BOT_LINE_AMOUNTS: BotLineAmounts = {
   "5.1": 0,
   "5.2": 0,
   "5.3": 0,
-  "8.1": 0,
+  "5.4": 0,
 };
 
 export function applyBotLineAmountsToLines<
@@ -132,7 +132,7 @@ export function applyBotLineAmountsToLines<
         amount: String(botCount * unitRate),
       };
     }
-    if (code !== "5.2" && code !== "5.3" && code !== "8.1") return line;
+    if (code !== "5.2" && code !== "5.3" && code !== "5.4") return line;
     const sum = Math.max(0, amounts[code] ?? 0);
     return {
       ...line,

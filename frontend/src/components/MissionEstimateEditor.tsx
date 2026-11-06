@@ -23,6 +23,7 @@ import {
   lineCurrentAmount,
   mergeLegacyEnlistedEstimateLines,
   patchEstimateLine,
+  groupSubtotal,
   templateToFormLines,
 } from "../lib/missionEstimate";
 import { toolbarLinkBtnClass } from "../lib/uiTokens";
@@ -746,7 +747,7 @@ export const MissionEstimateEditor = forwardRef<MissionEstimateEditorHandle, Mis
                 const delta = booked && Number.isFinite(current) && Number.isFinite(previous) ? current - previous : NaN;
                 const isGroup = line.kind === "GROUP";
                 const isItem = isEstimateItemLine(line);
-                const groupTotal = totals.groupSubtotals.get(line.groupCode ?? "");
+                const groupSum = groupSubtotal(line, lines);
                 const isLastGroup9 = line.groupCode === "9" && lines[idx + 1]?.groupCode !== "9";
                 return (
                   <Fragment key={`${line.kind}-${line.itemCode ?? line.groupCode}-${idx}`}>
@@ -790,11 +791,6 @@ export const MissionEstimateEditor = forwardRef<MissionEstimateEditorHandle, Mis
                             ลบ
                           </button>
                         ) : null}
-                        {isGroup && line.includeInTotal === false && groupTotal ? (
-                          <span className="ml-1 shrink-0 text-[10px] font-semibold tabular-nums text-[#4d47b6]">
-                            รวม {formatBaht(groupTotal.current)}
-                          </span>
-                        ) : null}
                       </span>
                     </td>
                     <td className="border-b border-slate-100 px-0.5 py-1">
@@ -820,7 +816,11 @@ export const MissionEstimateEditor = forwardRef<MissionEstimateEditorHandle, Mis
                       ) : null}
                     </td>
                     <td className="border-b border-slate-100 px-2 py-1">
-                      {line.includeInTotal === false && isItem ? (
+                      {groupSum != null ? (
+                        <p className="py-1 text-right text-sm font-black tabular-nums text-[#1e1b3a]" title="รวมทั้งหัวข้อ">
+                          {formatBaht(groupSum)}
+                        </p>
+                      ) : line.includeInTotal === false && isItem ? (
                         <p className="py-1 text-right text-xs tabular-nums text-slate-400" title="ยอดอ้างอิงตามอัตรา — ไม่รวมในผลรวม">
                           {formatBaht(current)}
                         </p>

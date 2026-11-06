@@ -13,11 +13,13 @@ import {
   computeEstimateTotals,
   estimateLineKey,
   formatThaiDateRangeLabel,
+  isEstimateItemLine,
   isHundredRoundedEstimateLine,
   isoToLocalDatetimeValue,
   lineCurrentAmount,
   normalizeHundredRoundedLine,
   patchEstimateLine,
+  groupSubtotal,
   templateToFormLines,
 } from "../lib/missionEstimate";
 import {
@@ -448,7 +450,8 @@ export function MissionEstimateFormPage() {
                   const delta =
                     Number.isFinite(current) && Number.isFinite(previous) ? current - previous : NaN;
                   const isGroup = line.kind === "GROUP";
-                  const groupTotal = totals.groupSubtotals.get(line.groupCode ?? "");
+                  const isItem = isEstimateItemLine(line);
+                  const groupSum = groupSubtotal(line, lines);
                   return (
                     <tr key={`${line.kind}-${line.itemCode ?? line.groupCode}-${idx}`} className={isGroup ? "bg-[#faf9ff]" : ""}>
                       <td className="border-b border-slate-100 px-2 py-1.5 font-mono text-[11px] text-slate-500">
@@ -458,11 +461,6 @@ export function MissionEstimateFormPage() {
                         {line.name}
                         {line.payoutMethod ? (
                           <span className="ml-2 text-[10px] font-medium text-slate-500">{line.payoutMethod}</span>
-                        ) : null}
-                        {isGroup && line.includeInTotal === false && groupTotal ? (
-                          <span className="ml-2 text-[10px] font-semibold tabular-nums text-[#4d47b6]">
-                            รวม {formatBaht(groupTotal.current)}
-                          </span>
                         ) : null}
                       </td>
                       <td className="border-b border-slate-100 px-1 py-1">
@@ -487,8 +485,16 @@ export function MissionEstimateFormPage() {
                           />
                         ) : null}
                       </td>
-                      <td className="border-b border-slate-100 px-1 py-1">
-                        {line.includeInTotal === false ? null : isHundredRoundedEstimateLine(line) ||
+                      <td className="border-b border-slate-100 px-2 py-1">
+                        {groupSum != null ? (
+                          <p className="py-1 text-right text-sm font-black tabular-nums text-[#1e1b3a]" title="รวมทั้งหัวข้อ">
+                            {formatBaht(groupSum)}
+                          </p>
+                        ) : line.includeInTotal === false && isItem ? (
+                          <p className="py-1 text-right text-xs tabular-nums text-slate-400" title="ยอดอ้างอิงตามอัตรา — ไม่รวมในผลรวม">
+                            {formatBaht(current)}
+                          </p>
+                        ) : line.includeInTotal === false ? null : isHundredRoundedEstimateLine(line) ||
                           (line.amountEditable && !(line.qtyEditable && line.rateEditable)) ? (
                           <CommaNumberInput
                             aria-label={`จำนวนเงิน ${line.name}`}
@@ -498,9 +504,7 @@ export function MissionEstimateFormPage() {
                             onChange={(raw) => patchLine(idx, { amount: raw })}
                           />
                         ) : (
-                          <p className="px-2 py-1 text-right text-sm font-semibold tabular-nums">
-                            {formatBaht(current)}
-                          </p>
+                          <p className="py-1 text-right text-sm font-semibold tabular-nums">{formatBaht(current)}</p>
                         )}
                       </td>
                       <td className="border-b border-slate-100 px-2 py-1.5 text-right tabular-nums text-slate-600">

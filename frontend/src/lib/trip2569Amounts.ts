@@ -34,15 +34,15 @@ export function applyTrip2569ActualLumpSums(
       if (skip?.has(groupCode) || skip?.has(key)) return line;
       const raw = amountsByKey[key] ?? amountsByKey[groupCode];
       if (raw == null) return line;
-      // สำรอง 8.2 ไม่ดึงจากสรุป trip
+      // สำรอง (8.1) ไม่ดึงจากสรุป trip
       if (groupCode === "8") return line;
       return toLumpSumFormLine({ ...line, includeInTotal: true }, raw);
     }
 
     if (!itemCode) return line;
     if (skip?.has(itemCode)) return line;
-    // สำรองไม่ได้อยู่ในสรุป trip 69 — เคลียร์เพื่อไม่ให้ยอดรวมเพี้ยนจาก Excel
-    if (itemCode === "8.2") {
+    // เงินสำรอง (8.1) ไม่อยู่ในสรุป trip 69 — เคลียร์เพื่อไม่ให้ยอดรวมเพี้ยนจาก Excel
+    if (Boolean(line.isReserve) || itemCode === "8.1") {
       return toLumpSumFormLine({ ...line, isReserve: true }, 0);
     }
 
@@ -58,12 +58,12 @@ export function hasTrip2569Amounts(
   return Boolean(amounts && Object.keys(amounts).length > 0);
 }
 
-/** ผลรวมยอดจากแผนที่ Excel (ไม่รวม 8.2 สำรอง) */
+/** ผลรวมยอดจากแผนที่ Excel (ไม่รวม 8.1 สำรอง) */
 export function sumTrip2569OperatingAmounts(amountsByKey: Record<string, number>): number {
   let sum = 0;
   for (const [k, v] of Object.entries(amountsByKey)) {
     if (!Number.isFinite(v)) continue;
-    if (k === "8.2") continue;
+    if (k === "8.1") continue;
     if (k.endsWith("Combined")) continue;
     if (k === "2.1e" || k === "2.2e" || k === "2.3e") continue;
     sum += v;
@@ -129,7 +129,7 @@ export function trip2569ActualSkipCodes(
     "5.1",
     "5.2",
     "5.3",
-    "8.1",
+    "5.4",
     "6",
   ]);
   if (extras) {

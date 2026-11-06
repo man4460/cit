@@ -16,6 +16,7 @@ import {
   type InsuranceExportSettings,
 } from "../lib/missionInsuranceExcel.js";
 import { prisma } from "../lib/prisma.js";
+import { requireAdmin } from "../middleware/auth.js";
 import { reactivatePersonnel } from "../lib/personnelRetention.js";
 import { routeParam } from "../lib/routeParam.js";
 import { extractTextFromBuffer } from "../lib/libraryDocumentExtract.js";
@@ -1590,6 +1591,129 @@ missionsRouter.delete("/:id/attachments/:attachmentId", async (req, res, next) =
     next(e);
   }
 });
+
+/** เอกสารเบิกเบี้ยเลี้ยง (bot = ธปท. · police = ค่าตอบแทนบุคคลภายนอก) — บันทึกทั้งฉบับเป็น JSON ต่อภารกิจ */
+const ALLOWANCE_DOC_KINDS = ["bot", "police"] as const;
+type AllowanceDocKind = (typeof ALLOWANCE_DOC_KINDS)[number];
+
+function allowanceDocKind(v: string): AllowanceDocKind | null {
+  return (ALLOWANCE_DOC_KINDS as readonly string[]).includes(v) ? (v as AllowanceDocKind) : null;
+}
+
+function serializeAllowanceDoc(
+  row: { kind: string; doc: unknown; sourceSig: string; updatedAt: Date; updatedByName: string | null },
+) {
+  return {
+    kind: row.kind,
+    doc: row.doc,
+    sourceSig: row.sourceSig,
+    updatedAt: row.updatedAt.toISOString(),
+    updatedByName: row.updatedByName,
+  };
+}
+
+/** ข้อความตั้งต้นของเอกสาร (ใช้ร่วมทุกภารกิจ) — เฉพาะ ADMIN แก้ได้ */
+missionsRouter.get("/allowance-doc-template/:kind", async (req, res, next) => {
+  try {
+    const kind = allowanceDocKind(routeParam(req.params.kind));
+    if (!kind) return res.status(400).json({ error: "ประเภทเอกสารไม่ถูกต้อง (bot | police)" });
+    const row = await prisma.allowanceDocTemplate.findUnique({ where: { kind } });
+    if (!row) return res.json({ kind, doc: null, updatedAt: null, updatedByName: null });
+    res.json({
+      kind: row.kind,
+      doc: row.doc,
+      updatedAt: row.updatedAt.toISOString(),
+      updatedByName: row.updatedByName,
+    });
+  } catch (e) {
+    next(e);
+  }
+});
+
+missionsRouter.put("/allowance-doc-template/:kind", requireAdmin, async (req, res, next) => {
+  try {
+    const kind = allowanceDocKind(routeParam(req.params.kind));
+    if (!kind) return res.status(400).json({ error: "ประเภทเอกสารไม่ถูกต้อง (bot | police)" });
+    const body = (req.body ?? {}) as { doc?: unknown };
+    if (!body.doc || typeof body.doc !== "object" || Array.isArray(body.doc))
+      return res.status(400).json({ error: "ต้องส่ง doc เป็นออบเจ็กต์" });
+    const doc = body.doc as Prisma.InputJsonValue;
+    const userId = req.auth?.userId;
+    const updater = userId
+      ? await prisma.user.findUnique({ where: { id: userId }, select: { fullName: true, username: true } })
+      : null;
+    const updatedByName = updater ? updater.fullName?.trim() || updater.username : null;
+    const row = await prisma.allowanceDocTemplate.upsert({
+      where: { kind },
+      create: { kind, doc, updatedById: userId ?? null, updatedByName },
+      update: { doc, updatedById: userId ?? null, updatedByName },
+    });
+    res.json({ kind: row.kind, doc: row.doc, updatedAt: row.updatedAt.toISOString(), updatedByName: row.updatedByName });
+  } catch (e) {
+    next(e);
+  }
+});
+
+
+missionsRouter.get("/:id/allowance-doc/:kind", async (req, res, next) => {
+  try {
+    const kind = allowanceDocKind(routeParam(req.params.kind));
+    if (!kind) return res.status(400).json({ error: "ประเภทเอกสารไม่ถูกต้อง (bot | police)" });
+    const row = await prisma.missionAllowanceDoc.findUnique({
+      where: { missionId_kind: { missionId: routeParam(req.params.id), kind } },
+    });
+    if (!row) return res.status(404).json({ error: "ยังไม่มีเอกสารที่บันทึกไว้" });
+    res.json(serializeAllowanceDoc(row));
+  } catch (e) {
+    next(e);
+  }
+});
+
+missionsRouter.put("/:id/allowance-doc/:kind", async (req, res, next) => {
+  try {
+    const missionId = routeParam(req.params.id);
+    const kind = allowanceDocKind(routeParam(req.params.kind));
+    if (!kind) return res.status(400).json({ error: "ประเภทเอกสารไม่ถูกต้อง (bot | police)" });
+    const body = (req.body ?? {}) as { doc?: unknown; sourceSig?: unknown };
+    if (!body.doc || typeof body.doc !== "object" || Array.isArray(body.doc))
+      return res.status(400).json({ error: "ต้องส่ง doc เป็นออบเจ็กต์" });
+
+    const mission = await prisma.mission.findUnique({
+      where: { id: missionId },
+      select: { id: true, personnel: { select: { personnelId: true } } },
+    });
+    if (!mission) return res.status(404).json({ error: "ไม่พบภารกิจ" });
+
+    const doc = body.doc as Prisma.InputJsonValue;
+    const sourceSig = typeof body.sourceSig === "string" ? body.sourceSig : "";
+    const userId = req.auth?.userId;
+    const updater = userId
+      ? await prisma.user.findUnique({ where: { id: userId }, select: { fullName: true, username: true } })
+      : null;
+    const updatedByName = updater ? updater.fullName?.trim() || updater.username : null;
+
+    const row = await prisma.missionAllowanceDoc.upsert({
+      where: { missionId_kind: { missionId, kind } },
+      create: { missionId, kind, doc, sourceSig, updatedById: userId ?? null, updatedByName },
+      update: { doc, sourceSig, updatedById: userId ?? null, updatedByName },
+    });
+    res.json(serializeAllowanceDoc(row));
+  } catch (e) {
+    next(e);
+  }
+});
+
+missionsRouter.delete("/:id/allowance-doc/:kind", async (req, res, next) => {
+  try {
+    const kind = allowanceDocKind(routeParam(req.params.kind));
+    if (!kind) return res.status(400).json({ error: "ประเภทเอกสารไม่ถูกต้อง (bot | police)" });
+    await prisma.missionAllowanceDoc.deleteMany({ where: { missionId: routeParam(req.params.id), kind } });
+    res.status(204).send();
+  } catch (e) {
+    next(e);
+  }
+});
+
 
 missionsRouter.get("/:id", async (req, res, next) => {
   try {

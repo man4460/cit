@@ -312,7 +312,7 @@ export function defaultEstimateTemplate(): EstimateTemplate {
       sortOrder: 16,
       groupCode: "1",
       itemCode: "1.6",
-      name: "อาหารเย็น จนท.ตร. (เดินทางไป)",
+      name: "อาหารเย็น (เดินทางไป)",
       payoutMethod: ADVANCE,
       quantity: 26,
       unitPrice: 120,
@@ -340,7 +340,7 @@ export function defaultEstimateTemplate(): EstimateTemplate {
       sortOrder: 18,
       groupCode: "1",
       itemCode: "1.8",
-      name: "อาหารเย็น จนท.ตร. (เดินทางกลับ)",
+      name: "อาหารเย็น (เดินทางกลับ)",
       payoutMethod: ADVANCE,
       quantity: 27,
       unitPrice: 150,
@@ -488,7 +488,7 @@ export function defaultEstimateTemplate(): EstimateTemplate {
     groupHeader({
       sortOrder: 50,
       groupCode: "5",
-      name: "เงินช่วยเหลือขนย้ายทรัพย์สินมีค่า",
+      name: "ค่าใช้จ่ายเดินทางขนย้ายทรัพย์สินมีค่า",
       expenseTypeName: "ค่าที่พัก",
     }),
     item({
@@ -533,6 +533,20 @@ export function defaultEstimateTemplate(): EstimateTemplate {
       amountEditable: true,
       expenseTypeName: "ค่าตอบแทน",
     }),
+    item({
+      sortOrder: 53.5,
+      groupCode: "5",
+      itemCode: "5.4",
+      name: "เบี้ยพิเศษสำหรับภารกิจขนส่ง",
+      payoutMethod: BILL,
+      quantity: null,
+      unitPrice: null,
+      amount: 46200,
+      qtyEditable: false,
+      rateEditable: false,
+      amountEditable: true,
+      expenseTypeName: "ค่าตอบแทน",
+    }),
     leafGroup({
       sortOrder: 60,
       groupCode: "6",
@@ -552,29 +566,15 @@ export function defaultEstimateTemplate(): EstimateTemplate {
     groupHeader({
       sortOrder: 80,
       groupCode: "8",
-      name: "เงินช่วยเหลืออื่นๆ",
-      // ไม่ใส่วิธีจ่ายที่หัวข้อ — อยู่ที่รายการย่อย 8.1 / 8.2
-      expenseTypeName: "ค่าเงินช่วยเหลือ",
-    }),
-    item({
-      sortOrder: 81,
-      groupCode: "8",
-      itemCode: "8.1",
-      name: "เบี้ยพิเศษสำหรับภารกิจขนส่ง",
-      payoutMethod: BILL,
-      quantity: null,
-      unitPrice: null,
-      amount: 46200,
-      qtyEditable: false,
-      rateEditable: false,
-      amountEditable: true,
+      name: "อื่นๆ",
+      // ไม่ใส่วิธีจ่ายที่หัวข้อ — อยู่ที่รายการย่อย 8.1
       expenseTypeName: "ค่าเงินช่วยเหลือ",
     }),
     item({
       sortOrder: 82,
       groupCode: "8",
-      itemCode: "8.2",
-      name: "เงินสำรองค่าใช้จ่าย",
+      itemCode: "8.1",
+      name: "เงินสำรองค่าใช้จ่ายและกรณีฉุกเฉิน",
       payoutMethod: ADVANCE,
       quantity: null,
       unitPrice: null,
@@ -627,6 +627,81 @@ export function lineKey(line: { kind: string; groupCode?: string | null; itemCod
 }
 
 /** ปรับวิธีจ่ายตามกฎล่าสุด — ใช้กับเทมเพลตใหม่และประมาณการที่บันทึกไว้แล้ว */
+/**
+ * ย้ายรายการตามโครงที่แก้ (ใช้กับประมาณการที่บันทึกไว้แล้ว):
+ * - 8.1 เดิม «เบี้ยพิเศษสำหรับภารกิจขนส่ง» → 5.4
+ * - 8.2 เดิม «เงินสำรองค่าใช้จ่าย» → 8.1
+ * - ชื่อ «อาหารเย็น จนท.ตร.» → «อาหารเย็น»
+ * ยอด/จำนวน/อัตราคงเดิมทั้งหมด
+ */
+export function migrateEstimateLinesLayout<T extends EstimateLineInput>(lines: T[]): T[] {
+  let changed = false;
+  const out = lines.map((line) => {
+    const code = line.itemCode ?? "";
+    let next: T = line;
+
+    if (code === "8.1" && /เบี้ยพิเศษ/.test(line.name ?? "")) {
+      next = { ...line, groupCode: "5", itemCode: "5.4", payoutMethod: "บิลเรียกเก็บ" } as T;
+      changed = true;
+    } else if (code === "8.2") {
+      next = { ...line, itemCode: "8.1" } as T;
+      changed = true;
+    }
+
+    if (/\(เดินทาง(ไป|กลับ)\)/.test(next.name ?? "") && /จนท\.ตร\./.test(next.name ?? "")) {
+      next = { ...next, name: (next.name ?? "").replace(/จนท\.ตร\.\s*/g, "") } as T;
+      changed = true;
+    }
+
+    if (next.kind === "GROUP" && (next.groupCode ?? "") === "5" && /เงินช่วยเหลือขนย้ายทรัพย์สินมีค่า/.test(next.name ?? "")) {
+      next = { ...next, name: "ค่าใช้จ่ายเดินทางขนย้ายทรัพย์สินมีค่า" } as T;
+      changed = true;
+    }
+
+    if (/^เงินสำรองค่าใช้จ่าย$/.test((next.name ?? "").trim()) && (Boolean(next.isReserve) || next.itemCode === "8.1")) {
+      next = { ...next, name: "เงินสำรองค่าใช้จ่ายและกรณีฉุกเฉิน" } as T;
+      changed = true;
+    }
+
+    if (next.kind === "GROUP" && (next.groupCode ?? "") === "8" && /เงินช่วยเหลืออื่นๆ/.test(next.name ?? "")) {
+      next = { ...next, name: "อื่นๆ" } as T;
+      changed = true;
+    }
+
+    return next;
+  });
+
+  if (!changed) return lines as T[];
+
+  /*
+   * จัดลำดับใหม่จากตำแหน่งจริงในไฟล์ที่บันทึกไว้ (sortOrder ของแต่ละภารกิจไม่เท่ากัน)
+   * — 5.4 ต่อท้ายกลุ่ม 5, 8.1 ต่อท้ายหัวข้อ 8, คงลำดับแถวอื่นตามเดิม
+   */
+  const order: T[] = [];
+  const moved: T[] = [];
+  for (const line of out) {
+    if (line.itemCode === "5.4" || line.itemCode === "8.1") moved.push(line);
+    else order.push(line);
+  }
+
+  const idxAfter = (predicate: (l: T) => boolean, fallback: number) => {
+    const i = order.findIndex(predicate);
+    return i < 0 ? fallback : i + 1;
+  };
+
+  const i54 = idxAfter((l) => l.itemCode === "5.3", idxAfter((l) => (l.groupCode ?? "") === "5" && l.kind === "GROUP", order.length));
+  const m54 = moved.find((l) => l.itemCode === "5.4");
+  if (m54) order.splice(i54, 0, m54);
+
+  const i81 = idxAfter((l) => l.kind === "GROUP" && (l.groupCode ?? "") === "8", order.length);
+  const m81 = moved.find((l) => l.itemCode === "8.1");
+  if (m81) order.splice(i81, 0, m81);
+
+  /* เลข sortOrder ใหม่ให้เรียงตามลำดับที่จัดไว้ */
+  return order.map((line, i) => ({ ...line, sortOrder: i }));
+}
+
+
 export function normalizeEstimatePayoutMethods<T extends EstimateLineInput>(lines: T[]): T[] {
   return lines.map((line) => {
     const name = line.name ?? "";
@@ -647,7 +722,7 @@ export function normalizeEstimatePayoutMethods<T extends EstimateLineInput>(line
     }
 
     // เงินสำรองค่าใช้จ่าย → ยืมเงินทดรองจ่าย
-    if (code === "8.2" || (Boolean(line.isReserve) && /เงินสำรอง/.test(name))) {
+    if (code === "8.1" || (Boolean(line.isReserve) && /เงินสำรอง/.test(name))) {
       return { ...line, payoutMethod: ADVANCE };
     }
 

@@ -1333,7 +1333,7 @@ export function MissionFormPage() {
       amounts["5.2"] += Number.isFinite(travel) && travel > 0 ? travel : 0;
     }
     amounts["5.1"] = botCount;
-    amounts["8.1"] = botCount * BOT_SPECIAL_ALLOWANCE_PER_DAY * Math.max(1, days);
+    amounts["5.4"] = botCount * BOT_SPECIAL_ALLOWANCE_PER_DAY * Math.max(1, days);
     return amounts;
   }, [pRows, personnel, plannedStart, plannedEnd, routeMissionDays]);
 

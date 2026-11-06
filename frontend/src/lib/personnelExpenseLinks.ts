@@ -16,8 +16,8 @@ export const PERSONNEL_EXPENSE_LINK_HELP = Object.values(PERSONNEL_EXPENSE_ITEM_
   .join(" · ");
 
 /** รายการที่ลิงก์จากจนท.ธปท. (จำนวนคน / ยอดรวม) — ใช้ทริปทั่วไป
- *  TRIP-2569 ข้อ 5.1/5.2/5.3/8.1 ใช้ยอด Excel ตรง ๆ ไม่คูณคน×อัตรา */
-export const BOT_PERSONNEL_LINK_ITEM_CODES = ["5.1", "5.2", "5.3", "8.1"] as const;
+ *  TRIP-2569 ข้อ 5.1/5.2/5.3/5.4 ใช้ยอด Excel ตรง ๆ ไม่คูณคน×อัตรา */
+export const BOT_PERSONNEL_LINK_ITEM_CODES = ["5.1", "5.2", "5.3", "5.4"] as const;
 
 /** รายการที่ลิงก์จากบุคลากรตำรวจ (ยอดรวมตามประเภท) */
 export const POLICE_PERSONNEL_LINK_ITEM_CODES = ["2.1", "2.2", "2.3"] as const;
