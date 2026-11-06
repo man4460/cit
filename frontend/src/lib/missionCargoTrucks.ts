@@ -333,7 +333,9 @@ function inferredCargoRole(row: { role?: string | null; note?: string | null }):
   return /สินค้า|หัวลาก/.test(note) ? note : "";
 }
 
-export function toCargoTruckForm(row: Partial<CargoTruckRow> & { id?: string | null } | null | undefined): CargoTruckRow {
+type CargoTruckInput = { [K in keyof CargoTruckRow]?: CargoTruckRow[K] | null };
+
+export function toCargoTruckForm(row: CargoTruckInput | null | undefined): CargoTruckRow {
   const b = blankCargoTruck();
   if (!row) return b;
   return {

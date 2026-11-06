@@ -53,7 +53,6 @@ import {
 } from "../lib/missionCargoTrucks";
 import { sortMissionVehicleRows } from "../lib/missionConvoyOrder";
 import {
-  MISSION_PERSONNEL_TABS,
   MISSION_STAFF_TABS,
   defaultMissionRoleIdForTab,
   missionPersonnelTabByCategory,
